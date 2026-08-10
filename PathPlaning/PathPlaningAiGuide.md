@@ -72,23 +72,23 @@ PathPlaning/
 ### 🧑‍💻 Person B (Track B - Costmaps, Vision & Perception)
 
 **Costmap Foundation:**
-- [ ] **Task B-1.1:** Configure `global_costmap` in `nav2_params.yaml` to subscribe to `/map`.
-- [ ] **Task B-1.2:** Configure `local_costmap` to use a rolling window.
-- [ ] **Task B-2.1:** Add `obstacle_layer` to the `local_costmap`.
-- [ ] **Task B-2.2:** Add `inflation_layer` to both costmaps with rover-specific footprint/radius.
+- [ ] **Task B-1.1:** Configure `global_costmap` in `nav2_params.yaml` to subscribe to `/map`.(done)
+- [ ] **Task B-1.2:** Configure `local_costmap` to use a rolling window.(done)
+- [ ] **Task B-2.1:** Add `obstacle_layer` to the `local_costmap`.(done)
+- [ ] **Task B-2.2:** Add `inflation_layer` to both costmaps with rover-specific footprint/radius.(done)
 
 **Perception Bridge Node:**
-- [ ] **Task B-3.1:** Write the ROS 2 C++ boilerplate for `src/costmap_bridge_node.cpp`.
-- [ ] **Task B-3.2:** Add subscriber to `terrain_geometry_msgs/ObstacleFeatureArray`.
-- [ ] **Task B-4.1:** Add publisher for standard `sensor_msgs/PointCloud2`.
-- [ ] **Task B-4.2:** Implement the custom conversion logic inside the node's callback.
-- [ ] **Task B-5.1:** Update `CMakeLists.txt` to compile `costmap_bridge_node.cpp`.
-- [ ] **Check B-5.2 (Validation):** Build `costmap_bridge_node`.
-- [ ] **Check B-5.3 (Validation):** Publish dummy `ObstacleFeatureArray` via CLI, verify `PointCloud2` output.
+- [ ] **Task B-3.1:** Write the ROS 2 C++ boilerplate for `src/costmap_bridge_node.cpp`.(done)
+- [ ] **Task B-3.2:** Add subscriber to `terrain_geometry_msgs/ObstacleFeatureArray`.(done)
+- [ ] **Task B-4.1:** Add publisher for standard `sensor_msgs/PointCloud2`.(done)
+- [ ] **Task B-4.2:** Implement the custom conversion logic inside the node's callback.(done)
+- [ ] **Task B-5.1:** Update `CMakeLists.txt` to compile `costmap_bridge_node.cpp`.(done)
+- [ ] **Check B-5.2 (Validation):** Build `costmap_bridge_node`.(done)
+- [ ] **Check B-5.3 (Validation):** Publish dummy `ObstacleFeatureArray` via CLI, verify `PointCloud2` output.(done)
 
 **Visualization:**
-- [ ] **Task B-6.1:** Create `launch/rviz.launch.py`.
-- [ ] **Task B-6.2:** Configure RViz2 displays for Map, Costmaps, Plan, and Trajectories, and save to `rviz/nav2_default_view.rviz`.
+- [ ] **Task B-6.1:** Create `launch/rviz.launch.py`.(done)
+- [ ] **Task B-6.2:** Configure RViz2 displays for Map, Costmaps, Plan, and Trajectories, and save to `rviz/nav2_default_view.rviz`.(done)
 - [ ] **Check B-7.1 (Validation):** Launch `rviz.launch.py`, publish dummy `/map`, verify RViz loads properly.
 
 ---
