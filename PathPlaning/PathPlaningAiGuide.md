@@ -130,12 +130,27 @@ Because each task is merged to the `main` branch upon completion, use these 4 pr
 *Validate after Track B visualization (B-6, B-7) are merged, representing full project completion.*
 - [ ] **Task INT-4.1:** Verify end-to-end routing and motor velocity commands.
 - [ ] **Check INT-4.2 (Validation):**
-  1. Launch the system: `ros2 launch erc_path_planner path_planning.launch.py` and `ros2 launch erc_path_planner rviz.launch.py`.
-  2. Publish static TF transforms:
+  
+  **Method 1: Using the Built-in Dummy Map (Recommended)**
+  1. Build the updated package:
+     `colcon build --packages-select erc_path_planner`
+     `source install/setup.bash`
+  2. Launch the path planner (which now automatically loads `config/dummy_map.yaml`):
+     `ros2 launch erc_path_planner path_planning.launch.py`
+  3. In a separate terminal, launch RViz:
+     `ros2 launch erc_path_planner rviz.launch.py`
+  4. Publish static localization transforms to mock Odometry and SLAM frames:
      `ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 map odom`
      `ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 odom base_link`
-  3. Publish dummy `/map` and use RViz "2D Pose Estimate" and "Nav2 Goal".
+  5. In RViz, click **"2D Pose Estimate"** to set the starting position of the rover, then click **"Nav2 Goal"** to set a destination.
   *Success Criteria:* A green `/plan` path is drawn in RViz and `/cmd_vel` outputs valid velocity commands in response.
+
+  **Method 2: Bypassing map_server entirely & manual publishing (Optional)**
+  1. Launch the system with SLAM enabled to disable the built-in map_server:
+     `ros2 launch erc_path_planner path_planning.launch.py slam:=True`
+  2. Publish a dummy OccupancyGrid map manually via terminal:
+     `ros2 topic pub /map nav_msgs/msg/OccupancyGrid "{header: {frame_id: 'map'}, info: {resolution: 0.1, width: 10, height: 10, origin: {position: {x: -5.0, y: -5.0, z: 0.0}}}, data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}"`
+  3. Publish the static transforms and send goals in RViz as in Method 1.
 
 ---
 

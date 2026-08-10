@@ -1,5 +1,6 @@
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
+from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
 
@@ -16,6 +17,18 @@ def generate_launch_description():
         'nav2_params.yaml'
     )
 
+    default_map = os.path.join(
+        erc_path_planner_dir,
+        'config',
+        'dummy_map.yaml'
+    )
+
+    map_arg = DeclareLaunchArgument(
+        'map',
+        default_value=default_map,
+        description='Full path to map yaml file to load'
+    )
+
     nav2_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(
@@ -26,11 +39,13 @@ def generate_launch_description():
         ),
         launch_arguments={
             'params_file': params_file,
+            'map': LaunchConfiguration('map'),
             'use_sim_time': 'false',
             'autostart': 'true'
         }.items()
     )
 
     return LaunchDescription([
+        map_arg,
         nav2_launch
     ])
