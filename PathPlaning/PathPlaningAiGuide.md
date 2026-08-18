@@ -88,7 +88,7 @@ PathPlaning/
 
 **Visualization:**
 - [ ] **Task B-6.1:** Create `launch/rviz.launch.py`.(done)
-- [ ] **Task B-6.2:** Configure RViz2 displays for Map, Costmaps, Plan, and Trajectories, and save to `rviz/nav2_default_view.rviz`.(done)
+- [ ] **Task B-6.2:** Configure RViz2 displays for Map, Costmaps, Plan, and Trajectories, and save to `rviz/nav2_default_view.rviz`. ( done )(done)
 - [ ] **Check B-7.1 (Validation):** Launch `rviz.launch.py`, publish dummy `/map`, verify RViz loads properly.
 
 ---
