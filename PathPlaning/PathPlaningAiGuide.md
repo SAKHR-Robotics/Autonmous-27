@@ -48,52 +48,50 @@ PathPlaning/
 ### 🧑‍💻 Person A (Track A - Core Planners & Routing)
 
 **Foundation & Package Setup:**
-- [ ] **Task A-1.1:** Create the `erc_path_planner` package structure (directories: `config`, `launch`, `rviz`, `behavior_trees`, `src`). ( done )
-- [ ] **Task A-1.2:** Write `package.xml` including all Nav2 dependencies (`nav2_bringup`, `nav2_smac_planner`, `nav2_mppi_controller`, `nav2_costmap_2d`, `nav2_bt_navigator`).(done)
-- [ ] **Task A-2.1:** Write `CMakeLists.txt` to install `config`, `launch`, `rviz`, and `behavior_trees` directories.(done)
+- [ ] **Task A-1.1:** Create the `erc_path_planner` package structure (directories: `config`, `launch`, `rviz`, `behavior_trees`, `src`). (done)
+- [ ] **Task A-1.2:** Write `package.xml` including all Nav2 dependencies (`nav2_bringup`, `nav2_smac_planner`, `nav2_mppi_controller`, `nav2_costmap_2d`, `nav2_bt_navigator`). (done)
+- [ ] **Task A-2.1:** Write `CMakeLists.txt` to install `config`, `launch`, `rviz`, and `behavior_trees` directories. (done)
 - [ ] **Check A-2.2 (Validation):** Run `colcon build --packages-select erc_path_planner`. Ensure 0 errors. (done)
 
 **Planners Configuration:**
 - [ ] **Task A-3.1:** Create `config/nav2_params.yaml`. (done)
-- [ ] **Task A-3.2:** Configure `planner_server` inside `nav2_params.yaml` to use `SmacPlannerHybrid`.(done)
-- [ ] **Task A-3.3:** Set Smac parameters (`motion_model_for_search: "REEDS_SHEPP"`, `minimum_turning_radius: 0.8`, `allow_unknown: true`).(done)
-- [ ] **Task A-4.1:** Configure `controller_server` to use `MPPIController`.
-- [ ] **Task A-4.2:** Set MPPI parameters (`batch_size: 2000`, `time_steps: 56`, `model_dt: 0.05`, limits, and critics).(done)
-- [ ] **Check A-4.3 (Validation):** Run `yamllint config/nav2_params.yaml` to ensure no syntax errors.(done)
+- [ ] **Task A-3.2:** Configure `planner_server` inside `nav2_params.yaml` to use `SmacPlannerHybrid`. (done)
+- [ ] **Task A-3.3:** Set Smac parameters (`motion_model_for_search: "REEDS_SHEPP"`, `minimum_turning_radius: 0.8`, `allow_unknown: true`). (done)
+- [ ] **Task A-4.1:** Configure `controller_server` to use `MPPIController`. (done)
+- [ ] **Task A-4.2:** Set MPPI parameters (`batch_size: 2000`, `time_steps: 56`, `model_dt: 0.05`, limits, and critics). (done)
+- [ ] **Check A-4.3 (Validation):** Run `yamllint config/nav2_params.yaml` to ensure no syntax errors. (done)
 
 **Bringup & Launch:**
-- [ ] **Task A-5.1:** Setup `bt_navigator` parameters in YAML to use standard navigation tree.
-- [ ] **Task A-5.2:** Create `launch/path_planning.launch.py`.
-- [ ] **Task A-6.1:** Include `nav2_bringup` in the launch file and pass the custom `nav2_params.yaml`.
-- [ ] **Check A-6.2 (Validation):** Run `ros2 run nav2_util lifecycle_bringup` and `ros2 launch erc_path_planner path_planning.launch.py`. Verify active state.
+- [ ] **Task A-5.1:** Setup `bt_navigator` parameters in YAML to use standard navigation tree. (done)
+- [ ] **Task A-5.2:** Create `launch/path_planning.launch.py`. (done)
+- [ ] **Task A-6.1:** Include `nav2_bringup` in the launch file and pass the custom `nav2_params.yaml`. (done)
+- [ ] **Check A-6.2 (Validation):** Run `ros2 run nav2_util lifecycle_bringup` and `ros2 launch erc_path_planner path_planning.launch.py`. Verify active state. (done)
 
 ---
 
 ### 🧑‍💻 Person B (Track B - Costmaps, Vision & Perception)
 
 **Costmap Foundation:**
-- [ ] **Task B-1.1:** Configure `global_costmap` in `nav2_params.yaml` to subscribe to `/map`.(done)
-- [ ] **Task B-1.2:** Configure `local_costmap` to use a rolling window.(done)
-- [ ] **Task B-2.1:** Add `obstacle_layer` to the `local_costmap`.(done)
-- [ ] **Task B-2.2:** Add `inflation_layer` to both costmaps with rover-specific footprint/radius.(done)
+- [ ] **Task B-1.1:** Configure `global_costmap` in `nav2_params.yaml` to subscribe to `/map`. (done)
+- [ ] **Task B-1.2:** Configure `local_costmap` to use a rolling window. (done)
+- [ ] **Task B-2.1:** Add `obstacle_layer` to the `local_costmap`. (done)
+- [ ] **Task B-2.2:** Add `inflation_layer` to both costmaps with rover-specific footprint/radius. (done)
 
 **Perception Bridge Node:**
-- [ ] **Task B-3.1:** Write the ROS 2 C++ boilerplate for `src/costmap_bridge_node.cpp`.(done)
-- [ ] **Task B-3.2:** Add subscriber to `terrain_geometry_msgs/ObstacleFeatureArray`.(done)
-- [ ] **Task B-4.1:** Add publisher for standard `sensor_msgs/PointCloud2`.(done)
-- [ ] **Task B-4.2:** Implement the custom conversion logic inside the node's callback.(done)
-- [ ] **Task B-5.1:** Update `CMakeLists.txt` to compile `costmap_bridge_node.cpp`.(done)
-- [ ] **Check B-5.2 (Validation):** Build `costmap_bridge_node`.(done)
-- [ ] **Check B-5.3 (Validation):** Publish dummy `ObstacleFeatureArray` via CLI, verify `PointCloud2` output.(done)
+- [ ] **Task B-3.1:** Write the ROS 2 C++ boilerplate for `src/costmap_bridge_node.cpp`. (done)
+- [ ] **Task B-3.2:** Add subscriber to `terrain_geometry_msgs/ObstacleFeatureArray`. (done)
+- [ ] **Task B-4.1:** Add publisher for standard `sensor_msgs/PointCloud2`. (done)
+- [ ] **Task B-4.2:** Implement the custom conversion logic inside the node's callback. (done)
+- [ ] **Task B-5.1:** Update `CMakeLists.txt` to compile `costmap_bridge_node.cpp`. (done)
+- [ ] **Check B-5.2 (Validation):** Build `costmap_bridge_node`. (done)
+- [ ] **Check B-5.3 (Validation):** Publish dummy `ObstacleFeatureArray` via CLI, verify `PointCloud2` output. (done)
 
 **Visualization:**
-- [ ] **Task B-6.1:** Create `launch/rviz.launch.py`.(done)
-- [ ] **Task B-6.2:** Configure RViz2 displays for Map, Costmaps, Plan, and Trajectories, and save to `rviz/nav2_default_view.rviz`.(done)
-- [ ] **Check B-7.1 (Validation):** Launch `rviz.launch.py`, publish dummy `/map`, verify RViz loads properly.
+- [ ] **Task B-6.1:** Create `launch/rviz.launch.py`. (done)
+- [ ] **Task B-6.2:** Configure RViz2 displays for Map, Costmaps, Plan, and Trajectories, and save to `rviz/nav2_default_view.rviz`. (done)
+- [ ] **Check B-7.1 (Validation):** Launch `rviz.launch.py`, publish dummy `/map`, verify RViz loads properly. (done)
 
 ---
-
-### 🤝 Phase 4: Final Integration (Person A + Person B)
 
 ### 🤝 Phase 4: Progressive Integration & Main Branch Checkpoints
 
@@ -101,30 +99,19 @@ Because each task is merged to the `main` branch upon completion, use these 4 pr
 
 #### 🏁 Integration Checkpoint 1: Package Registration & Base Build
 *Validate immediately after Task A-1 and Task A-2 are merged to main.*
-- [ ] **Task INT-1.1:** Compile the workspace on the `main` branch.
-- [ ] **Task INT-1.2:** Verify ROS 2 package registration.
-- [ ] **Check INT-1.3 (Validation):**
-  1. Run `colcon build --packages-select erc_path_planner`.
-  2. Run `source install/setup.bash`.
-  3. Run `ros2 pkg prefix erc_path_planner`.
-  *Success Criteria:* Package builds successfully and returns the installation path.
+- [ ] **Task INT-1.1:** Compile the workspace on the `main` branch. (done)
+- [ ] **Task INT-1.2:** Verify ROS 2 package registration. (done)
+- [ ] **Check INT-1.3 (Validation):** (done)
 
 #### 🏁 Integration Checkpoint 2: Parameter Server & Lifecycle Server Boot
 *Validate after Track A planners (A-3 to A-6) are merged to main.*
-- [ ] **Task INT-2.1:** Verify that all lifecycle nodes spin up and load parameters from YAML.
-- [ ] **Check INT-2.2 (Validation):**
-  1. Run `ros2 run nav2_util lifecycle_bringup`.
-  2. Run `ros2 launch erc_path_planner path_planning.launch.py`.
-  *Success Criteria:* `planner_server` and `controller_server` transition to the `active` state in the terminal without crashing due to YAML format errors.
+- [ ] **Task INT-2.1:** Verify that all lifecycle nodes spin up and load parameters from YAML. (done)
+- [ ] **Check INT-2.2 (Validation):** (done)
 
 #### 🏁 Integration Checkpoint 3: Costmaps & Perception Bridge Live Processing
 *Validate after Track B costmaps & bridge node (B-1 to B-5) are merged to main.*
-- [ ] **Task INT-3.1:** Run the costmap bridge node alongside the main Nav2 launcher.
-- [ ] **Check INT-3.2 (Validation):**
-  1. Run `ros2 run erc_path_planner costmap_bridge_node`.
-  2. Publish a dummy message: `ros2 topic pub /perception/obstacles terrain_geometry_msgs/msg/ObstacleFeatureArray "{...}" -1`.
-  3. Run `ros2 topic echo /bridge/pointcloud`.
-  *Success Criteria:* The bridge node receives the custom message and publishes a standard PointCloud2, which is consumed by the costmap server.
+- [ ] **Task INT-3.1:** Run the costmap bridge node alongside the main Nav2 launcher. (done)
+- [ ] **Check INT-3.2 (Validation):** (done)
 
 #### 🏁 Integration Checkpoint 4: Complete Closed-Loop Navigation Loop
 *Validate after Track B visualization (B-6, B-7) are merged, representing full project completion.*
