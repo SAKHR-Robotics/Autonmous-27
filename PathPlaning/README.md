@@ -6,11 +6,11 @@ This repository contains the ROS 2 Path Planning stack for the ERC 2026 Rover ba
 
 ## 🛠️ System Prerequisites & Dependencies
 
-Before building this module, you must install ROS 2 Navigation2 and its bringup packages for **ROS 2 Humble**:
+Before building this module, you must install ROS 2 Navigation2 and its bringup packages for **ROS 2 Jazzy**:
 
 ```bash
 sudo apt update
-sudo apt install ros-humble-navigation2 ros-humble-nav2-bringup -y
+sudo apt install ros-jazzy-navigation2 ros-jazzy-nav2-bringup -y
 ```
 
 ### ROS 2 Package Dependencies

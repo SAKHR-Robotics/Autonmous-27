@@ -35,11 +35,11 @@ rover_slam/
 Before building or running, install required system dependencies:
 ```bash
 sudo apt update && sudo apt install -y \
-  ros-humble-diagnostic-updater \
-  ros-humble-nav2-lifecycle-manager \
-  ros-humble-nav2-costmap-2d \
-  ros-humble-robot-localization \
-  ros-humble-rtabmap-ros
+  ros-jazzy-diagnostic-updater \
+  ros-jazzy-nav2-lifecycle-manager \
+  ros-jazzy-nav2-costmap-2d \
+  ros-jazzy-robot-localization \
+  ros-jazzy-rtabmap-ros
 ```
 
 ## 🚀 How to Build

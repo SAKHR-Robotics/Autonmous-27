@@ -91,7 +91,7 @@
     <kd>1.0</kd>
   </gazebo>
 
-  <!-- Differential Drive Plugin for Ignition Gazebo -->
+  <!-- Differential Drive Plugin for Gazebo (ROS 2 Jazzy) -->
   <!-- This plugin allows controlling the robot using /cmd_vel topic -->
   <!-- It simulates a differential drive robot using the middle wheels -->
   <gazebo>

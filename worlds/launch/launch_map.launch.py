@@ -72,7 +72,8 @@ def _launch_gazebo(context, *args, **kwargs):
         gz_path = gz_path + os.pathsep + gz_existing
 
     # Construct the plugin paths for Gazebo to find libraries like gz_ros2_control
-    system_plugin_paths = ['/opt/ros/humble/lib']
+    ros_distro = os.environ.get('ROS_DISTRO', 'jazzy')
+    system_plugin_paths = [f'/opt/ros/{ros_distro}/lib']
     current_ign_plugin = os.environ.get('IGN_GAZEBO_SYSTEM_PLUGIN_PATH', '')
     if current_ign_plugin:
         system_plugin_paths.append(current_ign_plugin)

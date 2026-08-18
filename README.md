@@ -17,8 +17,8 @@ To build the workspace without keeping the output build artifacts in your Git re
 # Go to the root repository directory (outside Autonmous_Ws)
 cd /path/to/your/cloned/repository
 
-# Sourcing standard ROS 2 (Humble)
-source /opt/ros/humble/setup.bash
+# Sourcing standard ROS 2 (Jazzy)
+source /opt/ros/jazzy/setup.bash
 
 # Build the workspace packages
 colcon build
