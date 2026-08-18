@@ -31,13 +31,82 @@ rover_slam/
     └── test_slip_checker.py      # Unit test suite
 ```
 
-## 🛠️ How to Build & Run
+## 🛠️ System Dependencies Installation
+Before building or running, install required system dependencies:
 ```bash
-# Build package
+sudo apt update && sudo apt install -y \
+  ros-humble-diagnostic-updater \
+  ros-humble-nav2-lifecycle-manager \
+  ros-humble-nav2-costmap-2d \
+  ros-humble-robot-localization \
+  ros-humble-rtabmap-ros
+```
+
+## 🚀 How to Build
+```bash
 cd ~/Desktop/MESEKET/Autonmous-27/Autonmous_Ws
 colcon build --packages-select rover_slam
 source install/setup.bash
+```
 
-# Run master bringup
+---
+
+## 🧪 Step-by-Step Validation & Testing Suite
+
+### 1️⃣ Test 1: Static Transforms Validation (Checkpoint 1)
+Verify that static coordinate frames (`base_link -> camera_link` and `base_link -> imu_link`) broadcast correctly:
+```bash
+# Terminal 1:
+ros2 launch rover_slam static_transforms.launch.py
+
+# Terminal 2:
+ros2 run tf2_ros tf2_echo base_link camera_link
+ros2 run tf2_ros tf2_echo base_link imu_link
+```
+*Expected Result:* 3D translation and rotation frames print continuously at 10 Hz with 0 lookup errors.
+
+---
+
+### 2️⃣ Test 2: RealSense Depth Filter Pipeline (Checkpoint 2)
+Verify that camera depth post-processing filters (decimation, spatial, temporal, 4.0m range clipping) are active:
+```bash
+# Terminal 1:
+ros2 launch rover_slam vision_helper.launch.py
+
+# Terminal 2:
+ros2 topic hz /camera/depth/filtered
+```
+*Expected Result:* Filtered depth images publish smoothly on `/camera/depth/filtered`.
+
+---
+
+### 3️⃣ Test 3: Standalone Nav2 Costmap 2D + Synthetic Obstacle Test (Checkpoint 4B)
+Verify that `nav2_costmap_2d` ingests 3D point cloud rocks from `/perception/obstacles_only` and outputs an inflated safety costmap grid:
+```bash
+# Terminal 1: Launch Costmap 2D Server
+ros2 launch rover_slam costmap.launch.py
+
+# Terminal 2: Run Synthetic Rock Generator
+ros2 run rover_slam costmap_test_stub
+
+# Terminal 3: Echo the Costmap Output
+ros2 topic echo /global_costmap/costmap
+```
+*Expected Result:* `/global_costmap/costmap` publishes streaming `nav_msgs/msg/OccupancyGrid` showing inflated rock obstacle cost zones (costs 100 -> 85 -> 50).
+
+---
+
+### 4️⃣ Test 4: ArUco Landmark Pose Topic Contract (Checkpoint 3B)
+Verify that the SLAM landmark channel can ingest 6-DOF marker poses independently:
+```bash
+ros2 topic pub /perception/aruco_pose geometry_msgs/msg/PoseStamped "{header: {frame_id: 'camera_link'}, pose: {position: {x: 1.0, y: 0.0, z: 0.5}, orientation: {w: 1.0}}}" -1
+```
+*Expected Result:* Message publishes cleanly for RTAB-Map graph loop closure.
+
+---
+
+### 5️⃣ Test 5: Master SLAM Bringup (Checkpoint 5)
+Run the full system integration launch combining all sub-systems:
+```bash
 ros2 launch rover_slam slam_bringup.launch.py
 ```
