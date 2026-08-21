@@ -1,0 +1,2 @@
+Timestamp,Test Name,Success,Planning Time (s),Path Length (m),Length Ratio,Avg Turn Angle (deg),Max Turn Angle (deg),Avg Turn Radius (m),Min Turn Radius (m),Nearest Obstacle Distance (m),Path Cost
+2026-07-10 17:52:41,marsyard_rough_slopes,YES,0.5164,13.66,1.207,16.0,45.0,0.08,0.08,0.73,0.0

@@ -1,0 +1,139 @@
+scenarios:
+  - id: "empty_straight"
+    map_image: "maps/empty_world.png"
+    resolution: 0.05
+    origin: [-5.0, -5.0]
+    robot_radius: 0.3
+    start: [-3.0, -3.0]
+    goal: [3.0, 3.0]
+    reference_path:
+      - [-3.0, -3.0]
+      - [-1.5, -1.5]
+      - [0.0, 0.0]
+      - [1.5, 1.5]
+      - [3.0, 3.0]
+  
+  - id: "scattered_rocks_detour"
+    map_image: "maps/scattered_rocks.png"
+    resolution: 0.05
+    origin: [-5.0, -5.0]
+    robot_radius: 0.3
+    start: [-4.0, -4.0]
+    goal: [4.0, 4.0]
+    reference_path:
+      - [-4.0, -4.0]
+      - [-2.5, -1.5]
+      - [-1.0, 1.0]
+      - [1.0, 2.5]
+      - [4.0, 4.0]
+    dynamic_obstacles:
+      - trigger_time: 0.5
+        x: 1.0
+        y: 2.5
+        radius: 0.4
+
+  - id: "canyon_gate_passage"
+    map_image: "maps/canyon_gate.png"
+    resolution: 0.05
+    origin: [-5.0, -5.0]
+    robot_radius: 0.3
+    start: [0.0, -4.0]
+    goal: [0.0, 4.0]
+    reference_path:
+      - [0.0, -4.0]
+      - [0.0, -1.0]
+      - [0.0, 0.0]
+      - [0.0, 2.0]
+      - [0.0, 4.0]
+
+  - id: "marsyard_rough_slopes"
+    map_image: "maps/marsyard_slopes.png"
+    resolution: 0.05
+    origin: [-5.0, -5.0]
+    robot_radius: 0.3
+    start: [-4.0, -4.0]
+    goal: [4.0, 4.0]
+    reference_path:
+      - [-4.0, -4.0]
+      - [-3.5, 0.0]
+      - [-3.0, 3.0]
+      - [0.0, 4.0]
+      - [4.0, 4.0]
+
+  - id: "marsyard_labyrinth"
+    map_image: "maps/marsyard_labyrinth.png"
+    resolution: 0.05
+    origin: [-5.0, -5.0]
+    robot_radius: 0.3
+    start: [-4.0, -4.0]
+    goal: [4.0, 4.0]
+    reference_path:
+      - [-4.0, -4.0]
+      - [3.5, -4.0]
+      - [3.5, -1.0]
+      - [-3.5, -1.0]
+      - [-3.5, 1.5]
+      - [3.5, 1.5]
+      - [3.5, 4.0]
+      - [4.0, 4.0]
+
+  - id: "canyon_gate_blocked"
+    map_image: "maps/canyon_gate.png"
+    resolution: 0.05
+    origin: [-5.0, -5.0]
+    robot_radius: 0.3
+    start: [0.0, -4.0]
+    goal: [0.0, 4.0]
+    reference_path:
+      - [0.0, -4.0]
+      - [0.0, 4.0]
+    dynamic_obstacles:
+      - trigger_time: 0.5
+        x: 0.0
+        y: 0.0
+        radius: 1.5
+
+  - id: "marsyard_snake_passage"
+    map_image: "maps/snake_passage.png"
+    resolution: 0.05
+    origin: [-5.0, -5.0]
+    robot_radius: 0.3
+    start: [-4.0, -4.0]
+    goal: [4.0, 4.0]
+    reference_path:
+      - [-4.0, -4.0]
+      - [3.5, -4.0]
+      - [3.5, 0.0]
+      - [-3.5, 0.0]
+      - [-3.5, 4.0]
+      - [4.0, 4.0]
+
+  - id: "dead_end_trap"
+    map_image: "maps/dead_end_trap.png"
+    resolution: 0.05
+    origin: [-5.0, -5.0]
+    robot_radius: 0.3
+    start: [0.0, -1.0]
+    goal: [0.0, 4.0]
+    reference_path:
+      - [0.0, -1.0]
+      - [0.0, -3.5]
+      - [3.5, -3.5]
+      - [3.5, 2.5]
+      - [0.0, 4.0]
+
+  - id: "crater_field"
+    map_image: "maps/crater_field.png"
+    resolution: 0.05
+    origin: [-5.0, -5.0]
+    robot_radius: 0.3
+    start: [-4.0, -4.0]
+    goal: [4.0, 4.0]
+    reference_path:
+      - [-4.0, -4.0]
+      - [-2.5, -1.5]
+      - [0.0, -2.5]
+      - [2.5, 0.0]
+      - [1.5, 2.5]
+      - [4.0, 4.0]
+

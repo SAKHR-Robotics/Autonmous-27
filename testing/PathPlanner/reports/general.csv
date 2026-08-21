@@ -1,0 +1,7 @@
+Timestamp,Test Name,Success,Planning Time (s),Path Length (m),Length Ratio,Avg Turn Angle (deg),Max Turn Angle (deg),Avg Turn Radius (m),Min Turn Radius (m),Nearest Obstacle Distance (m),Path Cost
+2026-07-10 07:41:54,general,YES,0.5228,20.16,1.782,2.2,45.0,0.08,0.08,10.00,0.0
+2026-07-10 07:41:54,general,YES,0.5006,20.16,1.782,2.2,45.0,0.08,0.08,10.00,0.0
+2026-07-10 07:41:54,general,YES,0.5015,20.16,1.782,2.2,45.0,0.08,0.08,10.00,0.0
+2026-07-10 07:41:54,general,YES,0.5021,20.16,1.782,2.2,45.0,0.08,0.08,10.00,0.0
+2026-07-10 07:41:54,general,YES,0.5140,20.16,1.782,2.2,45.0,0.08,0.08,10.00,0.0
+2026-07-10 07:41:54,general,YES,0.5182,20.16,1.782,2.2,45.0,0.08,0.08,10.00,0.0

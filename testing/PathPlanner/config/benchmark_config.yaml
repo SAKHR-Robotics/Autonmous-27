@@ -1,0 +1,13 @@
+benchmark:
+  pass_threshold: 85.0
+  weights:
+    success: 0.25
+    time: 0.15
+    obstacle: 0.25
+    cost: 0.15
+    length: 0.10
+    replan: 0.10
+  limits:
+    target_planning_time: 2.0
+    timeout_planning_time: 10.0
+    target_length_ratio: 1.35

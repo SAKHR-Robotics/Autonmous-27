@@ -1,0 +1,3 @@
+Timestamp,Test Name,Success,Planning Time (s),Path Length (m),Length Ratio,Avg Turn Angle (deg),Max Turn Angle (deg),Avg Turn Radius (m),Min Turn Radius (m),Nearest Obstacle Distance (m),Path Cost
+2026-07-10 17:52:20,scattered_rocks_detour,YES,0.1709,11.64,1.028,5.6,45.0,0.08,0.08,0.04,0.0
+2026-07-10 17:52:22,scattered_rocks_detour,YES,0.1632,11.64,1.028,5.6,45.0,0.08,0.08,0.04,0.0
