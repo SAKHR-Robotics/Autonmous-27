@@ -1,0 +1,2 @@
+Timestamp,Test Name,Success,Planning Time (s),Path Length (m),Length Ratio,Avg Turn Angle (deg),Max Turn Angle (deg),Avg Turn Radius (m),Min Turn Radius (m),Nearest Obstacle Distance (m),Path Cost
+2026-07-10 17:53:31,crater_field,YES,0.2775,12.19,1.078,16.9,45.0,0.08,0.08,0.78,0.0

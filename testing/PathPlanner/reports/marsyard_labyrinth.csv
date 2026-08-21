@@ -1,0 +1,2 @@
+Timestamp,Test Name,Success,Planning Time (s),Path Length (m),Length Ratio,Avg Turn Angle (deg),Max Turn Angle (deg),Avg Turn Radius (m),Min Turn Radius (m),Nearest Obstacle Distance (m),Path Cost
+2026-07-10 17:52:51,marsyard_labyrinth,YES,0.4760,20.16,1.782,2.2,45.0,0.08,0.08,0.04,0.0
