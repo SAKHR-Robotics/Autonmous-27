@@ -174,9 +174,9 @@ Use these explicit checkpoints to verify each milestone before merging code:
 - [ ] **Task 2A.1:** Implement `rover_slam/encoder_ticks_to_odom.py` (Differential drive kinematic math converting wheel ticks to `nav_msgs/msg/Odometry` velocity).
 - [✓] **Task 2A.2:** Create `config/ekf.yaml` for `robot_localization` (`world_frame: odom`, `frequency: 100`, fuse wheel velocity & IMU yaw rate).
 - [✓] **Task 2A.3:** Create `launch/ekf.launch.py` to start `ekf_node`.
-- [ ] **Task 3A.1:** Develop `rover_slam/heuristic_slip_checker.py` (calculates speed difference $|V_{wheels} - V_{imu}| > 0.15\text{ m/s}$).
-- [ ] **Task 3A.2:** Add dynamic covariance scaling to `heuristic_slip_checker.py` during wheel slip.
-- [ ] **Task 3A.3:** Create `test/test_slip_checker.py` unit test suite.
+- [✓] **Task 3A.1:** Develop `rover_slam/heuristic_slip_checker.py` (calculates speed difference $|V_{wheels} - V_{imu}| > 0.15\text{ m/s}$).
+- [✓] **Task 3A.2:** Add dynamic covariance scaling to `heuristic_slip_checker.py` during wheel slip.
+- [✓] **Task 3A.3:** Create `test/test_slip_checker.py` unit test suite.
 - [✓] **Task 4A.1:** Create `config/rtabmap.yaml` (loop closure thresholds, memory management, GTSAM optimizer).
 - [✓] **Task 4A.2:** Create `launch/rtabmap.launch.py` (`publish_tf: true`, subscribe to `/odometry/filtered` and filtered depth).
 - [✓] **Task 5A.1:** Connect `/perception/aruco_pose` landmark topic into RTAB-Map's landmark channel in launch file.

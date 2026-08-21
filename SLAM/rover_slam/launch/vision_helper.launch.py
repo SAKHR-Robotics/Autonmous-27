@@ -15,7 +15,10 @@ def generate_launch_description():
             name='realsense2_camera',
             namespace='camera',
             output='screen',
-            parameters=[filters_config_path]
+            parameters=[filters_config_path],
+            remappings=[
+                ('depth/image_rect_raw', 'depth/filtered')
+            ]
         )
     ])
 
