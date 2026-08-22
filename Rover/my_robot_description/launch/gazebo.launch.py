@@ -84,10 +84,18 @@ def launch_setup(context, *args, **kwargs):
         resource_paths.append(pkg_worlds)
         resource_paths.append(os.path.dirname(pkg_worlds))
         resource_paths.append(os.path.join(pkg_worlds, 'models'))
-        resource_paths.append(os.path.join(pkg_worlds, 'rocks'))
+        resource_paths.append(os.path.join(pkg_worlds, 'models', 'rocks'))
+        resource_paths.append(os.path.join(pkg_worlds, 'models', 'aruco'))
     except Exception as e:
         print(f"[gazebo.launch] Share paths resolution: {e}")
     
+    # Also add source tree models path as fallback
+    src_models = '/home/saif/Desktop/MESEKET/Autonmous-27/Autonmous_Ws/worlds/models'
+    if os.path.exists(src_models):
+        resource_paths.append(src_models)
+        resource_paths.append(os.path.join(src_models, 'rocks'))
+        resource_paths.append(os.path.join(src_models, 'aruco'))
+
     ign_existing = os.environ.get('IGN_GAZEBO_RESOURCE_PATH', '')
     gz_existing = os.environ.get('GZ_SIM_RESOURCE_PATH', '')
     
