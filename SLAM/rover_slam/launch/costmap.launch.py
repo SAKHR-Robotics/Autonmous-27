@@ -8,28 +8,16 @@ def generate_launch_description():
     costmap_config_path = os.path.join(pkg_share, 'config', 'costmap_params.yaml')
 
     return LaunchDescription([
-        # Static TF Publisher (map -> base_link) for standalone testing (x y z yaw pitch roll frame_id child_frame_id)
-        Node(
-            package='tf2_ros',
-            executable='static_transform_publisher',
-            name='costmap_test_tf_map_to_base',
-            arguments=['0.0', '0.0', '0.0', '0.0', '0.0', '0.0', 'map', 'base_link']
-        ),
-
         # Nav2 Costmap 2D Lifecycle Node
         Node(
             package='nav2_costmap_2d',
             executable='nav2_costmap_2d',
-            name='costmap',
+            name='global_costmap',
             output='screen',
-            parameters=[costmap_config_path],
-            remappings=[
-                ('/costmap/costmap', '/global_costmap/costmap'),
-                ('/costmap/costmap_updates', '/global_costmap/costmap_updates'),
-            ]
+            parameters=[costmap_config_path]
         ),
 
-        # Nav2 Lifecycle Manager to automatically configure and activate costmap
+        # Nav2 Lifecycle Manager to automatically configure and activate global_costmap
         Node(
             package='nav2_lifecycle_manager',
             executable='lifecycle_manager',
@@ -38,8 +26,8 @@ def generate_launch_description():
             parameters=[
                 {'use_sim_time': False},
                 {'autostart': True},
-                {'bond_timeout': 0.0},
-                {'node_names': ['costmap']}
+                {'node_names': ['global_costmap']}
             ]
         )
     ])
+

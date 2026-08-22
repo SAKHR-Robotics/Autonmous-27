@@ -335,10 +335,9 @@
 
     <!-- SECTION 2: FLOWCHART -->
     <div id="flowchart" class="glass-panel">
-        <h2><i class="fa-solid fa-diagram-project"></i> 2. System Data Flowcharts</h2>
-        <p>This section visualizes our SLAM architecture from both a high-level system perspective and a detailed ROS 2 Publisher/Subscriber topic pipeline perspective.</p>
+        <h2><i class="fa-solid fa-diagram-project"></i> 2. System Data Flowchart</h2>
+        <p>This diagram visualizes exactly how raw sensor data transitions into ROS topics, gets processed by the EKF and RTAB-Map, and outputs final frames for the Path Planner.</p>
 
-        <h3>High-Level Architecture Overview</h3>
         <div class="mermaid">
 graph TD
     classDef hardware fill:#0f172a,stroke:#94a3b8,stroke-width:2px,color:#f8fafc;
@@ -410,109 +409,6 @@ graph TD
     RTAB -->|Static /map Topic| NAV2_MAP
     ROCKS -->|Obstacle Coordinates| NAV2_MAP
     NAV2_MAP ==> OUT_COSTMAP
-        </div>
-
-        <h3 style="margin-top: 35px;"><i class="fa-solid fa-network-wired"></i> Detailed Publisher / Topic / Subscriber Node Pipeline</h3>
-        <p>This flowchart explicitly details every ROS 2 node, exact topic name, message type, publisher, and subscriber relationship within our <code>rover_slam</code> architecture:</p>
-
-        <!-- Full-Width High-Resolution Interactive Image Card -->
-        <div style="text-align: center; margin: 25px 0;">
-            <p style="font-size:0.88rem; color:#818cf8; margin-bottom:10px; font-weight:600;"><i class="fa-solid fa-magnifying-glass-plus"></i> Click image below to open in High-Resolution Full-Screen Mode</p>
-            <img src="/home/saif/.gemini/antigravity/brain/3fe45bdc-950c-41e5-a86b-742db1ae90fd/slam_flowchart_full_1786270269081.jpg" 
-                 alt="Complete ROS 2 SLAM Architecture Diagram" 
-                 onclick="document.getElementById('modal-img').src=this.src; document.getElementById('image-modal').style.display='flex';"
-                 style="width: 100%; max-width: 100%; border-radius: 14px; border: 1px solid var(--panel-border); box-shadow: 0 10px 40px rgba(0,0,0,0.6); cursor: zoom-in; transition: transform 0.2s ease-in-out, border-color 0.2s;"
-                 onmouseover="this.style.transform='scale(1.008)'; this.style.borderColor='rgba(99, 102, 241, 0.5)';"
-                 onmouseout="this.style.transform='scale(1)'; this.style.borderColor='var(--panel-border)';">
-        </div>
-
-        <div class="mermaid">
-graph LR
-    classDef hw fill:#0f172a,stroke:#64748b,stroke-width:2px,color:#f8fafc;
-    classDef nodeCustom fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
-    classDef nodeCore fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc;
-    classDef topic fill:#1e293b,stroke:#38bdf8,stroke-width:2px,color:#38bdf8;
-    classDef consumer fill:#451a03,stroke:#f59e0b,stroke-width:2px,color:#f8fafc;
-
-    subgraph Pubs ["1. Hardware Drivers / Input Publishers"]
-        N_ENC[Wheel Encoder Driver]:::hw
-        N_IMU[BNO055 IMU Driver]:::hw
-        N_CAM[RealSense D435 Driver]:::hw
-        N_PERC[Perception Terrain Node]:::hw
-    end
-
-    subgraph TopicsIn ["2. Input Topics"]
-        T_TICKS(["/wheel/ticks<br/><i>nav_msgs/Odometry</i>"]):::topic
-        T_IMU(["/imu/data<br/><i>sensor_msgs/Imu</i>"]):::topic
-        T_COLOR(["/camera/color/image_raw<br/><i>sensor_msgs/Image</i>"]):::topic
-        T_DRAW(["/camera/depth/image_rect_raw<br/><i>sensor_msgs/Image</i>"]):::topic
-        T_OBS(["/perception/obstacles_only<br/><i>sensor_msgs/PointCloud2</i>"]):::topic
-    end
-
-    N_ENC -->|Publishes| T_TICKS
-    N_IMU -->|Publishes| T_IMU
-    N_CAM -->|Publishes| T_COLOR
-    N_CAM -->|Publishes| T_DRAW
-    N_PERC -->|Publishes| T_OBS
-
-    subgraph CustomNodes ["3. Custom rover_slam Nodes"]
-        N_CONV["encoder_ticks_to_odom.py<br/>(Wheel Kinematics Solver)"]:::nodeCustom
-        N_FILT["Depth Filter Node<br/>(vision_helper.launch)"]:::nodeCustom
-        N_SLIP["heuristic_slip_checker.py<br/>(Slip & Dynamic Covariance)"]:::nodeCustom
-        N_ARUCO["aruco_detector_node.py<br/>(OpenCV PnP Pose Solver)"]:::nodeCustom
-    end
-
-    T_TICKS -->|Subscribes| N_CONV
-    T_DRAW -->|Subscribes| N_FILT
-    T_COLOR -->|Subscribes| N_ARUCO
-
-    subgraph TopicsMid ["4. Processed Inter-Node Topics"]
-        T_ORAW(["/wheel/odom_raw<br/><i>nav_msgs/Odometry</i>"]):::topic
-        T_DFILT(["/camera/depth/filtered<br/><i>sensor_msgs/Image</i>"]):::topic
-        T_ARUCO(["/perception/aruco_pose<br/><i>geometry_msgs/PoseStamped</i>"]):::topic
-    end
-
-    N_CONV -->|Publishes| T_ORAW
-    N_FILT -->|Publishes| T_DFILT
-    N_ARUCO -->|Publishes| T_ARUCO
-
-    T_ORAW -->|Subscribes| N_SLIP
-    T_IMU -->|Subscribes| N_SLIP
-
-    subgraph CoreNodes ["5. Core SLAM Subsystem Nodes"]
-        N_EKF["robot_localization<br/>(EKF Filter Node @ 100Hz)"]:::nodeCore
-        N_RTAB["rtabmap_ros<br/>(RTAB-Map SLAM Backend)"]:::nodeCore
-        N_COSTMAP["nav2_costmap_2d<br/>(Costmap 2D Server)"]:::nodeCore
-    end
-
-    N_SLIP -->|Modifies Covariance| T_ORAW
-    T_ORAW -->|Subscribes| N_EKF
-    T_IMU -->|Subscribes| N_EKF
-
-    subgraph TopicsOut ["6. Output System Topics & TFs"]
-        T_OFILT(["/odometry/filtered<br/><i>nav_msgs/Odometry @ 100Hz</i>"]):::topic
-        T_MAP(["/map<br/><i>nav_msgs/OccupancyGrid</i>"]):::topic
-        T_COSTMAP(["/global_costmap/costmap<br/><i>nav_msgs/OccupancyGrid</i>"]):::topic
-    end
-
-    N_EKF -->|Publishes| T_OFILT
-    T_OFILT -->|Subscribes| N_RTAB
-    T_DFILT -->|Subscribes| N_RTAB
-    T_COLOR -->|Subscribes| N_RTAB
-    T_ARUCO -->|Subscribes| N_RTAB
-
-    N_RTAB -->|Publishes| T_MAP
-    T_MAP -->|Subscribes| N_COSTMAP
-    T_OBS -->|Subscribes| N_COSTMAP
-    N_COSTMAP -->|Publishes| T_COSTMAP
-
-    subgraph Consumers ["7. Downstream Controllers & Nav2 Planners"]
-        C_MPPI[MPPI Local Controller<br/><i>Consumes odom -> base_link</i>]:::consumer
-        C_SMAC[Smac Hybrid A* Global Planner<br/><i>Consumes map -> base_link</i>]:::consumer
-    end
-
-    T_OFILT -->|Subscribes| C_MPPI
-    T_COSTMAP -->|Subscribes| C_SMAC
         </div>
     </div>
 
@@ -835,14 +731,6 @@ ekf_filter_node:
         </div>
     </div>
 
-</div>
-
-<!-- Full-Screen Interactive Image Modal / Lightbox -->
-<div id="image-modal" onclick="this.style.display='none'" style="display:none; position:fixed; z-index:9999; top:0; left:0; width:100%; height:100%; background:rgba(6, 9, 19, 0.95); justify-content:center; align-items:center; cursor:zoom-out; backdrop-filter:blur(10px); padding:20px;">
-    <div style="position:absolute; top:20px; right:30px; color:#f8fafc; font-size:1.1rem; font-weight:600; background:rgba(255,255,255,0.1); padding:8px 16px; border-radius:30px; border:1px solid rgba(255,255,255,0.2);">
-        <i class="fa-solid fa-xmark"></i> Click anywhere to close
-    </div>
-    <img id="modal-img" src="" alt="Expanded View" style="max-width:98%; max-height:92vh; object-fit:contain; border-radius:12px; border:1px solid rgba(99,102,241,0.4); box-shadow:0 0 50px rgba(99,102,241,0.3);">
 </div>
 
 </body>
