@@ -39,7 +39,8 @@ sudo apt update && sudo apt install -y \
   ros-humble-nav2-lifecycle-manager \
   ros-humble-nav2-costmap-2d \
   ros-humble-robot-localization \
-  ros-humble-rtabmap-ros
+  ros-humble-rtabmap-ros \
+  ros-humble-rtabmap-slam
 ```
 
 ## 🚀 How to Build
