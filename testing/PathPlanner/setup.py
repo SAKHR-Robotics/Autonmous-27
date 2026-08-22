@@ -14,6 +14,8 @@ setup(
         ('share/' + package_name, ['package.xml']),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
+        (os.path.join('share', package_name, 'rviz'), glob('rviz/*.rviz')),
+        (os.path.join('share', package_name, 'maps'), glob('maps/*')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -26,6 +28,8 @@ setup(
         'console_scripts': [
             'benchmarking_node = global_path_benchmarking.benchmarking_node:main',
             'testing_node = global_path_benchmarking.testing_node:main',
+            'mock_rover_sim = mock.mock_rover_sim:main',
+            'mock_perception = mock.mock_perception:main',
         ],
     },
 )

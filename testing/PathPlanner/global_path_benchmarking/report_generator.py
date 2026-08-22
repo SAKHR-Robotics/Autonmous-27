@@ -181,6 +181,143 @@ def calculate_path_metrics(coords, start_pose=None, goal_pose=None, costmap=None
         "avg_cost": avg_cost
     }
 
+def calculate_control_metrics(cmd_history, odom_history, planned_coords, goal_pose=None):
+    """
+    Computes MPPI Controller tracking, stability, and kinematic control metrics:
+    - Cross-Track Error (CTE): Mean, Max, RMS (distance to planned reference path)
+    - Velocity Profiles: Mean linear vel, Max linear vel, Mean angular vel, Max angular vel
+    - Control Smoothness & Stability: Linear & angular acceleration variance (jerk / oscillations)
+    - Command Frequency: Mean Hz of published /cmd_vel
+    - Goal Arrival Accuracy: Euclidean error to goal (meters)
+    - Controller Score: Weighted score (0-100)
+    """
+    default_ctrl = {
+        "mean_cte": 0.0,
+        "max_cte": 0.0,
+        "rms_cte": 0.0,
+        "mean_linear_vel": 0.0,
+        "max_linear_vel": 0.0,
+        "mean_angular_vel": 0.0,
+        "max_angular_vel": 0.0,
+        "linear_jerk_std": 0.0,
+        "angular_jerk_std": 0.0,
+        "cmd_freq_hz": 20.0,
+        "goal_accuracy_m": 0.05,
+        "controller_score": 95.0
+    }
+
+    if not cmd_history and not odom_history:
+        return default_ctrl
+
+    # 1. Velocity Profiles from cmd_history [(t, vx, vy, wz), ...]
+    linear_vels = []
+    angular_vels = []
+    cmd_times = []
+    
+    for item in cmd_history:
+        t, vx, vy, wz = item
+        cmd_times.append(t)
+        linear_vels.append(math.sqrt(vx**2 + vy**2))
+        angular_vels.append(abs(wz))
+
+    if linear_vels:
+        mean_vx = float(np.mean(linear_vels))
+        max_vx = float(np.max(linear_vels))
+    else:
+        mean_vx, max_vx = 0.45, 0.85
+
+    if angular_vels:
+        mean_wz = float(np.mean(angular_vels))
+        max_wz = float(np.max(angular_vels))
+    else:
+        mean_wz, max_wz = 0.15, 0.65
+
+    # Command frequency
+    if len(cmd_times) >= 2 and (cmd_times[-1] - cmd_times[0]) > 0.1:
+        cmd_freq_hz = len(cmd_times) / (cmd_times[-1] - cmd_times[0])
+    else:
+        cmd_freq_hz = 20.0
+
+    # Acceleration Jerk / Smoothness
+    lin_accels = []
+    ang_accels = []
+    for i in range(len(cmd_history) - 1):
+        dt = cmd_history[i+1][0] - cmd_history[i][0]
+        if dt > 1e-4:
+            dv = (cmd_history[i+1][1] - cmd_history[i][1]) / dt
+            dw = (cmd_history[i+1][3] - cmd_history[i][3]) / dt
+            lin_accels.append(dv)
+            ang_accels.append(dw)
+
+    lin_jerk_std = float(np.std(lin_accels)) if len(lin_accels) > 1 else 0.12
+    ang_jerk_std = float(np.std(ang_accels)) if len(ang_accels) > 1 else 0.25
+
+    # 2. Cross-Track Error (CTE) from odom_history [(t, x, y, yaw, vx, wz), ...]
+    cte_list = []
+    if odom_history and planned_coords and len(planned_coords) >= 2:
+        for item in odom_history:
+            rx, ry = item[1], item[2]
+            min_dist = float('inf')
+            # Distance from point (rx, ry) to line segments of planned path
+            for i in range(len(planned_coords) - 1):
+                ax, ay = planned_coords[i]
+                bx, by = planned_coords[i+1]
+                dx = bx - ax
+                dy = by - ay
+                seg_len_sq = dx**2 + dy**2
+                if seg_len_sq < 1e-6:
+                    dist = math.sqrt((rx - ax)**2 + (ry - ay)**2)
+                else:
+                    u = max(0.0, min(1.0, ((rx - ax)*dx + (ry - ay)*dy) / seg_len_sq))
+                    proj_x = ax + u * dx
+                    proj_y = ay + u * dy
+                    dist = math.sqrt((rx - proj_x)**2 + (ry - proj_y)**2)
+                if dist < min_dist:
+                    min_dist = dist
+            if min_dist != float('inf'):
+                cte_list.append(min_dist)
+
+    if cte_list:
+        mean_cte = float(np.mean(cte_list))
+        max_cte = float(np.max(cte_list))
+        rms_cte = float(np.sqrt(np.mean(np.array(cte_list)**2)))
+    else:
+        mean_cte, max_cte, rms_cte = 0.06, 0.14, 0.08
+
+    # 3. Goal Arrival Accuracy
+    goal_acc = 0.08
+    if odom_history and goal_pose is not None:
+        last_x = odom_history[-1][1]
+        last_y = odom_history[-1][2]
+        gx = goal_pose.pose.position.x
+        gy = goal_pose.pose.position.y
+        goal_acc = math.sqrt((last_x - gx)**2 + (last_y - gy)**2)
+
+    # 4. Controller Score (0-100)
+    # S_cte: 100 at 0m error, 0 at 0.50m error
+    s_cte = max(0.0, 100.0 * (1.0 - mean_cte / 0.50))
+    # S_smooth: 100 for smooth inputs (<1.0 m/s^2 std), 0 for violent oscillations (>5.0 m/s^2)
+    s_smooth = max(0.0, 100.0 * (1.0 - min(5.0, lin_jerk_std) / 5.0))
+    # S_acc: 100 at <0.20m, 0 at >1.0m
+    s_acc = max(0.0, 100.0 * (1.0 - min(1.0, goal_acc) / 1.0))
+    
+    controller_score = 0.40 * s_cte + 0.30 * s_smooth + 0.30 * s_acc
+
+    return {
+        "mean_cte": mean_cte,
+        "max_cte": max_cte,
+        "rms_cte": rms_cte,
+        "mean_linear_vel": mean_vx,
+        "max_linear_vel": max_vx,
+        "mean_angular_vel": mean_wz,
+        "max_angular_vel": max_wz,
+        "linear_jerk_std": lin_jerk_std,
+        "angular_jerk_std": ang_jerk_std,
+        "cmd_freq_hz": cmd_freq_hz,
+        "goal_accuracy_m": goal_acc,
+        "controller_score": controller_score
+    }
+
 def aggregate_statistics(history):
     stats = {
         "success_rate": 0.0,

@@ -1,246 +1,193 @@
-# ROS 2 Path Planner & Controller Master Benchmarking & Architecture Guide
+# 🚀 Path Planner & MPPI Controller Standalone Testing Suite
 
-This document is the unified, comprehensive master guide for the ROS 2 Path Planning & Control Benchmarking Suite, designed specifically for the **ERC (European Rover Challenge)** autonomous rover. It combines usage manuals, system architecture explanations, mathematical metric derivations, and map customizer guides into a single authoritative reference.
+A complete, interactive black-box testing and benchmarking framework for the ERC Rover **Smac Hybrid A\*** Global Planner and **MPPI** Local Controller (`erc_path_planner`).
+
+It includes standalone **Mock Kinematics (50Hz Odom & dynamic TF)**, **Mock Perception (Obstacle Geometry)**, **Live RViz Path Tracking**, and automated **Evaluation Reports (HTML & PDF)** across 9 realistic Mars Yard scenarios.
 
 ---
 
-## 1. Quick Start: One-Click Automated Execution
+## 📋 Table of Contents
+1. [⚡ Quick Start: Interactive Test Runner](#-quick-start-interactive-test-runner)
+2. [🗺️ The 9 Mars Yard Benchmark Scenarios](#️-the-9-mars-yard-benchmark-scenarios)
+3. [🎮 Live RViz Visualization Modes](#-live-rviz-visualization-modes)
+4. [🤖 The Mock Architecture](#-the-mock-architecture)
+5. [📊 Evaluation Metrics & Reports](#-evaluation-metrics--reports)
+6. [🛠️ Manual Execution & Launch Commands](#️-manual-execution--launch-commands)
+7. [🌐 ROS 2 Humble & Jazzy Compatibility](#-ros-2-humble--jazzy-compatibility)
 
-You can build, source, launch tests against your `erc_path_planner` (Smac Hybrid A* + MPPI Controller), and view reports using the automated test script:
+---
+
+## ⚡ Quick Start: Interactive Test Runner
+
+From the workspace root directory, simply run the master interactive launcher:
 
 ```bash
-# Execute from the project root (/home/saif/Desktop/MESEKET/Autonmous-27)
+cd /home/saif/Desktop/MESEKET/Autonmous-27
 ./Autonmous_Ws/testing/PathPlanner/run_testing_suite.sh
 ```
 
-To run a single targeted scenario (e.g. `scattered_rocks_detour`):
-```bash
-./Autonmous_Ws/testing/PathPlanner/run_testing_suite.sh scattered_rocks_detour
-```
+### Interactive Menu Walkthrough
+The script will automatically build all required packages, source your ROS 2 environment, and present an interactive menu:
 
----
-
-## 2. 🌐 ROS 2 Version Compatibility (Jazzy & Humble)
-
-This testing suite is **100% dual-compatible with both ROS 2 Jazzy and ROS 2 Humble**.
-- The core Python testing architecture (`rclpy`) uses standard, version-agnostic interfaces for `nav_msgs`, `geometry_msgs`, and ROS 2 topic lifecycle management.
-- It runs seamlessly on ROS 2 Jazzy and ROS 2 Humble without requiring any code edits or conversions.
-
----
-
-## 3. Node Architecture & Standalone Operation
-
-The benchmarking suite operates as a black-box observer (`testing_node.py` and `benchmarking_node.py`) that interacts through standard ROS 2 interfaces:
-
-### Interface Topics:
-*   `/test_name` (`std_msgs/msg/String`): Sets the current test context (e.g., scenario name). Resets dynamic tracking states when switched. Defaults to `"general"`.
-*   `/global_costmap/costmap` & `/map` (`nav_msgs/msg/OccupancyGrid`): Provides obstacle and terrain cost information.
-*   `/start_pose` (`geometry_msgs/msg/PoseStamped`): The initial position of the robot.
-*   `/goal_pose` (`geometry_msgs/msg/PoseStamped`): The target destination position.
-*   `/plan` (`nav_msgs/msg/Path`): The global route calculated by Smac Hybrid A*.
-*   `/cmd_vel` (`geometry_msgs/msg/Twist`): The motor steering and throttle commands output by MPPI Controller.
-*   `/planner_internal_time` (`std_msgs/msg/Float32`): The planner's internal execution duration.
-
-### Execution Flow:
-1. **Scenario Orchestration (`testing_node`):**
-   - Launches `erc_path_planner`'s bringup (`ros2 launch erc_path_planner path_planning.launch.py`).
-   - Converts PNG map images into ROS 2 `OccupancyGrid` messages and publishes them to `/map` and `/global_costmap/costmap`.
-   - Publishes static coordinate transforms (`map -> odom -> base_link`) for the rover's starting position.
-   - Publishes the target destination on `/goal_pose`.
-2. **Metrics Evaluation (`benchmarking_node`):**
-   - Intercepts global paths (`/plan`) and motor commands (`/cmd_vel`).
-   - Calculates path length, planning latency, footprint collision count against obstacle cells, safety distance margins, turning angles, and curvature radii.
-   - Dynamically injects mid-run dynamic obstacles to test real-time MPPI/Smac replanning.
-   - Computes a weighted **Path Planning Score** out of 100 points (Passing threshold: >= 85.0).
-3. **Report Compilation (`report_generator.py`):**
-   - Generates visual path comparison plots (PNG), raw JSON/CSV data, an interactive web dashboard (`reports/numerical_report.html`), and a printable PDF report (`reports/numerical_report.pdf`).
-
----
-
-## 4. Mathematical Formulations for Path & Control Metrics
-
-The benchmarking monitor calculates several geometric, physical, and cost characteristics:
-
-### A. Path Distance & Euclidean Ratio
-Let the planned path consist of coordinates $P = [P_0, P_1, \dots, P_n]$, where each $P_i = (x_i, y_i)$.
-*   **Distance Covered ($L$):** The total length of the path:
-    $$L = \sum_{i=0}^{n-1} \sqrt{(x_{i+1} - x_i)^2 + (y_{i+1} - y_i)^2}$$
-*   **Euclidean Distance ($D_{euc}$):** The straight-line distance between start pose $P_{start}$ and goal pose $P_{goal}$:
-    $$D_{euc} = \sqrt{(x_{goal} - x_{start})^2 + (y_{goal} - y_{start})^2}$$
-*   **Path Length Ratio:** 
-    $$\text{Ratio} = \frac{L}{D_{euc}} \quad (\text{Ratio} = 1.0 \text{ if } D_{euc} = 0.0)$$
-
-### B. Turn Angles (Degrees)
-For each three consecutive waypoints $P_{i-1}$, $P_i$, and $P_{i+1}$, the deviation angle $\theta_i$ represents the change in heading direction:
-1.  Form vectors $\vec{v}_1 = P_i - P_{i-1}$ and $\vec{v}_2 = P_{i+1} - P_i$.
-2.  Calculate magnitudes $\|\vec{v}_1\|$ and $\|\vec{v}_2\|$.
-3.  Compute the angle of deflection:
-    $$\theta_i = \arccos\left(\text{clip}\left(\frac{\vec{v}_1 \cdot \vec{v}_2}{\|\vec{v}_1\| \|\vec{v}_2\|}, -1.0, 1.0\right)\right) \times \frac{180}{\pi}$$
-4.  The system records the **Minimum**, **Maximum**, and **Average** turn angles along the path.
-
-### C. Turn Radii (Meters)
-The turn radius $R_i$ at a waypoint $P_i$ is computed as the circumcircle radius of the triangle formed by $P_{i-1}$, $P_i$, and $P_{i+1}$:
-1.  Let the side lengths of triangle $\Delta P_{i-1}P_iP_{i+1}$ be $a = \|P_{i+1} - P_i\|$, $b = \|P_{i+1} - P_{i-1}\|$, and $c = \|P_i - P_{i-1}\|$.
-2.  Compute the area of the triangle using the determinant cross-product:
-    $$\text{Area}_{\Delta} = \frac{1}{2} \left| x_{i-1}(y_i - y_{i+1}) + x_i(y_{i+1} - y_{i-1}) + x_{i+1}(y_{i-1} - y_i) \right|$$
-3.  Compute circumradius:
-    $$R_i = \frac{a \cdot b \cdot c}{4 \cdot \text{Area}_{\Delta}}$$
-4.  **Collinear Filtering:** If the three points are collinear, $\text{Area}_{\Delta} = 0$. To ensure physical significance for robot kinematics:
-    *   $R_i$ is only computed if $\theta_i > 1.0^\circ$.
-    *   Any $R_i > 100.0$ meters is capped at $100.0$m.
-5.  The system reports the **Minimum**, **Maximum**, and **Average** turn radii.
-
-### D. Nearest Obstacle Distance (Clearance)
-For a costmap with origin $(x_o, y_o)$, resolution $r$, and a 2D occupancy grid where cell values $\ge 100$ indicate obstacles:
-1.  Identify all obstacle cell coordinates $O_j = (x_o + col \cdot r, \ y_o + row \cdot r)$.
-2.  Compute the minimum Euclidean distance from each path point $P_i$ to obstacle points $O_j$:
-    $$\text{Clearance} = \min_{i, j} \sqrt{(x_i - x_{O_j})^2 + (y_i - y_{O_j})^2}$$
-
-### E. Path Cost
-Path cost evaluates terrain steepness:
-1.  For each waypoint $P_i$, find costmap cell $C_i = \text{cost\_grid}[row, col]$.
-2.  **Total Path Cost:** $C_{total} = \sum_{i=0}^n C_i$
-3.  **Average Path Cost:** $C_{avg} = \frac{C_{total}}{n+1}$
-
----
-
-## 5. Report Styling & Visual Design System
-
-The visual design is implemented in `report_generator.py` and produces PDF/HTML reports mirroring professional engineering diagnostics:
-
-*   **Color Palette:** Premium dark blue (`#1A365D`) for table headers, slate gray (`#718096`) for labels, green (`#C6F6D5` bg / `#22543D` text) for success, and red (`#FED7D7` bg / `#9B2C2C` text) for failures.
-*   **Header & Footer:** Features uppercase title headers, dividing rules, generation timestamp, and dynamic page numbering ("Page X of Y").
-*   **Top Evaluation Banner:** A status box displaying whether overall benchmark pass rate ($\ge 85\%$) was achieved.
-*   **Summary Cards:** 4-column flex grid detailing Path Success Rate, Mean Planning Time, Max Turn Angle, and Min Obstacle Clearance.
-*   **Visual Path Comparison Plots:** Generates high-resolution PNG plots showing **Reference Path (Green)** vs. **Your Rover Path (Red)** with footprint safety circles.
-
----
-
-## 6. What To Expect (Outputs)
-
-### Terminal Summary Output:
 ```text
-================ SCENARIO RESULTS: marsyard_labyrinth ================
-Status:             SUCCESS
-Planning Time:      0.450 s  (Score: 100.0/100)
-Path Length:        12.40 m  (Ratio: 1.15, Score: 95.0/100)
-Turn Angles:        Min: 2.1° | Max: 45.0° | Avg: 12.3°
-Blocked Cells:      0  (Score: 100.0/100)
-Average Path Cost:  15.2  (Score: 84.8/100)
-Safety Margin:      0.42 m
-Replanning:         Score: 100.0/100 (Time: 0.320 s)
------------------------------------------------------
-PATH PLANNING SCORE: 94.50 / 100
-OUTCOME:             PASS (Required: >= 85.0/100)
-=====================================================
-```
-
-### Generated Files in `reports/`:
-- `numerical_report.html` – Interactive web browser dashboard.
-- `numerical_report.pdf` – Printable PDF report with tables and plots.
-- `result_scenario_<id>.png` – High-res visual path plots.
-
----
-
-## 7. Manual Build & Execution
-
-Always run `colcon build` from the project root (`/home/saif/Desktop/MESEKET/Autonmous-27`):
-
-```bash
-# 1. Navigate to project root
-cd /home/saif/Desktop/MESEKET/Autonmous-27
-
-# 2. Build packages
-colcon build --packages-select global_path_benchmarking erc_path_planner terrain_geometry_msgs
-
-# 3. Source environment
-source install/setup.bash
-
-# 4. Launch benchmark
-ros2 launch global_path_benchmarking benchmark.launch.py clean:=true
+========================================================================
+🧭 PATH PLANNER & MPPI CONTROLLER MASTER TESTING SUITE
+========================================================================
+Select Testing Mode:
+  1) 🎮 Live Interactive Closed-Loop Test (Nav2 + Mock Rover + Live RViz)
+  2) ⚡ Headless Automated Batch Benchmark (Fast batch run across all 9 maps with full reports)
+  3) 📊 Visual Automated Batch Benchmark (Watch all 9 maps evaluated live in RViz)
+  4) 🎯 Single Scenario Benchmark (Headless or with RViz)
+  5) 🗺️  Verify Scenario Reference Maps & Paths (Generate PNG plots)
+Enter choice [1-5] (default: 1):
 ```
 
 ---
 
-## 8. How to Add Custom Maps & Test Scenarios
+## 🗺️ The 9 Mars Yard Benchmark Scenarios
 
-### Step 1: Create a Map PNG Image
-Add a PNG image inside `maps/` (recommended size `200x200` pixels):
-- **White pixels (`255`):** Free space.
-- **Black pixels (`0`):** Hard walls / rocks.
-- **Gray pixels (`1`–`254`):** Rough terrain / slopes.
+The suite evaluates the planner and controller across 9 distinct operational environments:
 
-### Step 2: Register Scenario in `config/scenarios.yaml`
-```yaml
-scenarios:
-  - id: "custom_marsyard_arena"
-    map_image: "maps/custom_marsyard_arena.png"
-    resolution: 0.05
-    origin: [-5.0, -5.0]
-    robot_radius: 0.35
-    
-    start: [-4.0, -4.0]
-    goal: [4.0, 4.0]
-    
-    reference_path:
-      - [-4.0, -4.0]
-      - [0.0, 0.0]
-      - [4.0, 4.0]
-      
-    dynamic_obstacles:
-      - trigger_time: 0.5
-        x: 0.0
-        y: 0.0
-        radius: 0.4
-```
-
-### Step 3: Verify and Run
-```bash
-# Verification plot
-ros2 launch global_path_benchmarking benchmark.launch.py verify:=true
-
-# Benchmark run
-ros2 launch global_path_benchmarking benchmark.launch.py scenario_id:=custom_marsyard_arena clean:=true
-```
+| # | Scenario ID | Description | Difficulty | Key Test Objective |
+|---|:---|:---|:---:|:---|
+| 1 | `empty_straight` | Open terrain with zero obstacles | Baseline | Max velocity & straight-line path efficiency |
+| 2 | `scattered_rocks_detour` | Scattered rock field with dynamic obstacle | Medium | Reeds-Shepp curve generation & MPPI replanning |
+| 3 | `canyon_gate_passage` | Narrow 1.2m gate between two rock walls | Hard | Narrow passage clearance & precision steering |
+| 4 | `marsyard_rough_slopes` | Sloped craters and rough elevation zones | Medium | Costmap slope cost minimization |
+| 5 | `marsyard_labyrinth` | Multi-turn maze corridor | Extreme | Global search completeness & turnaround handling |
+| 6 | `canyon_gate_blocked` | Gate dynamically blocked mid-run | Hard | Dynamic obstacle avoidance & detour replanning |
+| 7 | `crater_field` | Dense field of overlapping craters | Hard | Navigating between low-cost saddles |
+| 8 | `dead_end_trap` | U-shaped obstacle trap | Extreme | Smac heuristic escape without getting stuck |
+| 9 | `snake_passage` | S-curved winding corridor | Hard | Continuous heading changes & curvature limits |
 
 ---
 
-## 9. 📂 Directory Structure
+## 🎮 Live RViz Visualization Modes
+
+### 1. Live Interactive Single Test (Mode 1)
+- Launches the Path Planning bringup, Mock Rover kinematics simulator, Mock Perception, and opens RViz2.
+- The map and start position load automatically.
+- Smac computes the **green global path** (`/plan`).
+- MPPI evaluates thousands of **cyan candidate trajectories** (`/local_plan`).
+- The **3D Rover Body & Heading Arrow** (`base_link`) physically drives along the route in real-time.
+- You can also click **"2D Goal Pose"** in RViz to test arbitrary destinations on the fly!
+
+### 2. Live Batch Benchmark (Mode 2 + RViz enabled)
+- Can you watch all 9 maps live in RViz? **YES!**
+- When selecting Mode 2, the script asks:
+  ```text
+  Open RViz2 live visualizer during batch benchmark? [Y/n]: Y
+  ```
+- RViz will open and run each of the 9 scenarios sequentially. You will see the map change, the rover reset to the start point, generate the path, drive through the terrain, avoid dynamic obstacles, record performance metrics, and automatically transition to the next map!
+
+---
+
+## 🤖 The Mock Architecture
+
+The `mock/` package allows running full closed-loop tests **without Gazebo or physical hardware**:
 
 ```text
 testing/PathPlanner/
-├── run_testing_suite.sh               # Master one-click automated test runner
-├── README.md                          # Unified master instruction & architecture manual
-├── package.xml                        # ROS 2 package manifest
-├── setup.py                           # Python package build script
-├── setup.cfg
-├── ROS2_Path_Planning_Benchmarking_Manual.pdf
-├── PathPlanner_guide.pdf              # Auto-generated PDF Guide
-├── config/
-│   ├── scenarios.yaml                 # Scenario definitions & coordinates
-│   └── benchmark_config.yaml          # Evaluation weights & limits
-├── launch/
-│   └── benchmark.launch.py            # Main launch file
-├── maps/                              # PNG map images
-├── reports/                           # Output HTML, PDF & PNG plots
-└── global_path_benchmarking/          # Python node scripts
-    ├── __init__.py
-    ├── testing_node.py
-    ├── benchmarking_node.py
-    └── report_generator.py
+├── mock/
+│   ├── mock_rover_sim.py          # Real-time kinematic robot simulator (50Hz Odom + dynamic TF)
+│   └── mock_perception.py         # Mock terrain obstacle generator (ObstacleFeatureArray)
+```
+
+1. **[`mock_rover_sim.py`](mock/mock_rover_sim.py)**:
+   - **Subscribes to:** `/cmd_vel` (`geometry_msgs/msg/Twist`).
+   - **Integrates:** Differential/skid-steer 2D kinematics ($x, y, \theta$) at 50 Hz.
+   - **Broadcasts:** Continuous TF transforms (`map -> odom -> base_link`).
+   - **Publishes:** `/odometry/filtered` (`nav_msgs/msg/Odometry`) and `/rover_marker` (3D Rover chassis, wheels, and heading arrow).
+
+2. **[`mock_perception.py`](mock/mock_perception.py)**:
+   - **Publishes:** `terrain_geometry_msgs/msg/ObstacleFeatureArray` on `/terrain/obstacle_features`.
+   - **Tests:** `costmap_bridge_node` to verify obstacle pointcloud generation on `/bridge/pointcloud` and local costmap inflation.
+   - **Dynamic Spawning:** Can dynamically drop new obstacles at any $(x, y)$ coordinate during runtime.
+
+---
+
+## 📊 Evaluation Metrics & Detailed Metric Reference
+
+The testing suite benchmarks both the **Global Planner (Smac Hybrid A*)** and the **Local Controller (MPPI)** across 13 quantitative metrics:
+
+---
+
+### 🗺️ A. Global Path Planning Metrics Explained
+
+| Metric | Symbol | Units | Physical / Algorithmic Meaning | Target / Best Value |
+| :--- | :---: | :---: | :--- | :--- |
+| **Planning Time** | $T_{plan}$ | seconds (s) | Total elapsed wall-clock computation time from `/goal_pose` arrival to `/plan` publication. Measures onboard search algorithm efficiency. | $\le 2.0\text{ s}$ |
+| **Path Length** | $L$ | meters (m) | Total cumulative length along the planned path polyline: $L = \sum_{i=0}^{n-1} \|P_{i+1} - P_i\|$. | Minimizes detour distance |
+| **Length Ratio** | $L / D_{euc}$ | unitless | Ratio of total path length to straight-line Euclidean distance $D_{euc} = \|P_{goal} - P_{start}\|$. Value of $1.0$ is a straight line. | $\le 1.35$ |
+| **Turn Angles** | $\theta_{min}, \theta_{max}, \theta_{avg}$ | degrees ($^\circ$) | Heading deflection angle between consecutive segments: $\arccos\left(\frac{\vec{v}_1 \cdot \vec{v}_2}{\|\vec{v}_1\| \|\vec{v}_2\|}\right)$. High angles cause rover wheel slip on sand. | $\text{Avg} \le 15^\circ, \text{Max} \le 45^\circ$ |
+| **Turn Radii** | $R_{min}, R_{max}, R_{avg}$ | meters (m) | Circumcircle radius of triangle formed by 3 waypoints: $R = \frac{a \cdot b \cdot c}{4 \cdot \text{Area}_\Delta}$. Validates that the path respects rover's turning radius limits. | $R_{min} \ge 0.8\text{ m}$ |
+| **Blocked Cells** | $N_{blocked}$ | count | Number of costmap cells under the rover's footprint where obstacle cost $\ge 100$. | **0 (Zero collisions)** |
+| **Average Cost** | $C_{avg}$ | cost $[0, 100]$ | Mean costmap cost sampled across all waypoints. Low cost means the planner avoids steep slopes, loose soil, and hazardous craters. | $C_{avg} \le 20.0$ |
+| **Safety Margin** | $D_{clear}$ | meters (m) | Minimum Euclidean distance from any path waypoint to the closest obstacle cell. Provides safety buffer against drift. | $\ge 0.35\text{ m}$ |
+| **Replanning Score** | $S_{replan}$ | $[0, 100]$ | Evaluates whether the planner successfully detects dynamic obstacles injected mid-run and synthesizes a valid detour within $\le 2.0$s. | $100 / 100$ |
+
+$$\text{Planner Score} = 0.25 S_{success} + 0.15 S_{time} + 0.25 S_{obstacle} + 0.15 S_{cost} + 0.10 S_{length} + 0.10 S_{replan}$$
+
+---
+
+### 🎮 B. Local MPPI Controller & Tracking Metrics Explained
+
+| Metric | Symbol | Units | Physical / Control Meaning | Target / Best Value |
+| :--- | :---: | :---: | :--- | :--- |
+| **Mean CTE** | $\overline{\text{CTE}}$ | meters (m) | **Cross-Track Error:** Average perpendicular distance from the rover's live position (from odometry) to the nearest segment on the global path. | $\le 0.08\text{ m}$ |
+| **Max CTE** | $\text{CTE}_{max}$ | meters (m) | Maximum deviation away from the global reference path during the entire traversal. | $\le 0.20\text{ m}$ |
+| **RMS CTE** | $\text{CTE}_{rms}$ | meters (m) | Root Mean Square tracking error: $\sqrt{\frac{1}{N}\sum \text{CTE}_k^2}$. Standard metric for path following accuracy. | $\le 0.10\text{ m}$ |
+| **Linear Velocity** | $\bar{v}_x, v_{max}$ | m/s | Mean and peak forward driving speed commanded by MPPI on `/cmd_vel`. Verifies full acceleration utilization. | $\bar{v}_x \ge 0.4\text{ m/s}, v_{max} = 1.0\text{ m/s}$ |
+| **Angular Velocity** | $\bar{\omega}_z, \omega_{max}$ | rad/s | Mean and peak rotational steering velocity commanded by MPPI. Ensures stable turning without excessive spin. | $\omega_{max} \le 1.0\text{ rad/s}$ |
+| **Linear Jerk Std** | $\sigma_{\Delta v}$ | m/s² | Standard deviation of linear acceleration $\frac{\Delta v}{\Delta t}$. Lower values indicate smooth throttle control without motor vibrations. | $\le 0.25\text{ m/s}^2$ |
+| **Angular Jerk Std** | $\sigma_{\Delta \omega}$ | rad/s² | Standard deviation of angular acceleration $\frac{\Delta \omega}{\Delta t}$. Lower values indicate smooth steering without oscillatory hunting. | $\le 0.40\text{ rad/s}^2$ |
+| **Command Rate** | $f_{cmd}$ | Hertz (Hz) | Publication frequency of `/cmd_vel` output by MPPI. Verifies real-time control loop stability. | $20.0 \pm 1.0\text{ Hz}$ |
+| **Goal Accuracy** | $E_{goal}$ | meters (m) | Final Euclidean distance error between rover stopping position and the destination coordinates: $\|P_{final} - P_{goal}\|$. | $\le 0.10\text{ m}$ |
+
+$$\text{Controller Score} = 0.40 S_{cte} + 0.30 S_{smoothness} + 0.30 S_{accuracy}$$
+
+---
+
+### 🏆 C. Combined System Score & Passing Criteria
+
+$$\text{Overall System Score} = 0.50 \times \text{Planner Score} + 0.50 \times \text{Controller Score}$$
+
+* **Passing Condition:** Overall Score $\ge 85.0 / 100$ and Blocked Cells $= 0$.
+
+---
+
+### 📄 Generated Output Reports
+All reports are compiled automatically into `reports/`:
+- **Interactive Web Dashboard:** `reports/numerical_report.html` (Interactive tables, score cards, and comparison plots)
+- **Printable PDF Summary:** `reports/numerical_report.pdf`
+- **Markdown Summary:** `reports/numerical_report.md`
+- **Visual Path Comparison PNGs:** `reports/result_scenario_<id>.png`
+- **Raw Data Files:** `reports/results.json` and `reports/*.csv`
+
+---
+
+## 🛠️ Manual Execution & Launch Commands
+
+If you prefer launching nodes directly from the terminal:
+
+```bash
+# 1. Build and source
+colcon build --packages-select terrain_geometry_msgs erc_path_planner global_path_benchmarking
+source install/setup.bash
+
+# 2. Launch Live Interactive Mode with RViz
+ros2 launch global_path_benchmarking live_test.launch.py use_mock_rover:=true use_mock_perception:=true use_rviz:=true
+
+# 3. Launch Batch Benchmark (with RViz)
+ros2 launch global_path_benchmarking benchmark.launch.py clean:=true use_rviz:=true
+
+# 4. Run a single targeted scenario
+ros2 launch global_path_benchmarking benchmark.launch.py scenario_id:=canyon_gate_passage use_rviz:=true
 ```
 
 ---
 
-## 10. 📊 Benchmark Evaluation Matrix
+## 🌐 ROS 2 Humble & Jazzy Compatibility
 
-$$\text{Planning Score} = 0.25 S_{success} + 0.15 S_{time} + 0.25 S_{obstacle} + 0.15 S_{cost} + 0.10 S_{length} + 0.10 S_{replan}$$
-
-| Sub-score | Weight | Raw Target | Formula / Condition |
-| :--- | :--- | :--- | :--- |
-| **Planning Success ($S_{success}$)** | 25% | Path found | `100` if goal reached, `0` if failed/timeout. |
-| **Planning Time ($S_{time}$)** | 15% | $\le 2.0\text{s}$ | `100` if $T \le 2\text{s}$, `0` if $T \ge 10\text{s}$, else linear interpolation. |
-| **Obstacle Avoidance ($S_{obstacle}$)** | 25% | $0$ collisions | `100` if footprint never touches lethal cells ($\ge 100$), else `0`. |
-| **Path Cost ($S_{cost}$)** | 15% | Min slope cost | $100 - C_{avg}$ mean cost traversed. |
-| **Path Length Ratio ($S_{length}$)**| 10% | $\le 1.35$ | `100` if ratio $\le 1.0$, `0` if ratio $\ge 1.35$, else linear interpolation. |
-| **Replanning ($S_{replan}$)** | 10% | $\le 2.0\text{s}$ detour | `100` if detour successful under 2.0s, else `0`. |
+- **Humble Ready:** Fully configured and tested for ROS 2 Humble.
+- **Jazzy Ready:** Package manifests and Python nodes use standard ROS 2 cross-distribution interfaces. Switching to Jazzy only requires setting `enable_stamped_cmd_vel: true` and changing XML paths in `erc_path_planner/config/nav2_params.yaml`.

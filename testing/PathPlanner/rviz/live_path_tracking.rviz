@@ -1,0 +1,103 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+  - Class: rviz_common/Tool Properties
+    Name: Tool Properties
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Value: true
+      Plane Cell Count: 40
+      Cell Size: 1.0
+    - Class: rviz_default_plugins/TF
+      Name: TF Tree
+      Value: true
+      Show Names: true
+      Show Axes: true
+      Marker Scale: 0.8
+    - Class: rviz_default_plugins/Map
+      Name: Global Map
+      Topic:
+        Value: /map
+      Color Scheme: map
+      Value: true
+      Alpha: 0.7
+    - Class: rviz_default_plugins/Map
+      Name: Global Costmap
+      Topic:
+        Value: /global_costmap/costmap
+      Color Scheme: costmap
+      Value: true
+      Alpha: 0.5
+    - Class: rviz_default_plugins/Map
+      Name: Local Costmap
+      Topic:
+        Value: /local_costmap/costmap
+      Color Scheme: costmap
+      Value: true
+      Alpha: 0.65
+    - Class: rviz_default_plugins/Path
+      Name: Global Plan (Smac Hybrid A*)
+      Topic:
+        Value: /plan
+      Color: 0; 255; 0
+      Line Style: Lines
+      Line Width: 0.05
+      Value: true
+    - Class: rviz_default_plugins/Path
+      Name: Local Trajectory (MPPI)
+      Topic:
+        Value: /local_plan
+      Color: 0; 200; 255
+      Line Style: Lines
+      Line Width: 0.04
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Name: Moving Rover 3D Body
+      Topic:
+        Value: /rover_marker
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Name: Perception 3D Obstacles
+      Topic:
+        Value: /perception/obstacle_markers
+      Value: true
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Bridge PointCloud
+      Topic:
+        Value: /bridge/pointcloud
+      Color: 255; 0; 0
+      Size (m): 0.12
+      Style: Points
+      Value: true
+    - Class: rviz_default_plugins/Polygon
+      Name: Robot Footprint
+      Topic:
+        Value: /local_costmap/published_footprint
+      Color: 255; 255; 0
+      Value: true
+  Global Options:
+    Fixed Frame: map
+    Background Color: 48; 48; 48
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/SetInitialPose
+      Topic:
+        Value: /initialpose
+    - Class: rviz_default_plugins/SetGoal
+      Topic:
+        Value: /goal_pose
+  Views:
+    Current:
+      Class: rviz_default_plugins/TopDownOrtho
+      Name: TopDownOrtho
+      Scale: 55
+Window Geometry:
+  Height: 900
+  Width: 1400

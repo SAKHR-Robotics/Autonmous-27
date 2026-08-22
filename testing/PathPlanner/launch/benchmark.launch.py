@@ -12,9 +12,7 @@ def launch_setup(context, *args, **kwargs):
     config_file = LaunchConfiguration('config').perform(context)
     bench_config_file = LaunchConfiguration('benchmark_config').perform(context)
     scenario_id = LaunchConfiguration('scenario_id').perform(context)
-    verify_str = LaunchConfiguration('verify').perform(context).lower()
-    clean_str = LaunchConfiguration('clean').perform(context).lower()
-    use_astar_str = LaunchConfiguration('use_astar').perform(context).lower()
+    use_rviz_str = LaunchConfiguration('use_rviz').perform(context).lower()
     
     # Resolve full path to config if it is relative
     if not os.path.isabs(config_file) and not os.path.exists(config_file):
@@ -41,7 +39,20 @@ def launch_setup(context, *args, **kwargs):
         output='screen'
     )
     
-    return [testing_node]
+    nodes = [testing_node]
+
+    if use_rviz_str == 'true':
+        rviz_config = os.path.join(pkg_share, 'rviz', 'live_path_tracking.rviz')
+        rviz_node = Node(
+            package='rviz2',
+            executable='rviz2',
+            name='rviz2',
+            arguments=['-d', rviz_config],
+            output='screen'
+        )
+        nodes.append(rviz_node)
+
+    return nodes
 
 def generate_launch_description():
     return LaunchDescription([
@@ -69,6 +80,11 @@ def generate_launch_description():
             'clean',
             default_value='false',
             description='Kill old benchmarking/ROS 2 processes before launch'
+        ),
+        DeclareLaunchArgument(
+            'use_rviz',
+            default_value='false',
+            description='Launch RViz2 to visualize scenario maps and moving rover live'
         ),
         OpaqueFunction(function=launch_setup)
     ])
