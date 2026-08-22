@@ -17,8 +17,8 @@ install(DIRECTORY worlds
   DESTINATION share/${PROJECT_NAME}
 )
 
-# Install rocks, data, and models directories
-install(DIRECTORY rocks data models
+# Install data and models directories
+install(DIRECTORY data models
   DESTINATION share/${PROJECT_NAME}
 )
 

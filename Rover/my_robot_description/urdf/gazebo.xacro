@@ -93,21 +93,27 @@
 
   <!-- Differential Drive Plugin for Gazebo (ROS 2 Jazzy) -->
   <!-- This plugin allows controlling the robot using /cmd_vel topic -->
-  <!-- It simulates a differential drive robot using the middle wheels -->
+  <!-- It simulates a 6-wheel skid-steer rover -->
   <gazebo>
     <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
-      <!-- Wheel joints to control -->
+      <!-- Wheel joints to control (all 6 wheels for skid-steer drive) -->
+      <left_joint>left_front_wheel_joint</left_joint>
       <left_joint>left_middle_wheel_joint</left_joint>
+      <left_joint>left_rear_wheel_joint</left_joint>
+      <right_joint>right_front_wheel_joint</right_joint>
       <right_joint>right_middle_wheel_joint</right_joint>
+      <right_joint>right_rear_wheel_joint</right_joint>
       
       <!-- Wheel separation and diameter -->
       <wheel_separation>0.49</wheel_separation>
       <wheel_radius>0.06</wheel_radius>
       
-      <!-- Limits -->
-      <max_linear_acceleration>1.0</max_linear_acceleration>
-      <max_angular_acceleration>2.0</max_angular_acceleration>
-      <max_velocity>1.0</max_velocity>
+      <!-- Limits & Torque -->
+      <max_linear_acceleration>5.0</max_linear_acceleration>
+      <max_angular_acceleration>5.0</max_angular_acceleration>
+      <max_velocity>2.0</max_velocity>
+      <min_velocity>-2.0</min_velocity>
+      <max_wheel_torque>50</max_wheel_torque>
       
       <!-- Topic to receive velocity commands -->
       <topic>cmd_vel</topic>

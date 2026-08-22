@@ -26,153 +26,77 @@
       <specular>0.15 0.15 0.15 1</specular>
       <direction>-0.35 0.1 -0.93</direction>
     </light>
+    
+    <!-- Mars Yard Terrain Mesh -->
     <include>
       <uri>model://mars_yard</uri>
       <pose>0 0 0 0 0 0</pose>
     </include>
+
+    <!-- Rocks Models -->
     <model name="Rock_1">
       <static>true</static>
       <pose>-4.7782 1.8146 1.1710 0.0000 0.0000 -0.4759</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <mesh>
-              <uri>package://worlds/rocks/rock_7/meshes/rock_7.obj</uri>
-              <scale>2.5 2.5 2.5</scale>
-            </mesh>
-          </geometry>
-        </visual>
-      </link>
+      <include>
+        <uri>model://rock_7</uri>
+      </include>
     </model>
+
     <model name="Rock_2">
       <static>true</static>
       <pose>2.8355 -5.4663 0.6614 0.0000 0.0000 0.0736</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <mesh>
-              <uri>package://worlds/rocks/rock_6/meshes/rock_6.obj</uri>
-              <scale>2.5 2.5 2.5</scale>
-            </mesh>
-          </geometry>
-        </visual>
-      </link>
+      <include>
+        <uri>model://rock_6</uri>
+      </include>
     </model>
+
     <model name="Rock_3">
       <static>true</static>
       <pose>-2.4325 7.5645 1.1289 0.0000 0.0000 1.8244</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <mesh>
-              <uri>package://worlds/rocks/rock_6/meshes/rock_6.obj</uri>
-              <scale>2.5 2.5 2.5</scale>
-            </mesh>
-          </geometry>
-        </visual>
-        <collision name="collision">
-          <geometry>
-            <mesh>
-              <uri>package://worlds/rocks/rock_6/meshes/rock_6.obj</uri>
-              <scale>2.5 2.5 2.5</scale>
-            </mesh>
-          </geometry>
-        </collision>
-      </link>
+      <include>
+        <uri>model://rock_6</uri>
+      </include>
     </model>
+
     <model name="Rock_4">
       <static>true</static>
       <pose>-2.6782 -8.6233 1.2984 0.0000 0.0000 -0.2556</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <mesh>
-              <uri>package://worlds/rocks/rock_4/meshes/rock_4.obj</uri>
-              <scale>2.5 2.5 2.5</scale>
-            </mesh>
-          </geometry>
-        </visual>
-        <collision name="collision">
-          <geometry>
-            <mesh>
-              <uri>package://worlds/rocks/rock_4/meshes/rock_4.obj</uri>
-              <scale>2.5 2.5 2.5</scale>
-            </mesh>
-          </geometry>
-        </collision>
-      </link>
+      <include>
+        <uri>model://rock_4</uri>
+      </include>
     </model>
+
     <model name="Rock_5">
       <static>true</static>
       <pose>-6.4621 -0.3522 1.3447 0.0000 0.0000 0.7519</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <mesh>
-              <uri>package://worlds/rocks/rock_3/meshes/rock_3.obj</uri>
-              <scale>2.5 2.5 2.5</scale>
-            </mesh>
-          </geometry>
-        </visual>
-      </link>
+      <include>
+        <uri>model://rock_3</uri>
+      </include>
     </model>
+
     <model name="Rock_6">
       <static>true</static>
       <pose>5.1223 1.2279 1.0966 0.0000 0.0000 -0.5290</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <mesh>
-              <uri>package://worlds/rocks/rock_5/meshes/rock_5.obj</uri>
-              <scale>2.5 2.5 2.5</scale>
-            </mesh>
-          </geometry>
-        </visual>
-      </link>
+      <include>
+        <uri>model://rock_5</uri>
+      </include>
     </model>
+
     <model name="Rock_7">
       <static>true</static>
       <pose>-9.4585 0.0377 0.7981 0.0000 0.0000 -2.0379</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <mesh>
-              <uri>package://worlds/rocks/rock_8/meshes/rock_8.obj</uri>
-              <scale>2.5 2.5 2.5</scale>
-            </mesh>
-          </geometry>
-        </visual>
-        <collision name="collision">
-          <geometry>
-            <mesh>
-              <uri>package://worlds/rocks/rock_8/meshes/rock_8.obj</uri>
-              <scale>2.5 2.5 2.5</scale>
-            </mesh>
-          </geometry>
-        </collision>
-      </link>
+      <include>
+        <uri>model://rock_8</uri>
+      </include>
     </model>
+
     <model name="Rock_8">
       <static>true</static>
       <pose>-4.9092 -8.2650 0.9369 0.0000 0.0000 2.4426</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <mesh>
-              <uri>package://worlds/rocks/rock_9/meshes/rock_9.obj</uri>
-              <scale>2.5 2.5 2.5</scale>
-            </mesh>
-          </geometry>
-        </visual>
-        <collision name="collision">
-          <geometry>
-            <mesh>
-              <uri>package://worlds/rocks/rock_9/meshes/rock_9.obj</uri>
-              <scale>2.5 2.5 2.5</scale>
-            </mesh>
-          </geometry>
-        </collision>
-      </link>
+      <include>
+        <uri>model://rock_9</uri>
+      </include>
     </model>
+
   </world>
 </sdf>
