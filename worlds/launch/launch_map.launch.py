@@ -74,7 +74,7 @@ def _launch_gazebo(context, *args, **kwargs):
         gz_path = gz_path + os.pathsep + gz_existing
 
     # Construct the plugin paths for Gazebo to find libraries like gz_ros2_control
-    ros_distro = os.environ.get('ROS_DISTRO', 'humble')
+    ros_distro = os.environ.get('ROS_DISTRO', 'jazzy')
     system_plugin_paths = [f'/opt/ros/{ros_distro}/lib']
     current_ign_plugin = os.environ.get('IGN_GAZEBO_SYSTEM_PLUGIN_PATH', '')
     if current_ign_plugin:
@@ -84,12 +84,13 @@ def _launch_gazebo(context, *args, **kwargs):
         system_plugin_paths.append(current_gz_plugin)
     system_plugin_path = os.pathsep.join(system_plugin_paths)
 
-    # Bridge for simulator clock so ROS 2 nodes can sync with simulation time
+    # Bridge for simulator clock so ROS 2 nodes can sync with simulation time (adapts for Humble/Jazzy)
+    clock_msg_type = 'ignition.msgs.Clock' if ros_distro == 'humble' else 'gz.msgs.Clock'
     clock_bridge = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
         name='clock_bridge',
-        arguments=['/clock@rosgraph_msgs/msg/Clock[ignition.msgs.Clock'],
+        arguments=[f'/clock@rosgraph_msgs/msg/Clock[{clock_msg_type}'],
         output='screen'
     )
 

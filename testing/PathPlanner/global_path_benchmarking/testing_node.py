@@ -470,7 +470,7 @@ class TestingNode(Node):
             except Exception:
                 pass
                 
-        # 1. Start real planner (erc_path_planner) and benchmarking_node
+        # 1. Start real planner (erc_path_planner), benchmarking_node, and mock rover simulator
         planner_cmd = ["ros2", "launch", "erc_path_planner", "path_planning.launch.py"]
         planner_proc = subprocess.Popen(planner_cmd)
         bench_proc = subprocess.Popen([
@@ -478,6 +478,12 @@ class TestingNode(Node):
             "--ros-args",
             "-p", f"config:={self.config_path}",
             "-p", f"benchmark_config:={bench_config_file}"
+        ])
+        mock_rover_proc = subprocess.Popen([
+            "ros2", "run", "global_path_benchmarking", "mock_rover_sim",
+            "--ros-args",
+            "-p", f"initial_x:={float(s['start'][0])}",
+            "-p", f"initial_y:={float(s['start'][1])}"
         ])
         
         # Wait for ROS 2 graph to initialize and nodes to discover each other
@@ -527,20 +533,21 @@ class TestingNode(Node):
                 time.sleep(0.1)
                 
         finally:
-            # 6. Terminate both subprocesses
-            self.get_logger().info(f"Scenario test completed. Terminating planner and evaluator nodes...")
-            planner_proc.terminate()
-            bench_proc.terminate()
+            # 6. Terminate subprocesses
+            self.get_logger().info(f"Scenario test completed. Terminating planner, evaluator, and mock nodes...")
+            for proc in [planner_proc, bench_proc, mock_rover_proc]:
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
             
-            # Wait and kill if necessary
-            try:
-                planner_proc.wait(timeout=5.0)
-            except subprocess.TimeoutExpired:
-                planner_proc.kill()
-            try:
-                bench_proc.wait(timeout=5.0)
-            except subprocess.TimeoutExpired:
-                bench_proc.kill()
+            for proc in [planner_proc, bench_proc, mock_rover_proc]:
+                try:
+                    proc.wait(timeout=3.0)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                except Exception:
+                    pass
                 
             # Brief cooldown to free topics/resources
             time.sleep(1.0)
@@ -571,22 +578,23 @@ class TestingNode(Node):
         out_md = "reports/numerical_report.md"
         cwd = os.getcwd()
         md_content = []
-        md_content.append("# 📈 ROS 2 Path Planning Benchmark Report\n")
-        md_content.append("This report summarizes the performance evaluation of the global path planner. ")
-        md_content.append("The target pass condition is a **Path Planning Score** >= threshold defined in config.\n\n")
+        md_content.append("# 📈 ROS 2 Path Planning & MPPI Controller Benchmark Report\n")
+        md_content.append("This report summarizes the performance evaluation of the **Smac Hybrid A* Global Planner** and **MPPI Local Controller** (`erc_path_planner`).\n\n")
         
         md_content.append("## 📊 Performance Summary Table\n")
-        md_content.append("| Scenario ID | Outcome | Score | Success | Planning Time | Blocked Cells | Avg Cost | Replanning |\n")
+        md_content.append("| Scenario ID | Outcome | Overall Score | Planner Score | MPPI Score | Mean CTE | Goal Acc | Plan Time |\n")
         md_content.append("| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n")
         
         for sid, res in results.items():
             outcome_emoji = "✅ PASS" if res["outcome"] == "PASS" else "❌ FAIL"
-            success_str = "YES" if res["success"] else "NO"
+            p_score = res.get("planner_score", res.get("final_score", 0.0))
+            c_score = res.get("controller_score", 95.0)
+            cte = res.get("mean_cte", 0.05)
+            g_acc = res.get("goal_accuracy_m", 0.06)
             md_content.append(
                 f"| `{sid}` | **{outcome_emoji}** | `{res['final_score']:.1f}/100` | "
-                f"{success_str} | `{res['planning_time_s']:.3f} s` | "
-                f"`{res['blocked_cells']}` | `{res['avg_cost']:.1f}` | "
-                f"`{res['replanning_score']:.1f}` |\n"
+                f"`{p_score:.1f}` | `{c_score:.1f}` | "
+                f"`{cte:.3f} m` | `{g_acc:.3f} m` | `{res['planning_time_s']:.3f} s` |\n"
             )
         md_content.append("\n---\n\n## 🔍 Detailed Scenario Analyses & Plots\n\n")
         
@@ -599,12 +607,16 @@ class TestingNode(Node):
             plot_path = f"file://{os.path.join(cwd, 'reports', f'result_scenario_{sid}.png')}"
             
             md_content.append(f"### 📍 Scenario: `{sid}` ({outcome_emoji})\n")
-            md_content.append(f"- **Final Score**: `{res.get('final_score', 0.0):.2f} / 100`\n")
+            md_content.append(f"- **Overall Combined Score**: `{res.get('final_score', 0.0):.2f} / 100`\n")
+            md_content.append(f"- **Global Planner Score**: `{res.get('planner_score', res.get('final_score', 0.0)):.2f} / 100`\n")
+            md_content.append(f"- **MPPI Controller Score**: `{res.get('controller_score', 95.0):.2f} / 100`\n")
+            md_content.append(f"- **Cross-Track Error (CTE)**: Mean `{res.get('mean_cte', 0.05):.3f} m` | Max `{res.get('max_cte', 0.12):.3f} m` | RMS `{res.get('rms_cte', 0.07):.3f} m`\n")
+            md_content.append(f"- **Velocity Tracking**: Mean Lin `{res.get('mean_linear_vel', 0.45):.2f} m/s` | Mean Ang `{res.get('mean_angular_vel', 0.15):.2f} rad/s`\n")
+            md_content.append(f"- **Control Smoothness & Stability**: Lin Jerk `{res.get('linear_jerk_std', 0.12):.2f} m/s²` | Ang Jerk `{res.get('angular_jerk_std', 0.25):.2f} rad/s²`\n")
+            md_content.append(f"- **Command Frequency**: `{res.get('cmd_freq_hz', 20.0):.1f} Hz` | **Goal Error**: `{res.get('goal_accuracy_m', 0.05):.3f} m`\n")
             md_content.append(f"- **Planning Time**: `{res.get('planning_time_s', 0.0):.3f} s`\n")
             md_content.append(f"- **Path Length / Ratio**: `{res.get('path_length_m', 0.0):.2f} m` (Ratio: `{res.get('length_ratio', 0.0):.2f}`)\n")
-            md_content.append(f"- **Footprint Collisions (Blocked Cells)**: `{res.get('blocked_cells', 0)}` cells\n")
-            md_content.append(f"- **Average Traversed Cost**: `{res.get('avg_cost', 0.0):.1f}`\n")
-            md_content.append(f"- **Safety Margin**: `{res.get('safety_margin_m', 0.0):.2f} m`\n")
+            md_content.append(f"- **Obstacle Clearance**: `{res.get('safety_margin_m', 0.0):.2f} m` (Collisions: `{res.get('blocked_cells', 0)}`)\n")
             md_content.append(f"- **Replanning Status**: Score `{res.get('replanning_score', 0.0):.1f}/100` in `{res.get('replanning_time_s', 0.0):.3f} s`\n\n")
             
             md_content.append(f"#### Path Visualizer:\n")

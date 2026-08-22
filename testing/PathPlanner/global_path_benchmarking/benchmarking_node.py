@@ -10,13 +10,14 @@ import matplotlib.pyplot as plt
 from PIL import Image
 import rclpy
 from rclpy.node import Node
-from nav_msgs.msg import OccupancyGrid, Path
+from nav_msgs.msg import OccupancyGrid, Path, Odometry
 from geometry_msgs.msg import PoseStamped, Twist
 from std_msgs.msg import String, Float32
 
 # Import custom report generator functions
 from global_path_benchmarking.report_generator import (
     calculate_path_metrics,
+    calculate_control_metrics,
     generate_html_report,
     generate_pdf_report,
     generate_csv_report
@@ -80,6 +81,8 @@ class BenchmarkingNode(Node):
         
         self.roundtrip_start_time = None
         self.history = []
+        self.cmd_history = []
+        self.odom_history = []
         
         # Path Tracking for dynamic scenarios
         self.path_count = 0
@@ -107,12 +110,15 @@ class BenchmarkingNode(Node):
         self.cmd_vel_sub = self.create_subscription(
             Twist, "/cmd_vel", self.cmd_vel_callback, 10
         )
+        self.odom_sub = self.create_subscription(
+            Odometry, "/odometry/filtered", self.odom_callback, 10
+        )
         self.time_sub = self.create_subscription(
             Float32, "/planner_internal_time", self.time_callback, 10
         )
         
         self.get_logger().info("========================================")
-        self.get_logger().info("Benchmarking Node Initialized.")
+        self.get_logger().info("Benchmarking Node Initialized (Planning & MPPI Control).")
         self.get_logger().info("Listening to inputs & outputs...")
         self.get_logger().info("========================================")
 
@@ -129,6 +135,8 @@ class BenchmarkingNode(Node):
             self.static_time = 0.0
             self.replan_eval = None
             self.replan_time = 0.0
+            self.cmd_history = []
+            self.odom_history = []
 
     def map_callback(self, msg):
         self.costmap = msg
@@ -146,7 +154,19 @@ class BenchmarkingNode(Node):
         self.get_logger().info("Goal received. Timer started.")
 
     def cmd_vel_callback(self, msg):
-        self.get_logger().debug(f"Control command received: linear.x={msg.linear.x:.2f}, angular.z={msg.angular.z:.2f}")
+        t_sec = self.get_clock().now().nanoseconds * 1e-9
+        self.cmd_history.append((t_sec, msg.linear.x, msg.linear.y, msg.angular.z))
+
+    def odom_callback(self, msg: Odometry):
+        t_sec = self.get_clock().now().nanoseconds * 1e-9
+        self.odom_history.append((
+            t_sec,
+            msg.pose.pose.position.x,
+            msg.pose.pose.position.y,
+            0.0,
+            msg.twist.twist.linear.x,
+            msg.twist.twist.angular.z
+        ))
 
     def time_callback(self, msg):
         self.planner_internal_time = msg.data
@@ -328,18 +348,29 @@ class BenchmarkingNode(Node):
         else:
             s_length = 100.0 * (1.0 - (ratio - 1.0) / (len_limit - 1.0))
             
+        # S_replan
         s_replan = replan_success_val
         
         # Compute final weighted Path Planning Score
         w = self.weights
-        final_score = (w["success"] * s_success + 
-                       w["time"] * s_time + 
-                       w["obstacle"] * s_obstacle + 
-                       w["cost"] * s_cost + 
-                       w["length"] * s_length + 
-                       w["replan"] * s_replan)
+        planner_score = (w["success"] * s_success + 
+                         w["time"] * s_time + 
+                         w["obstacle"] * s_obstacle + 
+                         w["cost"] * s_cost + 
+                         w["length"] * s_length + 
+                         w["replan"] * s_replan)
+
+        # Plan coordinates
+        plan_coords = eval_res.get("coords", [])
+        replan_path_coords = self.replan_eval.get("coords", []) if self.replan_eval else []
+
+        # Calculate MPPI Controller metrics
+        ctrl_res = calculate_control_metrics(self.cmd_history, self.odom_history, plan_coords, self.goal_pose)
+        controller_score = ctrl_res["controller_score"]
         
-        outcome = "PASS" if final_score >= self.pass_threshold else "FAIL"
+        # Combined Overall System Score (50% Planning + 50% Control)
+        overall_score = 0.50 * planner_score + 0.50 * controller_score
+        outcome = "PASS" if overall_score >= self.pass_threshold else "FAIL"
         
         scenario_res = {
             "id": scenario["id"],
@@ -356,17 +387,34 @@ class BenchmarkingNode(Node):
             "safety_margin_m": eval_res["safety_margin"],
             "replanning_score": s_replan,
             "replanning_time_s": self.replan_time,
-            "final_score": final_score,
+            
+            # Scores
+            "planner_score": planner_score,
+            "controller_score": controller_score,
+            "final_score": overall_score,
             "outcome": outcome,
             
-            # Include custom metrics in scenario results JSON
+            # Geometric Planning Metrics
             "min_angle": eval_res["min_angle"],
             "max_angle": eval_res["max_angle"],
             "avg_angle": eval_res["avg_angle"],
             "min_radius": eval_res["min_radius"],
             "max_radius": eval_res["max_radius"],
             "avg_radius": eval_res["avg_radius"],
-            "path_cost": eval_res["total_cost"]
+            "path_cost": eval_res["total_cost"],
+
+            # Control Metrics
+            "mean_cte": ctrl_res["mean_cte"],
+            "max_cte": ctrl_res["max_cte"],
+            "rms_cte": ctrl_res["rms_cte"],
+            "mean_linear_vel": ctrl_res["mean_linear_vel"],
+            "max_linear_vel": ctrl_res["max_linear_vel"],
+            "mean_angular_vel": ctrl_res["mean_angular_vel"],
+            "max_angular_vel": ctrl_res["max_angular_vel"],
+            "linear_jerk_std": ctrl_res["linear_jerk_std"],
+            "angular_jerk_std": ctrl_res["angular_jerk_std"],
+            "cmd_freq_hz": ctrl_res["cmd_freq_hz"],
+            "goal_accuracy_m": ctrl_res["goal_accuracy_m"]
         }
         
         # Save temp JSON
@@ -382,6 +430,7 @@ class BenchmarkingNode(Node):
         # Print Scenario Summary
         print(f"\n================ SCENARIO RESULTS: {scenario['id']} ================")
         print(f"Status:             {'SUCCESS' if eval_res['success'] else 'FAILED'}")
+        print(f"\n--- 🗺️  GLOBAL PLANNER (Smac Hybrid A*) ---")
         print(f"Planning Time:      {plan_time:.3f} s  (Score: {s_time:.1f}/100)")
         print(f"Path Length:        {eval_res['length']:.2f} m  (Ratio: {ratio:.2f}, Score: {s_length:.1f}/100)")
         print(f"Turn Angles:        Min: {eval_res['min_angle']:.1f}° | Max: {eval_res['max_angle']:.1f}° | Avg: {eval_res['avg_angle']:.1f}°")
@@ -391,9 +440,17 @@ class BenchmarkingNode(Node):
         print(f"Total Path Cost:    {eval_res['total_cost']:.1f}")
         print(f"Safety Margin:      {eval_res['safety_margin']:.2f} m")
         print(f"Replanning:         Score: {s_replan:.1f}/100 (Time: {self.replan_time:.3f} s)")
+        print(f"PLANNER SCORE:      {planner_score:.2f} / 100")
+        print(f"\n--- 🎮 LOCAL CONTROLLER (MPPI) ---")
+        print(f"Cross-Track Error:  Mean: {ctrl_res['mean_cte']:.3f} m | Max: {ctrl_res['max_cte']:.3f} m | RMS: {ctrl_res['rms_cte']:.3f} m")
+        print(f"Velocity Profile:   Linear: Mean {ctrl_res['mean_linear_vel']:.2f} m/s, Max {ctrl_res['max_linear_vel']:.2f} m/s | Angular: Mean {ctrl_res['mean_angular_vel']:.2f} rad/s, Max {ctrl_res['max_angular_vel']:.2f} rad/s")
+        print(f"Control Stability:  Lin Jerk: {ctrl_res['linear_jerk_std']:.2f} m/s² | Ang Jerk: {ctrl_res['angular_jerk_std']:.2f} rad/s²")
+        print(f"Command Rate:       {ctrl_res['cmd_freq_hz']:.1f} Hz")
+        print(f"Goal Accuracy:      {ctrl_res['goal_accuracy_m']:.3f} m error")
+        print(f"CONTROLLER SCORE:   {controller_score:.2f} / 100")
         print(f"-----------------------------------------------------")
-        print(f"PATH PLANNING SCORE: {final_score:.2f} / 100")
-        print(f"OUTCOME:             {outcome} (Required: >= {self.pass_threshold}/100)")
+        print(f"COMBINED SYSTEM SCORE: {overall_score:.2f} / 100")
+        print(f"FINAL OUTCOME:         {outcome} (Required: >= {self.pass_threshold}/100)")
         print(f"=====================================================\n")
         
         # Generate plot (coords are converted to normal tuples)

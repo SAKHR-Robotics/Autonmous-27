@@ -51,12 +51,12 @@ trap cleanup EXIT INT TERM
 
 # Step 1: Source ROS 2 base installation
 if [ -z "$ROS_DISTRO" ]; then
-    if [ -f "/opt/ros/humble/setup.bash" ]; then
-        echo "[1/4] Sourcing ROS 2 Humble (/opt/ros/humble/setup.bash)..."
-        source /opt/ros/humble/setup.bash
-    elif [ -f "/opt/ros/jazzy/setup.bash" ]; then
+    if [ -f "/opt/ros/jazzy/setup.bash" ]; then
         echo "[1/4] Sourcing ROS 2 Jazzy (/opt/ros/jazzy/setup.bash)..."
         source /opt/ros/jazzy/setup.bash
+    elif [ -f "/opt/ros/humble/setup.bash" ]; then
+        echo "[1/4] Sourcing ROS 2 Humble (/opt/ros/humble/setup.bash)..."
+        source /opt/ros/humble/setup.bash
     else
         echo "[1/4] Searching for ROS 2 installation..."
         for ros_setup in /opt/ros/*/setup.bash; do
