@@ -26,6 +26,8 @@ def _launch_gazebo(context, *args, **kwargs):
     resource_paths.append(pkg_worlds)
     resource_paths.append(os.path.dirname(pkg_worlds))
     resource_paths.append(os.path.join(pkg_worlds, 'models'))
+    resource_paths.append(os.path.join(pkg_worlds, 'models', 'rocks'))
+    resource_paths.append(os.path.join(pkg_worlds, 'models', 'aruco'))
     
     # 2. Find marsyard package if available
     try:
@@ -72,7 +74,8 @@ def _launch_gazebo(context, *args, **kwargs):
         gz_path = gz_path + os.pathsep + gz_existing
 
     # Construct the plugin paths for Gazebo to find libraries like gz_ros2_control
-    system_plugin_paths = ['/opt/ros/humble/lib']
+    ros_distro = os.environ.get('ROS_DISTRO', 'humble')
+    system_plugin_paths = [f'/opt/ros/{ros_distro}/lib']
     current_ign_plugin = os.environ.get('IGN_GAZEBO_SYSTEM_PLUGIN_PATH', '')
     if current_ign_plugin:
         system_plugin_paths.append(current_ign_plugin)

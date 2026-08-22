@@ -5,6 +5,7 @@ import tkinter as tk
 from tkinter import ttk
 import rclpy
 from rclpy.node import Node
+from rclpy.executors import ExternalShutdownException
 from geometry_msgs.msg import Twist
 
 class TeleopGUI:
@@ -13,12 +14,16 @@ class TeleopGUI:
         self.node = node
         self.publisher = self.node.create_publisher(Twist, '/cmd_vel', 10)
         
-        # Speed values
+        # Current commanded speeds
         self.linear_speed = 0.5
         self.angular_speed = 1.0
         
+        # Active velocities (streamed continuously via 10Hz timer)
+        self.target_linear = 0.0
+        self.target_angular = 0.0
+        
         self.root.title("Rover Teleop Control Center")
-        self.root.geometry("400x430")
+        self.root.geometry("420x460")
         self.root.configure(bg="#1e272e")
         
         # Style
@@ -27,14 +32,14 @@ class TeleopGUI:
         
         # Title Label
         title_label = tk.Label(root, text="🛸 Rover Control Center", font=("Helvetica", 16, "bold"), fg="#d2dae2", bg="#1e272e")
-        title_label.pack(pady=15)
+        title_label.pack(pady=12)
         
         # Controls Frame
         ctrl_frame = tk.Frame(root, bg="#1e272e")
         ctrl_frame.pack(pady=10)
         
         # Buttons layout
-        btn_opts = {"font": ("Helvetica", 11, "bold"), "width": 9, "height": 2, "bd": 0, "relief": "flat"}
+        btn_opts = {"font": ("Helvetica", 10, "bold"), "width": 10, "height": 2, "bd": 0, "relief": "flat", "cursor": "hand2"}
         
         self.btn_up = tk.Button(ctrl_frame, text="▲ Forward\n(Up Arrow)", bg="#05c46b", fg="#ffffff", activebackground="#04a75b", command=self.move_forward, **btn_opts)
         self.btn_up.grid(row=0, column=1, padx=5, pady=5)
@@ -57,10 +62,11 @@ class TeleopGUI:
         self.root.bind("<Left>", lambda event: self.turn_left())
         self.root.bind("<Right>", lambda event: self.turn_right())
         self.root.bind("<space>", lambda event: self.stop())
+        self.root.bind("<Escape>", lambda event: self.stop())
         
         # Speed Sliders Frame
         speed_frame = tk.Frame(root, bg="#2f3542")
-        speed_frame.pack(pady=15, fill="x", padx=30, ipady=10)
+        speed_frame.pack(pady=12, fill="x", padx=25, ipady=8)
         
         lbl_lin = tk.Label(speed_frame, text="Linear Speed (m/s):", fg="#f1f2f6", bg="#2f3542", font=("Helvetica", 9, "bold"))
         lbl_lin.grid(row=0, column=0, sticky="w", padx=10, pady=5)
@@ -77,54 +83,81 @@ class TeleopGUI:
         speed_frame.columnconfigure(1, weight=1)
         
         # Status Label
-        self.lbl_status = tk.Label(root, text="Status: IDLE", font=("Helvetica", 10, "italic"), fg="#808e9b", bg="#1e272e")
-        self.lbl_status.pack(pady=5)
+        self.lbl_status = tk.Label(root, text="Status: IDLE (Press Arrow keys to drive)", font=("Helvetica", 10, "italic"), fg="#808e9b", bg="#1e272e")
+        self.lbl_status.pack(pady=6)
+        
+        # 10Hz Timer to continuously publish velocity commands to Gazebo
+        self.timer = self.node.create_timer(0.1, self.timer_publish_callback)
         
     def update_speeds(self, event=None):
         self.linear_speed = float(self.scale_lin.get())
         self.angular_speed = float(self.scale_ang.get())
         
-    def publish_twist(self, linear, angular, status_text):
+    def timer_publish_callback(self):
         twist = Twist()
-        twist.linear.x = float(linear)
-        twist.angular.z = float(angular)
+        twist.linear.x = float(self.target_linear)
+        twist.angular.z = float(self.target_angular)
         self.publisher.publish(twist)
-        self.lbl_status.config(text=f"Status: {status_text}", fg="#d2dae2")
         
     def move_forward(self):
-        self.publish_twist(self.linear_speed, 0.0, f"MOVING FORWARD ({self.linear_speed} m/s)")
+        self.target_linear = self.linear_speed
+        self.target_angular = 0.0
+        self.lbl_status.config(text=f"Status: MOVING FORWARD ({self.linear_speed:.1f} m/s)", fg="#05c46b")
         
     def move_backward(self):
-        self.publish_twist(-self.linear_speed, 0.0, f"REVERSING ({-self.linear_speed} m/s)")
+        self.target_linear = -self.linear_speed
+        self.target_angular = 0.0
+        self.lbl_status.config(text=f"Status: REVERSING ({-self.linear_speed:.1f} m/s)", fg="#ffc048")
         
     def turn_left(self):
-        self.publish_twist(0.0, self.angular_speed, f"TURNING LEFT ({self.angular_speed} rad/s)")
+        self.target_linear = 0.0
+        self.target_angular = self.angular_speed
+        self.lbl_status.config(text=f"Status: TURNING LEFT ({self.angular_speed:.1f} rad/s)", fg="#70a1ff")
         
     def turn_right(self):
-        self.publish_twist(0.0, -self.angular_speed, f"TURNING RIGHT ({-self.angular_speed} rad/s)")
+        self.target_linear = 0.0
+        self.target_angular = -self.angular_speed
+        self.lbl_status.config(text=f"Status: TURNING RIGHT ({-self.angular_speed:.1f} rad/s)", fg="#70a1ff")
         
     def stop(self):
-        self.publish_twist(0.0, 0.0, "STOPPED")
+        self.target_linear = 0.0
+        self.target_angular = 0.0
+        self.lbl_status.config(text="Status: STOPPED", fg="#ff4757")
 
 def ros2_spin(node):
-    rclpy.spin(node)
+    try:
+        rclpy.spin(node)
+    except Exception:
+        pass
 
 def main():
-    rclpy.init(args=sys.argv)
-    node = Node('teleop_gui_node')
-    
-    # Threading to spin ROS 2 in the background
-    spin_thread = threading.Thread(target=ros2_spin, args=(node,), daemon=True)
-    spin_thread.start()
-    
-    root = tk.Tk()
-    app = TeleopGUI(root, node)
-    
     try:
-        root.mainloop()
-    finally:
-        node.destroy_node()
-        rclpy.shutdown()
+        rclpy.init(args=sys.argv)
+        node = Node('teleop_gui_node')
+        
+        # Threading to spin ROS 2 in the background
+        spin_thread = threading.Thread(target=ros2_spin, args=(node,), daemon=True)
+        spin_thread.start()
+        
+        root = tk.Tk()
+        app = TeleopGUI(root, node)
+        
+        try:
+            root.mainloop()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            try:
+                # Publish final 0-velocity stop command before shutdown
+                stop_pub = node.create_publisher(Twist, '/cmd_vel', 10)
+                stop_pub.publish(Twist())
+                node.destroy_node()
+            except Exception:
+                pass
+            if rclpy.ok():
+                rclpy.shutdown()
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass
 
 if __name__ == '__main__':
     main()

@@ -84,10 +84,18 @@ def launch_setup(context, *args, **kwargs):
         resource_paths.append(pkg_worlds)
         resource_paths.append(os.path.dirname(pkg_worlds))
         resource_paths.append(os.path.join(pkg_worlds, 'models'))
-        resource_paths.append(os.path.join(pkg_worlds, 'rocks'))
+        resource_paths.append(os.path.join(pkg_worlds, 'models', 'rocks'))
+        resource_paths.append(os.path.join(pkg_worlds, 'models', 'aruco'))
     except Exception as e:
         print(f"[gazebo.launch] Share paths resolution: {e}")
     
+    # Also add source tree models path as fallback
+    src_models = '/home/saif/Desktop/MESEKET/Autonmous-27/Autonmous_Ws/worlds/models'
+    if os.path.exists(src_models):
+        resource_paths.append(src_models)
+        resource_paths.append(os.path.join(src_models, 'rocks'))
+        resource_paths.append(os.path.join(src_models, 'aruco'))
+
     ign_existing = os.environ.get('IGN_GAZEBO_RESOURCE_PATH', '')
     gz_existing = os.environ.get('GZ_SIM_RESOURCE_PATH', '')
     
@@ -152,13 +160,13 @@ def launch_setup(context, *args, **kwargs):
         package='ros_gz_bridge',
         executable='parameter_bridge',
         arguments=[
-            '/cmd_vel@geometry_msgs/msg/Twist@ignition.msgs.Twist',
-            '/odom@nav_msgs/msg/Odometry@ignition.msgs.Odometry',
-            '/imu/data@sensor_msgs/msg/Imu@ignition.msgs.IMU',
-            f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/image@sensor_msgs/msg/Image[ignition.msgs.Image',
-            f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/camera_info@sensor_msgs/msg/CameraInfo[ignition.msgs.CameraInfo',
-            f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/depth_image@sensor_msgs/msg/Image[ignition.msgs.Image',
-            f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/points@sensor_msgs/msg/PointCloud2[ignition.msgs.PointCloudPacked',
+            '/cmd_vel@geometry_msgs/msg/Twist@gz.msgs.Twist',
+            '/odom@nav_msgs/msg/Odometry@gz.msgs.Odometry',
+            '/imu/data@sensor_msgs/msg/Imu@gz.msgs.IMU',
+            f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/image@sensor_msgs/msg/Image[gz.msgs.Image',
+            f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
+            f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/depth_image@sensor_msgs/msg/Image[gz.msgs.Image',
+            f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked',
         ],
         remappings=[
             (f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/image', '/camera/image_raw'),
