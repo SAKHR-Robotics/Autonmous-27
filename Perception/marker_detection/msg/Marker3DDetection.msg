@@ -1,0 +1,24 @@
+std_msgs/Header header
+int32 id
+float32 center_x
+float32 center_y
+float32 corner_1_x
+float32 corner_1_y
+float32 corner_2_x
+float32 corner_2_y
+float32 corner_3_x
+float32 corner_3_y
+float32 corner_4_x
+float32 corner_4_y
+float32 area_px
+float32 depth_m
+float32 position_x
+float32 position_y
+float32 position_z
+bool valid_depth
+bool valid_3d
+uint32 valid_depth_samples
+float32 depth_quality
+float32 depth_mad
+# Improvement #3: variance of depth_m (m^2), derived from MAD and sample count, not a constant.
+float32 depth_z_variance
