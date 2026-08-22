@@ -16,7 +16,7 @@ This implementation covers the full integration of both the **Smac Hybrid A* Glo
 ---
 
 ## 2. Target Folder Structure
-This is the directory structure that has been created for the implementation phase. 
+This is the directory structure for the implementation phase. 
 
 ```text
 PathPlaning/
@@ -25,11 +25,19 @@ PathPlaning/
 ├── PathPlanner_Docu/
 │   └── PathPlannerGuide.html
 └── src/
+    ├── terrain_geometry_msgs/            # Custom perception obstacle geometry message definitions
+    │   ├── package.xml
+    │   ├── CMakeLists.txt
+    │   └── msg/
+    │       ├── ObstacleFeature.msg
+    │       └── ObstacleFeatureArray.msg
     └── erc_path_planner/
-        ├── package.xml                   # TO BE CREATED
-        ├── CMakeLists.txt                # TO BE CREATED
+        ├── package.xml
+        ├── CMakeLists.txt
         ├── config/
-        │   └── nav2_params.yaml          # Core Smac, MPPI & Costmap configurations
+        │   ├── dummy_map.pgm
+        │   ├── dummy_map.yaml
+        │   └── nav2_params.yaml          # Core Smac, MPPI, Costmap & Jazzy server configurations
         ├── launch/
         │   ├── path_planning.launch.py   # Main Nav2 bringup launcher
         │   └── rviz.launch.py            # Visualization launcher
