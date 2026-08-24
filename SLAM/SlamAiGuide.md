@@ -197,7 +197,7 @@ Use these explicit checkpoints to verify each milestone before merging code:
 
 ### 🤝 Track C: Joint Integration & System Verification (Developers 1 & 2 Together)
 - [✓] **Task 6.1:** Create `launch/slam_bringup.launch.py` combining all sub-launch files.
-- [ ] **Task 6.2:** Configure Nav2 lifecycle manager to automatically transition `costmap` and `rtabmap` nodes to `active`.
+- [✓] **Task 6.2:** Configure Nav2 lifecycle manager to automatically transition `costmap` and `rtabmap` nodes to `active`.
 - [ ] **Task 7.1:** Execute end-to-end rosbag / Gazebo benchmark verification (verify 100 Hz EKF, slip covariance scaling, `map -> odom` loop closures, costmap inflation).
 - [✓] **Task 7.2:** Update `README.md` and check off all completed tasks in `SlamAiGuide.md`.
 

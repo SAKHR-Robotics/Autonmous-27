@@ -23,6 +23,7 @@ def generate_launch_description():
         executable='rviz2',
         name='rviz2',
         output='screen',
+        parameters=[{'use_sim_time': True}],
         arguments=['-d', os.path.join(pkg_share, 'rviz', 'robot_view.rviz')] if os.path.exists(os.path.join(pkg_share, 'rviz', 'robot_view.rviz')) else []
     )
     

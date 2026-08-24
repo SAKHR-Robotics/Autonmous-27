@@ -46,8 +46,9 @@ def launch_setup(context, *args, **kwargs):
         package='ros_gz_sim',
         executable='create',
         arguments=[
-            '-topic', 'robot_description',
             '-name', 'my_robot',
+            '-string', robot_description_config.toxml(),
+            '-world', world_name,
             '-x', '0.0',
             '-y', '0.0',
             '-z', '1.5'
@@ -63,6 +64,7 @@ def launch_setup(context, *args, **kwargs):
         package='ros_gz_bridge',
         executable='parameter_bridge',
         arguments=[
+            '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
             '/cmd_vel@geometry_msgs/msg/Twist@gz.msgs.Twist',
             '/odom@nav_msgs/msg/Odometry@gz.msgs.Odometry',
             '/imu/data@sensor_msgs/msg/Imu@gz.msgs.IMU',
