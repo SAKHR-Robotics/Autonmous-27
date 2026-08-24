@@ -1,0 +1,19 @@
+marker_map:
+  ros__parameters:
+    tracked_pose_topic: "/marker_poses"
+    marker_map_topic: "/marker_map"
+    map_frame: "map"
+    marker_frame_prefix: "aruco_marker_"
+    tf_cache_seconds: 10.0
+    tf_lookup_timeout_seconds: 0.05
+    min_global_confirmations: 5
+    position_measurement_noise: 0.04
+    position_initial_covariance: 1.0
+    position_gate_threshold: 11.34
+    orientation_gate_threshold_deg: 30.0
+    orientation_fusion_alpha: 0.20
+    stale_timeout_seconds: 30.0
+    min_tracking_confidence: 0.30
+    max_reprojection_error_px: 3.0
+    publish_rviz_markers: true
+    rviz_topic: "/marker_map/visualization"
