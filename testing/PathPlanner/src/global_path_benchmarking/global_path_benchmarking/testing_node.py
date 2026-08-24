@@ -10,7 +10,7 @@ import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image, ImageDraw
-
+from ament_index_python.packages import get_package_share_directory
 import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import OccupancyGrid, Path
@@ -458,7 +458,7 @@ class TestingNode(Node):
             print(f"[VERIFIED] Scenario '{s['id']}' image saved to: {out_file}")
         print("=====================================================\n")
 
-    def run_scenario(self, s, bench_config_file):
+    def run_scenario(self, s, bench_config_file, use_astar=False):
         sid = s["id"]
         self.get_logger().info(f"Setting up subprocesses for Scenario: {sid}")
         
@@ -472,6 +472,10 @@ class TestingNode(Node):
                 
         # 1. Start real planner (erc_path_planner) and benchmarking_node
         planner_cmd = ["ros2", "launch", "erc_path_planner", "path_planning.launch.py"]
+        if use_astar:
+            pkg_share = get_package_share_directory('erc_path_planner')
+            astar_params = os.path.join(pkg_share, 'config', 'nav2_params_astar.yaml')
+            planner_cmd.append(f'params_file:={astar_params}')
         planner_proc = subprocess.Popen(planner_cmd)
         bench_proc = subprocess.Popen([
             "ros2", "run", "global_path_benchmarking", "benchmarking_node",
@@ -481,7 +485,7 @@ class TestingNode(Node):
         ])
         
         # Wait for ROS 2 graph to initialize and nodes to discover each other
-        time.sleep(2.0)
+        time.sleep(20.0)
         
         try:
             # 2. Publish current test/scenario name
@@ -499,7 +503,7 @@ class TestingNode(Node):
             
             # Wait for path response (spin testing_node to handle topic callback)
             t0 = time.time()
-            while not self.path_received and (time.time() - t0) < 6.0:
+            while not self.path_received and (time.time() - t0) < 20.0:
                 rclpy.spin_once(self, timeout_sec=0.1)
                 
             # 5. Handle dynamic obstacle if applicable
@@ -678,6 +682,7 @@ def main(args=None):
     parser.add_argument("--verify", action="store_true", help="Generate pre-run verification PNGs and exit")
     parser.add_argument("--clean", action="store_true", help="Kill stale processes before running")
     parser.add_argument("--scenario_id", type=str, default=None, help="Select a specific scenario to run")
+    parser.add_argument("--use_astar", action="store_true", help="Use plain SmacPlanner2D (A*) instead of SmacPlannerHybrid as the global planner")
     
     cli_args = parser.parse_args(clean_args)
     
@@ -717,8 +722,7 @@ def main(args=None):
     # Run tests
     try:
         for s in scenarios_to_run:
-            testing_node.run_scenario(s, cli_args.benchmark_config)
-            
+            testing_node.run_scenario(s, cli_args.benchmark_config, use_astar=cli_args.use_astar)
         # Compile reports
         testing_node.compile_reports()
     except Exception as e:

@@ -70,5 +70,10 @@ def generate_launch_description():
             default_value='false',
             description='Kill old benchmarking/ROS 2 processes before launch'
         ),
+        DeclareLaunchArgument(
+            'use_astar',
+            default_value='false',
+            description='Force using A* instead of Hybrid A*'
+        ),
         OpaqueFunction(function=launch_setup)
     ])
