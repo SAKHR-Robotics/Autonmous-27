@@ -585,7 +585,7 @@ DEVELOPMENT CONSTRAINTS:
             </div>
 
             <div class="todo-item">
-                <input type="checkbox" id="p1-t7-1">
+                <input type="checkbox" id="p1-t7-1" checked>
                 <div>
                     <div class="task-title">Task 7A: RViz 2 State Estimation Dashboard</div>
                     <div class="task-desc">Create `config/slam_visualization.rviz` displaying the TF tree, `/odometry/filtered` trajectory path, RealSense point clouds, and static `/map` grid.</div>
@@ -685,7 +685,7 @@ DEVELOPMENT CONSTRAINTS:
             </div>
 
             <div class="todo-item">
-                <input type="checkbox" id="joint-t7-1">
+                <input type="checkbox" id="joint-t7-1" checked>
                 <div>
                     <div class="task-title">Task 7.1: System End-to-End Rosbag Verification</div>
                     <div class="task-desc">Run the complete pipeline on an ERC test bag file. Verify: (1) Local EKF `odom -> base_link` runs smoothly at 100 Hz, (2) Slip checker increases wheel covariance on wheel spin, (3) `map -> odom` updates on loop closures/ArUco tags, and (4) `/global_costmap/costmap` inflates obstacles for the planner.</div>

@@ -1,7 +1,7 @@
 # ekf.yaml Configuration for robot_localization
 ekf_filter_node:
   ros__parameters:
-    frequency: 100.0
+    frequency: 50.0
     two_d_mode: true
     publish_tf: true
 

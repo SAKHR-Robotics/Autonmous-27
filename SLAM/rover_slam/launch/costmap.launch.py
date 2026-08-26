@@ -52,6 +52,8 @@ def generate_launch_description():
             {'use_sim_time': use_sim_time}
         ],
         remappings=[
+            ('costmap', '/global_costmap/costmap'),
+            ('costmap_updates', '/global_costmap/costmap_updates'),
             ('/costmap/costmap', '/global_costmap/costmap'),
             ('/costmap/costmap_updates', '/global_costmap/costmap_updates'),
         ]

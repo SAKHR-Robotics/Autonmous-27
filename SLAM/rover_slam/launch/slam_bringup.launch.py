@@ -15,6 +15,7 @@ def generate_launch_description():
     rgb_topic = LaunchConfiguration('rgb_topic')
     depth_topic = LaunchConfiguration('depth_topic')
     camera_info_topic = LaunchConfiguration('camera_info_topic')
+    odom_topic = LaunchConfiguration('odom_topic')
 
     declare_use_sim_time = DeclareLaunchArgument(
         'use_sim_time',
@@ -46,13 +47,21 @@ def generate_launch_description():
         default_value='/camera/camera_info',
         description='Camera Info topic name'
     )
+    declare_odom_topic = DeclareLaunchArgument(
+        'odom_topic',
+        default_value='/odom',
+        description='Raw odometry topic (e.g. /odom for Gazebo, /wheel/odom_raw for physical robot)'
+    )
 
     static_tf_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(pkg_share, 'launch', 'static_transforms.launch.py'))
     )
     ekf_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(pkg_share, 'launch', 'ekf.launch.py')),
-        launch_arguments={'use_sim_time': use_sim_time}.items()
+        launch_arguments={
+            'use_sim_time': use_sim_time,
+            'odom_topic': odom_topic
+        }.items()
     )
     vision_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(pkg_share, 'launch', 'vision_helper.launch.py')),
@@ -84,6 +93,7 @@ def generate_launch_description():
         declare_rgb_topic,
         declare_depth_topic,
         declare_camera_info_topic,
+        declare_odom_topic,
         static_tf_launch,
         ekf_launch,
         vision_launch,
