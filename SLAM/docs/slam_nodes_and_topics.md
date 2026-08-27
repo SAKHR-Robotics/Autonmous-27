@@ -1,0 +1,37 @@
+# SLAM System Nodes, Topics & Responsibilities Matrix
+
+This document summarizes every node, its responsibilities, published topics, subscribed topics, and coordinate transforms extracted from `saif SLAM.html` and `SlamAIWorkingGuide.html`.
+
+---
+
+## Complete Node Architecture Table
+
+| Node / Component | File / Script Name | Category | What Should Happen On It (Functionality & Purpose) | Publishes | Subscribers & TF Inputs |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Wheel Odometry Pre-Processor** | `encoder_ticks_to_odom.py` | Pre-Processing | • Reads raw encoder rotation tick counts.<br>• Calculates differential drive linear velocity ($v_x, v_y$) and angular velocity ($\omega_z$) based on rover kinematics.<br>• Outputs raw wheel odometry twist data. | • `/wheel/odom_raw`<br>`(nav_msgs/msg/Odometry)` | • `/wheel/ticks`<br>`(Raw Encoder / std_msgs)` |
+| **Heuristic Slip Checker** | `heuristic_slip_checker.py` | Pre-Processing Filter | • Detects sand wheel slip by comparing $V_{wheels}$ vs $V_{imu}$ and $\omega_{wheel}$ vs IMU yaw rate $\omega_{imu}$.<br>• Slip Flag Rule: $\|V_{wheels} - V_{imu}\| > 0.15\text{ m/s}$.<br>• Dynamically inflates wheel covariance on `/wheel/odom_raw`, forcing EKF to ignore slipping wheels and rely on IMU + Visual SLAM. | • `/wheel/odom_raw`<br>`(nav_msgs/msg/Odometry with updated covariance)` | • `/wheel/odom_raw`<br>`(nav_msgs/msg/Odometry)`<br>• `/imu/data`<br>`(sensor_msgs/msg/Imu)` |
+| **Depth Post-Processing Filter** | `vision_helper.launch.py` | Vision Filter | • Pre-filters Intel RealSense D435 depth stream to eliminate sunlight IR noise.<br>• **Decimation Filter**: Downsamples resolution to save compute.<br>• **Spatial Filter**: Smooths high-frequency noise.<br>• **Temporal Filter**: Averages frames to fill hole flicker.<br>• **Hole-Filling Filter**: Fills missing depth values.<br>• **Max Range Clip**: Truncates depth $> 4.0\text{m}$. | • `/camera/depth/filtered`<br>`(sensor_msgs/msg/Image)` | • `/camera/depth/image_rect_raw`<br>`(sensor_msgs/msg/Image)` |
+| **EKF Node (`robot_localization`)** | `config/ekf.yaml`<br>`launch/ekf.launch.py` | Local State Estimator | • Fuses linear velocity ($X, Y$) from wheel odometry (`/wheel/odom_raw`) and orientation (Roll, Pitch, Yaw) + angular rate from IMU (`/imu/data`).<br>• Runs at **100 Hz** with zero latency and no coordinate jumps.<br>• Provides smooth state estimation for local MPPI controller.<br>• Configured with `world_frame: odom` and `two_d_mode: false` for 3D slopes. | • `/odometry/filtered`<br>`(nav_msgs/msg/Odometry @ 100Hz)`<br>• **TF**: `odom -> base_link`<br>`(Transform Frame @ 100Hz)` | • `/wheel/odom_raw`<br>`(nav_msgs/msg/Odometry)`<br>• `/imu/data`<br>`(sensor_msgs/msg/Imu)` |
+| **RTAB-Map Visual SLAM** | `config/rtabmap.yaml`<br>`launch/rtabmap.launch.py` | Global SLAM Backend | • Extracts FAST/GFTT visual features from RGB & filtered depth streams to build visual 3D memory map.<br>• Performs loop-closure detection and integrates 6-DOF ArUco landmark poses (`/perception/aruco_pose`) as global constraints.<br>• Calculates global drift offset between real world map frame and local odometry frame.<br>• Broadcasts global transform correction **map -> odom** (1–5 Hz). | • `/map`<br>`(nav_msgs/msg/OccupancyGrid)`<br>• **TF**: `map -> odom`<br>`(Transform Frame @ 1–5Hz)`<br>• `/rtabmap/grid_map`<br>`(nav_msgs/msg/OccupancyGrid)` | • `/camera/color/image_raw`<br>`(sensor_msgs/msg/Image)`<br>• `/camera/depth/filtered`<br>`(sensor_msgs/msg/Image)`<br>• `/odometry/filtered`<br>`(nav_msgs/msg/Odometry)`<br>• `/perception/aruco_pose`<br>`(geometry_msgs/msg/PoseStamped)` |
+| **ArUco Detector Node** | `aruco_detector_node.py` | Landmark Perception | • Subscribes to raw RGB feed `/camera/color/image_raw` and camera info.<br>• Solves PnP math (`cv2.solvePnP()`) using camera matrix to calculate 3D pose of detected ArUco markers.<br>• Publishes 6-DOF marker coordinates relative to camera frame as absolute landmark correction inputs for RTAB-Map. | • `/perception/aruco_pose`<br>`(geometry_msgs/msg/PoseStamped)` | • `/camera/color/image_raw`<br>`(sensor_msgs/msg/Image)`<br>• `/camera/camera_info`<br>`(sensor_msgs/msg/CameraInfo)` |
+| **Nav2 Costmap 2D Server** | `config/costmap_params.yaml`<br>`launch/costmap.launch.py` | Navigation Costmap | • Creates layered 2D occupancy grid map for path planners.<br>• **Static Layer**: Subscribes to `/map` from RTAB-Map.<br>• **Obstacle Layer**: Subscribes to `/perception/obstacles_only` (rock point clouds/bounding boxes).<br>• **Inflation Layer**: Inflates rock obstacle boundaries with safety cost gradients. | • `/global_costmap/costmap`<br>`(nav_msgs/msg/OccupancyGrid)`<br>• `/local_costmap/costmap`<br>`(nav_msgs/msg/OccupancyGrid)` | • `/map`<br>`(nav_msgs/msg/OccupancyGrid)`<br>• `/perception/obstacles_only`<br>`(sensor_msgs/msg/PointCloud2)`<br>• **TF**: `map -> base_link` |
+| **Static Transform Broadcaster** | `launch/static_transforms.launch.py` | TF Infrastructure | • Publishes fixed physical geometric transform offsets between chassis and hardware sensors.<br>• Establishes physical relations between robot center `base_link`, IMU (`imu_link`), camera (`camera_link`), and optical frame (`camera_depth_optical_frame`). | • **TF**: `base_link -> camera_link`<br>• **TF**: `base_link -> imu_link`<br>• **TF**: `camera_link -> camera_depth_optical_frame` | • None *(Broadcaster to `/tf_static`)* |
+| **Perception Rock / Obstacle Node** | `costmap_test_stub.py` | Perception / Test Stub | • Perception module node (or test stub) that processes vision point clouds / stereo images to detect terrain rocks.<br>• Publishes 3D rock obstacle point clouds to feed Nav2 Costmap 2D.<br>• `costmap_test_stub.py` acts as a mock publisher to test costmap inflation. | • `/perception/obstacles_only`<br>`(sensor_msgs/msg/PointCloud2)` | • Raw PointCloud / Depth sensors |
+| **Hardware Drivers** | `realsense2_camera`<br>BNO055 driver<br>Wheel Serial Driver | Hardware Layer | • Hardware interface nodes communicating with microcontrollers, IMU chip, and RealSense USB camera.<br>• Converts physical motor tick counts, IMU registers, and camera sensor frames into standard ROS 2 topics. | • `/wheel/ticks`<br>`(nav_msgs/msg/Odometry)`<br>• `/imu/data`<br>`(sensor_msgs/msg/Imu)`<br>• `/camera/color/image_raw`<br>`(sensor_msgs/msg/Image)`<br>• `/camera/depth/image_rect_raw`<br>`(sensor_msgs/msg/Image)`<br>• `/camera/camera_info`<br>`(sensor_msgs/msg/CameraInfo)` | • Physical Hardware Buses<br>`(USB / I2C / UART / CAN)` |
+
+---
+
+## Coordinate Transform Tree (TF Tree) Hierarchy
+
+```mermaid
+graph LR
+    map["map (Global Frame)"] -->|RTAB-Map SLAM (1-5 Hz Offset)| odom["odom (Local Odometry Frame)"]
+    odom -->|EKF Node (100 Hz Smooth Pose)| base_link["base_link (Rover Center)"]
+    base_link -->|Static Transform| camera_link["camera_link"]
+    base_link -->|Static Transform| imu_link["imu_link"]
+    camera_link -->|Static Transform| optical_frame["camera_depth_optical_frame"]
+```
+
+### Key TF Distinctions:
+1. **`odom -> base_link` (Local Link):** Calculated at 100 Hz by EKF (`robot_localization`). Smooth, high-rate, zero coordinate jumps, used by local path tracking controllers (MPPI).
+2. **`map -> odom` (Global Link):** Calculated at 1–5 Hz by RTAB-Map. Absorbs global drift corrections and visual loop closures without causing sudden position jumps in the local wheel controller.

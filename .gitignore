@@ -7,17 +7,22 @@ Perception/ros dataset/
 # Python cache & virtual environments
 __pycache__/
 *.pyc
+.pytest_cache/
 .venv/
 venv/
 env/
+*.egg-info/
 
-# IDE files
-.vscode/
+# IDE files & local C++ indexer databases
+.vscode/*.db*
+.vscode/*.lock
 .idea/
 *.swp
 *.swo
 
-# Local build artifacts (just in case)
+# ROS 2 Build & Install Artifacts
 build/
 install/
 log/
+.colcon_install_layout
+COLCON_IGNORE

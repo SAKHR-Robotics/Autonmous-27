@@ -1,0 +1,124 @@
+Panels:
+  - Class: rviz_common/Displays
+    Help Height: 78
+    Name: Displays
+    Property Tree Widget:
+      Expanded:
+        - /Global Options1
+        - /TF1
+        - /Global Map1
+        - /Global Costmap1
+        - /Obstacle Points1
+      Splitter Ratio: 0.5
+    Tree Height: 549
+  - Class: rviz_common/Selection
+    Name: Selection
+  - Class: rviz_common/Tool Properties
+    Name: Tool Properties
+  - Class: rviz_common/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Value: true
+      Cell Size: 1
+      Color: 160; 160; 164
+      Line Style:
+        Line Width: 0.03
+        Value: Lines
+      Plane: XY
+      Plane Cell Count: 40
+      Reference Frame: <Fixed Frame>
+    - Class: rviz_default_plugins/RobotModel
+      Name: Robot Model
+      Description Topic:
+        Value: /robot_description
+      Enabled: true
+      Value: true
+    - Class: rviz_default_plugins/TF
+      Name: TF
+      Enabled: true
+      Show Axes: true
+      Show Arrows: true
+      Marker Scale: 0.8
+      Update Interval: 0
+      Value: true
+    - Class: rviz_default_plugins/Map
+      Name: Global Map (RTAB-Map)
+      Enabled: true
+      Topic:
+        Value: /map
+      Color Scheme: map
+      Value: true
+    - Class: rviz_default_plugins/Map
+      Name: Global Costmap
+      Enabled: true
+      Topic:
+        Value: /global_costmap/costmap
+      Color Scheme: costmap
+      Value: true
+    - Class: rviz_default_plugins/Odometry
+      Name: Filtered Odometry (EKF)
+      Enabled: true
+      Topic:
+        Value: /odometry/filtered
+      Keep: 100
+      Color: 0; 255; 0
+      Shape:
+        Axes Length: 0.3
+        Axes Radius: 0.03
+        Head Length: 0.1
+        Head Radius: 0.05
+        Shaft Length: 0.2
+        Shaft Radius: 0.02
+        Value: Axes
+      Value: true
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Obstacle Points (Perception)
+      Enabled: true
+      Topic:
+        Value: /perception/obstacles_only
+      Color: 255; 50; 50
+      Color Transformer: FlatColor
+      Size (m): 0.08
+      Style: Flat Squares
+      Value: true
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Camera Depth Cloud
+      Enabled: false
+      Topic:
+        Value: /camera/depth/color/points
+      Color Transformer: AxisColor
+      Size (m): 0.03
+      Style: Points
+      Value: false
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: odom
+    Frame Rate: 30
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/SetInitialPose
+      Topic:
+        Value: /initialpose
+    - Class: rviz_default_plugins/SetGoal
+      Topic:
+        Value: /goal_pose
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 10.0
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0
+      Name: Orbit
+      Pitch: 0.785
+      Yaw: 0.785
+Window Geometry:
+  Height: 850
+  Width: 1300

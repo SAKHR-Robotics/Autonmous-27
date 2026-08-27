@@ -19,6 +19,8 @@ class CostmapTestStubNode(Node):
     def __init__(self):
         super().__init__('costmap_test_stub')
 
+        if not self.has_parameter('use_sim_time'):
+            self.declare_parameter('use_sim_time', False)
         self.declare_parameter('publish_rate', 5.0)       # Hz
         self.declare_parameter('frame_id', 'base_link')    # Target coordinate frame
         self.declare_parameter('num_rocks', 3)
