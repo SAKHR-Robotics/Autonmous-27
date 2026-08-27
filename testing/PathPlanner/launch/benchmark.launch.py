@@ -12,6 +12,8 @@ def launch_setup(context, *args, **kwargs):
     config_file = LaunchConfiguration('config').perform(context)
     bench_config_file = LaunchConfiguration('benchmark_config').perform(context)
     scenario_id = LaunchConfiguration('scenario_id').perform(context)
+    verify_str = LaunchConfiguration('verify').perform(context).lower()
+    clean_str = LaunchConfiguration('clean').perform(context).lower()
     use_rviz_str = LaunchConfiguration('use_rviz').perform(context).lower()
     
     # Resolve full path to config if it is relative

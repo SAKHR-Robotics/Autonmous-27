@@ -16,7 +16,7 @@
           <diffuse>1 1 1 1</diffuse>
           <pbr>
             <metal>
-              <albedo_map>model://rock_2/meshes/rock_2_diffuse.jpg</albedo_map>
+              <albedo_map>model://rock_2/materials/textures/rock_2_diffuse.jpg</albedo_map>
             </metal>
           </pbr>
         </material>
