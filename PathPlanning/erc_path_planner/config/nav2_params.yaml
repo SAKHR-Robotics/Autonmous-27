@@ -47,6 +47,7 @@ bt_navigator:
 global_costmap:
   global_costmap:
     ros__parameters:
+      always_send_full_costmap: true
       global_frame: map
       robot_base_frame: base_link
 
@@ -64,6 +65,7 @@ global_costmap:
 local_costmap:
   local_costmap:
     ros__parameters:
+      always_send_full_costmap: true
       global_frame: odom
       robot_base_frame: base_link
 
