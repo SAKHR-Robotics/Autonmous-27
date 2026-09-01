@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RViz Testing & Benchmark Guide - Path Planning</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fira+Code:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        :root {
+            --bg-main: #0b0f19;
+            --bg-card: #131b2e;
+            --bg-card-hover: #18233c;
+            --primary: #3b82f6;
+            --primary-glow: rgba(59, 130, 246, 0.25);
+            --accent-green: #10b981;
+            --accent-purple: #8b5cf6;
+            --accent-orange: #f59e0b;
+            --accent-red: #ef4444;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-color: #1e293b;
+            --code-bg: #070a12;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            line-height: 1.7;
+            padding: 2.5rem 1.5rem;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        header {
+            text-align: center;
+            margin-bottom: 3.5rem;
+            padding: 3.5rem 2rem;
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.9));
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            position: relative;
+            overflow: hidden;
+        }
+
+        header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, var(--primary-glow) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .badge-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.4rem 1.2rem;
+            background: rgba(59, 130, 246, 0.15);
+            border: 1px solid var(--primary);
+            border-radius: 50px;
+            color: var(--primary);
+            font-size: 0.85rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 1.2rem;
+        }
+
+        h1 {
+            font-size: 2.8rem;
+            font-weight: 900;
+            margin-bottom: 1rem;
+            background: linear-gradient(to right, #ffffff, #93c5fd, #60a5fa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+
+        header p {
+            color: var(--text-muted);
+            font-size: 1.15rem;
+            max-width: 820px;
+            margin: 0 auto;
+        }
+
+        /* Section Styling */
+        section {
+            margin-bottom: 3.5rem;
+        }
+
+        .section-title {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            font-size: 1.7rem;
+            font-weight: 800;
+            color: var(--text-main);
+            margin-bottom: 1.8rem;
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 0.8rem;
+        }
+
+        .section-title i {
+            color: var(--primary);
+        }
+
+        /* Grid Cards */
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+            gap: 1.8rem;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 2rem;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            background: var(--bg-card-hover);
+            border-color: rgba(59, 130, 246, 0.4);
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.2rem;
+        }
+
+        .card-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+        }
+
+        .icon-blue { background: rgba(59, 130, 246, 0.15); color: var(--primary); }
+        .icon-green { background: rgba(16, 185, 129, 0.15); color: var(--accent-green); }
+        .icon-purple { background: rgba(139, 92, 246, 0.15); color: var(--accent-purple); }
+        .icon-orange { background: rgba(245, 158, 11, 0.15); color: var(--accent-orange); }
+
+        .card-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+        }
+
+        .card p {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            margin-bottom: 1.2rem;
+        }
+
+        /* Code Block */
+        .code-container {
+            background: var(--code-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.2rem;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.9rem;
+            color: #38bdf8;
+            overflow-x: auto;
+            position: relative;
+            margin-bottom: 1rem;
+        }
+
+        .code-container code {
+            display: block;
+            white-space: pre;
+        }
+
+        .code-label {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.8rem;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-family: 'Inter', sans-serif;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 0.1rem 0.6rem;
+            border-radius: 6px;
+        }
+
+        /* Steps */
+        .step-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .step-item {
+            display: flex;
+            gap: 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 1.8rem;
+        }
+
+        .step-number {
+            width: 44px;
+            height: 44px;
+            min-width: 44px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), var(--accent-purple));
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 1.15rem;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+
+        .step-content {
+            flex: 1;
+        }
+
+        .step-content h3 {
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            color: var(--text-main);
+        }
+
+        .step-content p {
+            color: var(--text-muted);
+            margin-bottom: 1rem;
+        }
+
+        /* Tables */
+        .styled-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--bg-card);
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+
+        .styled-table th, .styled-table td {
+            padding: 1.1rem 1.4rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .styled-table th {
+            background: rgba(30, 41, 59, 0.8);
+            color: var(--text-main);
+            font-weight: 700;
+        }
+
+        .styled-table tr:hover {
+            background: var(--bg-card-hover);
+        }
+
+        .styled-table td {
+            color: var(--text-muted);
+        }
+
+        .highlight-text {
+            color: var(--text-main);
+            font-weight: 600;
+        }
+
+        /* Alerts */
+        .alert-box {
+            display: flex;
+            gap: 1.2rem;
+            padding: 1.4rem;
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+            border-left: 4px solid;
+        }
+
+        .alert-info {
+            background: rgba(59, 130, 246, 0.1);
+            border-color: var(--primary);
+            color: #bfdbfe;
+        }
+
+        .alert-warning {
+            background: rgba(245, 158, 11, 0.1);
+            border-color: var(--accent-orange);
+            color: #fde68a;
+        }
+
+        .alert-box i {
+            font-size: 1.4rem;
+            margin-top: 0.2rem;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 2.5rem 0;
+            border-top: 1px solid var(--border-color);
+            color: var(--text-muted);
+            font-size: 0.95rem;
+        }
+
+        @media (max-width: 768px) {
+            h1 { font-size: 2.1rem; }
+            .step-item { flex-direction: column; gap: 1rem; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+
+    <!-- Header -->
+    <header>
+        <div class="badge-tag">
+            <i class="fa-solid fa-flask-vial"></i> Benchmark Testing Suite
+        </div>
+        <h1>RViz Testing & Benchmark Guide</h1>
+        <p>A comprehensive engineering guide for procedural benchmark map generation, closed-loop kinematics simulation (TF & Odometry), and validating Smac Planner and MPPI Controller under edge-case navigation scenarios.</p>
+    </header>
+
+    <!-- Architecture Overview -->
+    <section>
+        <h2 class="section-title"><i class="fa-solid fa-cubes"></i> Testing Suite Architecture</h2>
+        <div class="card-grid">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon icon-blue"><i class="fa-solid fa-map-location-dot"></i></div>
+                    <div class="card-title">1. Benchmark Map Generator</div>
+                </div>
+                <p>A standalone Python script that algorithmically generates standardized obstacle benchmarks with <code>.pgm</code> occupancy grids and <code>.yaml</code> metadata (0.05m/pixel resolution).</p>
+                <div class="code-container">
+                    <code>testing/PathPlanner/scripts/generate_benchmark_maps.py</code>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon icon-green"><i class="fa-solid fa-robot"></i></div>
+                    <div class="card-title">2. Kinematic Mock Base</div>
+                </div>
+                <p>Simulates closed-loop differential/skid-steer kinematics, listens to Nav2 velocity commands (<code>/cmd_vel_nav</code>), and broadcasts transforms (<code>map ➔ odom ➔ base_link</code>) and <code>/odom</code>.</p>
+                <div class="code-container">
+                    <code>testing/PathPlanner/scripts/mock_base.py</code>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon icon-purple"><i class="fa-solid fa-brain"></i></div>
+                    <div class="card-title">3. Nav2 Stack & RViz2</div>
+                </div>
+                <p>Executes <b>Smac Hybrid A*</b> global search and <b>MPPI Controller</b> dynamic trajectory optimization with live costmap inflation layers visualized in RViz2.</p>
+                <div class="code-container">
+                    <code>erc_path_planner/launch/path_planning.launch.py</code>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Step by Step Guide -->
+    <section>
+        <h2 class="section-title"><i class="fa-solid fa-play"></i> Step-by-Step Execution Guide</h2>
+
+        <div class="step-list">
+
+            <!-- Step 0: Generate Maps -->
+            <div class="step-item">
+                <div class="step-number">0</div>
+                <div class="step-content">
+                    <h3>Generate Benchmark Maps (One-time Setup)</h3>
+                    <p>Execute the benchmark generator to create the <code>custom_maps/</code> directory and populate the 3 test scenarios:</p>
+                    <div class="code-container">
+                        <span class="code-label">Terminal</span>
+                        <code>cd /home/khallaf/Autonmous-27_Copy
+python3 testing/PathPlanner/scripts/generate_benchmark_maps.py</code>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 1: Launch Nav2 -->
+            <div class="step-item">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                    <h3>Terminal 1: Launch Nav2 Stack with Target Map</h3>
+                    <p>Specify the desired scenario map (e.g., <code>rock_field.yaml</code>, <code>narrow_corridor.yaml</code>, or <code>dead_end.yaml</code>):</p>
+                    <div class="code-container">
+                        <span class="code-label">Terminal 1</span>
+                        <code>cd /home/khallaf/Autonmous-27_Copy
+source /opt/ros/jazzy/setup.bash && source install/setup.bash
+ros2 launch erc_path_planner path_planning.launch.py map:=/home/khallaf/Autonmous-27_Copy/custom_maps/rock_field.yaml</code>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2: Launch Mock Base -->
+            <div class="step-item">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                    <h3>Terminal 2: Launch the Mock Base Node</h3>
+                    <p>Starts the TF broadcaster and kinematic odometry simulator to close the feedback loop:</p>
+                    <div class="code-container">
+                        <span class="code-label">Terminal 2</span>
+                        <code>cd /home/khallaf/Autonmous-27_Copy
+source /opt/ros/jazzy/setup.bash
+python3 testing/PathPlanner/scripts/mock_base.py</code>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3: Launch RViz2 -->
+            <div class="step-item">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <h3>Terminal 3: Launch RViz2 Visualization</h3>
+                    <p>Opens the preconfigured RViz2 layout with full costmap layers, robot footprint, and trajectory displays:</p>
+                    <div class="code-container">
+                        <span class="code-label">Terminal 3</span>
+                        <code>cd /home/khallaf/Autonmous-27_Copy
+source /opt/ros/jazzy/setup.bash && source install/setup.bash
+ros2 launch erc_path_planner rviz.launch.py</code>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- Scenarios -->
+    <section>
+        <h2 class="section-title"><i class="fa-solid fa-mountain-sun"></i> Standard Benchmark Scenarios</h2>
+
+        <div class="card-grid">
+            <!-- Scenario 1 -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon icon-blue"><i class="fa-solid fa-shapes"></i></div>
+                    <div>
+                        <div class="card-title">1. Rock Field</div>
+                        <span style="color: var(--primary); font-size: 0.85rem; font-weight: 700;">rock_field.yaml</span>
+                    </div>
+                </div>
+                <p><b>Design:</b> 10m &times; 10m bounded arena containing 5 staggered rocks separated by 1.5m &ndash; 2.0m navigable corridors.</p>
+                <p><b>Verification Focus:</b> Tests <b>MPPI Controller</b> dynamic trajectory optimization, smooth obstacle weaving, and optimal path-following without hesitation.</p>
+                <div class="alert-box alert-info">
+                    <i class="fa-solid fa-circle-check"></i>
+                    <div><b>How to Test:</b> Click <code>2D Goal Pose</code> at the opposite end of the field across the obstacles, and observe the rover smoothly slalom between the rocks.</div>
+                </div>
+            </div>
+
+            <!-- Scenario 2 -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon icon-green"><i class="fa-solid fa-door-open"></i></div>
+                    <div>
+                        <div class="card-title">2. Narrow Corridor</div>
+                        <span style="color: var(--accent-green); font-size: 0.85rem; font-weight: 700;">narrow_corridor.yaml</span>
+                    </div>
+                </div>
+                <p><b>Design:</b> A horizontal dividing wall spanning the arena, punctured by a narrow 1.5-meter central gateway.</p>
+                <p><b>Verification Focus:</b> Tests <b>Inflation Layer</b> safety clearance calculations and robot footprint centering to ensure collision-free passage through tight gaps.</p>
+                <div class="alert-box alert-info">
+                    <i class="fa-solid fa-circle-check"></i>
+                    <div><b>How to Test:</b> Place the goal pose on the other side of the wall, and verify the planner maintains equal distance from both door edges.</div>
+                </div>
+            </div>
+
+            <!-- Scenario 3 -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon icon-purple"><i class="fa-solid fa-arrow-rotate-left"></i></div>
+                    <div>
+                        <div class="card-title">3. Dead-End Pocket</div>
+                        <span style="color: var(--accent-purple); font-size: 0.85rem; font-weight: 700;">dead_end.yaml</span>
+                    </div>
+                </div>
+                <p><b>Design:</b> An enclosed U-shaped pocket / cul-de-sac with a single egress opening.</p>
+                <p><b>Verification Focus:</b> Tests <b>Smac Hybrid A*</b> non-holonomic <b>Reeds-Shepp reverse motion</b> when forward turning is geometrically constrained.</p>
+                <div class="alert-box alert-info">
+                    <i class="fa-solid fa-circle-check"></i>
+                    <div><b>How to Test:</b> Use <code>2D Pose Estimate</code> to position the robot inside facing the closed wall, then dispatch a goal outside the pocket.</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- RViz Controls -->
+    <section>
+        <h2 class="section-title"><i class="fa-solid fa-sliders"></i> RViz2 Interactive Controls Reference</h2>
+        <table class="styled-table">
+            <thead>
+                <tr>
+                    <th>Toolbar Tool</th>
+                    <th>Engineering Purpose</th>
+                    <th>Operational Instructions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="highlight-text"><i class="fa-solid fa-location-crosshairs" style="color: var(--accent-green);"></i> 2D Pose Estimate</td>
+                    <td>Reposition / initialize the robot starting pose (<code>/initialpose</code>)</td>
+                    <td>Click anywhere on the map grid and drag to define the heading direction. The mock base snaps to this pose instantly.</td>
+                </tr>
+                <tr>
+                    <td class="highlight-text"><i class="fa-solid fa-bullseye" style="color: var(--accent-red);"></i> 2D Goal Pose / Nav2 Goal</td>
+                    <td>Dispatch a target navigation pose to Nav2</td>
+                    <td>Click on the desired destination and drag to set target heading. The stack plans and commences motion immediately.</td>
+                </tr>
+                <tr>
+                    <td class="highlight-text"><i class="fa-solid fa-eye" style="color: var(--primary);"></i> Costmap Overlays</td>
+                    <td>Visualize inflation clearance halos and obstacle boundaries</td>
+                    <td>Purple/cyan halos represent the decay gradient from obstacle cells, preventing trajectories from violating vehicle clearance.</td>
+                </tr>
+            </tbody>
+        </table>
+    </section>
+
+    <!-- Troubleshooting -->
+    <section>
+        <h2 class="section-title"><i class="fa-solid fa-wrench"></i> Troubleshooting & Best Practices</h2>
+
+        <div class="alert-box alert-warning">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <div>
+                <b>1. Robot is not moving after setting a goal?</b>
+                <p>Verify that Terminal 2 (<code>mock_base.py</code>) is actively running. If it was launched after setting the goal, simply click <code>2D Goal Pose</code> again to dispatch a fresh command.</p>
+            </div>
+        </div>
+
+        <div class="alert-box alert-warning">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <div>
+                <b>2. "No map received" warning on Global Costmap in RViz?</b>
+                <p>Ensure the <code>Durability Policy</code> under <code>Topic</code> is set to <b><code>Transient Local</code></b> (not <code>Volatile</code>). Toggle the display checkbox off and on to force an immediate QoS refresh.</p>
+            </div>
+        </div>
+
+        <div class="alert-box alert-warning">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <div>
+                <b>3. Node startup timeout or lagging processes?</b>
+                <p>Conflicting background ROS nodes may be lingering in memory. Clean all orphan processes with a single command:</p>
+                <div class="code-container" style="margin-top: 0.8rem;">
+                    <code>pkill -9 -f ros2 ; pkill -9 -f rviz ; pkill -9 -f nav2 ; pkill -9 -f mock_base</code>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <p>&copy; 2026 Autonomous-27 | Path Planning Module Benchmark Suite | ERC 2026 Navigation Stack</p>
+    </footer>
+
+</div>
+
+</body>
+</html>
