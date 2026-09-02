@@ -14,15 +14,21 @@ env/
 *.egg-info/
 
 # IDE files & local C++ indexer databases
-.vscode/*.db*
-.vscode/*.lock
+.vscode/
 .idea/
 *.swp
 *.swo
 
-# ROS 2 Build & Install Artifacts
+# ROS 2 & C++ Build & Install Artifacts
 build/
 install/
 log/
 .colcon_install_layout
 COLCON_IGNORE
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.o
+*.so
+*.a
