@@ -21,12 +21,12 @@ echo "Project Root: $PROJECT_ROOT"
 
 # Step 1: Detect and Source ROS 2 Distro
 if [ -z "$ROS_DISTRO" ]; then
-    if [ -f "/opt/ros/jazzy/setup.bash" ]; then
-        echo "[INFO] Sourcing ROS 2 Jazzy..."
-        source /opt/ros/jazzy/setup.bash
-    elif [ -f "/opt/ros/humble/setup.bash" ]; then
+    if [ -f "/opt/ros/humble/setup.bash" ]; then
         echo "[INFO] Sourcing ROS 2 Humble..."
         source /opt/ros/humble/setup.bash
+    elif [ -f "/opt/ros/jazzy/setup.bash" ]; then
+        echo "[INFO] Sourcing ROS 2 Jazzy..."
+        source /opt/ros/jazzy/setup.bash
     else
         echo "[WARN] No standard /opt/ros/{humble,jazzy} found. Relying on active shell environment."
     fi

@@ -65,17 +65,7 @@ def launch_setup(context, *args, **kwargs):
         pkg_share,
         os.path.join(pkg_share, 'worlds'),
         os.path.join(pkg_share, '..'),  # to resolve package://my_robot_description
-        '/home/saif/Desktop/ROAR/rock_generator',
-        '/home/saif/Desktop/ROAR/rock_generator/rocks_ws',
     ]
-
-    try:
-        from ament_index_python.packages import get_package_share_directory
-        pkg_marsyard = get_package_share_directory('marsyard')
-        resource_paths.append(os.path.join(pkg_marsyard, 'models'))
-        resource_paths.append(pkg_marsyard)
-    except Exception:
-        pass
 
     try:
         from ament_index_python.packages import get_package_share_directory
@@ -90,11 +80,11 @@ def launch_setup(context, *args, **kwargs):
         print(f"[gazebo.launch] Share paths resolution: {e}")
     
     # Also add source tree models path as fallback
-    src_models = '/home/saif/Desktop/MESEKET/Autonmous-27/Autonmous_Ws/worlds/models'
-    if os.path.exists(src_models):
-        resource_paths.append(src_models)
-        resource_paths.append(os.path.join(src_models, 'rocks'))
-        resource_paths.append(os.path.join(src_models, 'aruco'))
+    workspace_models = os.path.abspath(os.path.join(pkg_share, '..', '..', 'worlds', 'models'))
+    if os.path.exists(workspace_models):
+        resource_paths.append(workspace_models)
+        resource_paths.append(os.path.join(workspace_models, 'rocks'))
+        resource_paths.append(os.path.join(workspace_models, 'aruco'))
 
     ign_existing = os.environ.get('IGN_GAZEBO_RESOURCE_PATH', '')
     gz_existing = os.environ.get('GZ_SIM_RESOURCE_PATH', '')
@@ -165,12 +155,15 @@ def launch_setup(context, *args, **kwargs):
             '/cmd_vel@geometry_msgs/msg/Twist@gz.msgs.Twist',
             '/odom@nav_msgs/msg/Odometry@gz.msgs.Odometry',
             '/imu/data@sensor_msgs/msg/Imu@gz.msgs.IMU',
+            '/joint_states@sensor_msgs/msg/JointState[gz.msgs.Model',
+            f'/world/{world_name}/model/my_robot/joint_state@sensor_msgs/msg/JointState[gz.msgs.Model',
             f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/image@sensor_msgs/msg/Image[gz.msgs.Image',
             f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
             f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/depth_image@sensor_msgs/msg/Image[gz.msgs.Image',
             f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked',
         ],
         remappings=[
+            (f'/world/{world_name}/model/my_robot/joint_state', '/joint_states'),
             (f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/image', '/camera/image_raw'),
             (f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/camera_info', '/camera/camera_info'),
             (f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/depth_image', '/camera/depth/image_raw'),

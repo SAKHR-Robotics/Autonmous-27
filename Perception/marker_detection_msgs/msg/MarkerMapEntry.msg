@@ -1,0 +1,9 @@
+int32 id
+geometry_msgs/Pose pose
+float32 confidence
+uint32 observation_count
+uint32 accepted_observations
+uint32 rejected_observations
+string state
+builtin_interfaces/Time last_seen
+float64[9] position_covariance
