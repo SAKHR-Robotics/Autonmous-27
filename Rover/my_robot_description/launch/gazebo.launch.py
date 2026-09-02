@@ -178,11 +178,23 @@ def launch_setup(context, *args, **kwargs):
         ],
         output='screen'
     )
+
+    # Static transform publisher to bridge camera_link to Gazebo's camera sensor frame
+    camera_tf_node = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='camera_optical_bridge',
+        arguments=['0', '0', '0', '0', '0', '0', 'camera_link', 'my_robot/camera_link/camera'],
+        parameters=[{'use_sim_time': True}],
+        output='screen'
+    )
+
     return [
         gazebo,
         robot_state_publisher_node,
         spawn_entity,
-        bridge
+        bridge,
+        camera_tf_node
     ]
 
 
