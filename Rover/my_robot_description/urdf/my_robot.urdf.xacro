@@ -96,13 +96,12 @@
     <!-- Empty link - just a reference frame -->
   </link>
 
-  <!-- Joint connecting footprint to base_link -->
-  <!-- Z offset calculated to place base above ground with wheels touching -->
+  <!-- Joint connecting base_link to footprint (ground reference) -->
   <joint name="base_footprint_joint" type="fixed">
-    <parent link="${base_footprint_name}"/>
-    <child link="${base_link_name}"/>
-    <!-- Height = base_height/2 + arm_height + wheel_radius -->
-    <origin xyz="0 0 ${base_height/2 + arm_height + wheel_radius}" rpy="0 0 0"/>
+    <parent link="${base_link_name}"/>
+    <child link="${base_footprint_name}"/>
+    <!-- Ground level below base_link center -->
+    <origin xyz="0 0 ${-(base_height/2 + arm_height + wheel_radius)}" rpy="0 0 0"/>
   </joint>
 
   <!-- ========================================== -->
