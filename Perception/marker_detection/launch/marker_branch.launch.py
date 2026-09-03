@@ -23,6 +23,7 @@ from launch.substitutions import LaunchConfiguration
 def generate_launch_description() -> LaunchDescription:
     share = get_package_share_directory("marker_detection")
 
+    use_sim_time_arg = DeclareLaunchArgument("use_sim_time", default_value="true")
     rgb_topic_arg = DeclareLaunchArgument("rgb_topic", default_value="/camera/image_raw")
     depth_topic_arg = DeclareLaunchArgument(
         "depth_topic", default_value="/camera/depth/image_raw")
@@ -32,21 +33,25 @@ def generate_launch_description() -> LaunchDescription:
     detection = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(share, "launch", "marker_detection.launch.py")),
         launch_arguments={
+            "use_sim_time": LaunchConfiguration("use_sim_time"),
             "rgb_topic": LaunchConfiguration("rgb_topic"),
             "depth_topic": LaunchConfiguration("depth_topic"),
             "camera_info_topic": LaunchConfiguration("camera_info_topic"),
         }.items())
 
     marker_tf = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(os.path.join(share, "launch", "marker_tf.launch.py")))
+        PythonLaunchDescriptionSource(os.path.join(share, "launch", "marker_tf.launch.py")),
+        launch_arguments={"use_sim_time": LaunchConfiguration("use_sim_time")}.items())
 
     marker_mapping = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(os.path.join(share, "launch", "marker_mapping.launch.py")))
+        PythonLaunchDescriptionSource(os.path.join(share, "launch", "marker_mapping.launch.py")),
+        launch_arguments={"use_sim_time": LaunchConfiguration("use_sim_time")}.items())
 
     marker_action_interface = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(os.path.join(share, "launch", "marker_action_interface.launch.py")))
+        PythonLaunchDescriptionSource(os.path.join(share, "launch", "marker_action_interface.launch.py")),
+        launch_arguments={"use_sim_time": LaunchConfiguration("use_sim_time")}.items())
 
     return LaunchDescription([
-        rgb_topic_arg, depth_topic_arg, camera_info_topic_arg,
+        use_sim_time_arg, rgb_topic_arg, depth_topic_arg, camera_info_topic_arg,
         detection, marker_tf, marker_mapping, marker_action_interface,
     ])

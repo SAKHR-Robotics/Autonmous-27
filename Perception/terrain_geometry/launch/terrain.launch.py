@@ -19,6 +19,7 @@ from launch_ros.actions import Node
 
 def generate_launch_description() -> LaunchDescription:
     args = [
+        DeclareLaunchArgument("use_sim_time", default_value="true", description="Use simulation clock if true"),
         DeclareLaunchArgument("input_pointcloud_topic", default_value="/camera/depth/color/points"),
         DeclareLaunchArgument("target_frame", default_value="base_link"),
         DeclareLaunchArgument("tf_timeout_sec", default_value="0.2"),
@@ -94,6 +95,7 @@ def generate_launch_description() -> LaunchDescription:
     ]
 
     param_names = [
+        "use_sim_time",
         "input_pointcloud_topic", "target_frame", "tf_timeout_sec", "input_qos_depth",
         "enable_roi_filter", "roi_min_x", "roi_max_x",
         "roi_min_y", "roi_max_y", "roi_min_z", "roi_max_z",
