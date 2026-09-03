@@ -14,13 +14,13 @@ costmap:
     origin_y: -20.0
     track_unknown_space: true
     always_send_full_costmap: true
-    transform_tolerance: 1.0
+    transform_tolerance: 10.0
     plugins: ["obstacle_layer", "inflation_layer"]
 
     obstacle_layer:
       plugin: "nav2_costmap_2d::ObstacleLayer"
       enabled: true
-      transform_tolerance: 1.0
+      transform_tolerance: 10.0
       observation_sources: rock_obstacles
       rock_obstacles:
         topic: /perception/obstacles_only

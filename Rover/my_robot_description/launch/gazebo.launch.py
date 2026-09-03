@@ -169,13 +169,27 @@ def launch_setup(context, *args, **kwargs):
             f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
             f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/depth_image@sensor_msgs/msg/Image[gz.msgs.Image',
             f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked',
+            f'/world/{world_name}/model/my_robot/joint_state@sensor_msgs/msg/JointState[gz.msgs.Model',
         ],
         remappings=[
             (f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/image', '/camera/image_raw'),
             (f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/camera_info', '/camera/camera_info'),
             (f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/depth_image', '/camera/depth/image_raw'),
             (f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/points', '/camera/depth/color/points'),
+            (f'/world/{world_name}/model/my_robot/joint_state', '/joint_states_gz'),
         ],
+        output='screen'
+    )
+
+    # Joint state publisher to ensure continuous wheel joints are published to TF
+    joint_state_publisher_node = Node(
+        package='joint_state_publisher',
+        executable='joint_state_publisher',
+        name='joint_state_publisher',
+        parameters=[{
+            'use_sim_time': True,
+            'source_list': ['/joint_states_gz']
+        }],
         output='screen'
     )
 
@@ -192,6 +206,7 @@ def launch_setup(context, *args, **kwargs):
     return [
         gazebo,
         robot_state_publisher_node,
+        joint_state_publisher_node,
         spawn_entity,
         bridge,
         camera_tf_node
