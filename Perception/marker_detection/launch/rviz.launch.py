@@ -5,7 +5,7 @@ from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
-def generate_launch_description():
+def generate_launch_description() -> LaunchDescription:
     pkg_share = get_package_share_directory('marker_detection')
     rviz_config = os.path.join(pkg_share, 'rviz', 'marker_detection_view.rviz')
 
