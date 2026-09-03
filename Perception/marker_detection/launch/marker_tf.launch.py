@@ -10,7 +10,8 @@ from launch_ros.actions import Node
 def generate_launch_description() -> LaunchDescription:
     default_params = os.path.join(get_package_share_directory("marker_detection"), "config", "marker_tf.yaml")
     return LaunchDescription([
+        DeclareLaunchArgument("use_sim_time", default_value="true"),
         DeclareLaunchArgument("params_file", default_value=default_params),
         Node(package="marker_detection", executable="marker_tf_broadcaster", name="marker_tf_broadcaster",
-             output="screen", parameters=[LaunchConfiguration("params_file")]),
+             output="screen", parameters=[LaunchConfiguration("params_file"), {"use_sim_time": LaunchConfiguration("use_sim_time")}]),
     ])
