@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SLAM Nodes & Topics Architecture Matrix | ERC Rover</title>
+    
+    <!-- Premium Fonts & Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        :root {
+            --bg-color: #060913;
+            --panel-bg: rgba(13, 20, 38, 0.7);
+            --panel-border: rgba(255, 255, 255, 0.08);
+            --primary: #6366f1; /* Indigo */
+            --primary-glow: rgba(99, 102, 241, 0.2);
+            --accent-teal: #14b8a6; /* Teal */
+            --accent-amber: #f59e0b; /* Amber */
+            --accent-green: #10b981; /* Green */
+            --accent-purple: #a855f7; /* Purple */
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --code-bg: rgba(15, 23, 42, 0.85);
+            --card-radius: 16px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            background-image: radial-gradient(circle at 5% 10%, rgba(99, 102, 241, 0.09) 0%, transparent 40%),
+                              radial-gradient(circle at 95% 90%, rgba(20, 184, 166, 0.09) 0%, transparent 40%);
+            background-attachment: fixed;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 1250px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+            border-bottom: 1px solid var(--panel-border);
+            padding-bottom: 30px;
+        }
+
+        h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2.7rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #ffffff 40%, #818cf8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 15px;
+        }
+
+        .subtitle {
+            font-size: 1.15rem;
+            color: var(--text-muted);
+            font-weight: 300;
+        }
+
+        .badge-container {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .badge {
+            background-color: rgba(99, 102, 241, 0.1);
+            color: #818cf8;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .action-bar {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 25px;
+        }
+
+        .btn-action {
+            background: linear-gradient(135deg, var(--primary) 0%, #4f46e5 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+        }
+
+        .btn-action:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+            background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.05);
+            color: #cbd5e1;
+            border: 1px solid var(--panel-border);
+            box-shadow: none;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .glass-panel {
+            background: var(--panel-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--card-radius);
+            padding: 35px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            margin-bottom: 35px;
+        }
+
+        .search-box {
+            display: flex;
+            align-items: center;
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid var(--panel-border);
+            border-radius: 12px;
+            padding: 12px 20px;
+            margin-bottom: 25px;
+            gap: 12px;
+        }
+
+        .search-box i {
+            color: var(--primary);
+            font-size: 1.1rem;
+        }
+
+        .search-box input {
+            background: transparent;
+            border: none;
+            outline: none;
+            color: white;
+            font-size: 1rem;
+            width: 100%;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .search-box input::placeholder {
+            color: var(--text-muted);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin: 15px 0;
+            font-size: 0.93rem;
+            background: rgba(15, 23, 42, 0.4);
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--panel-border);
+        }
+
+        th {
+            background-color: rgba(30, 41, 59, 0.8);
+            color: #818cf8;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+            font-size: 0.95rem;
+            padding: 16px;
+            text-align: left;
+            border-bottom: 2px solid rgba(99, 102, 241, 0.3);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        td {
+            padding: 16px;
+            border-bottom: 1px solid var(--panel-border);
+            vertical-align: top;
+            line-height: 1.6;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover td {
+            background-color: rgba(99, 102, 241, 0.04);
+        }
+
+        .node-name {
+            font-weight: 700;
+            color: #ffffff;
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.05rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+
+        .node-file {
+            font-family: 'Fira Code', monospace;
+            font-size: 0.78rem;
+            color: var(--accent-teal);
+            background: rgba(20, 184, 166, 0.1);
+            padding: 3px 8px;
+            border-radius: 6px;
+            display: inline-block;
+        }
+
+        .type-tag {
+            display: inline-block;
+            font-size: 0.72rem;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin-top: 6px;
+            text-transform: uppercase;
+        }
+
+        .tag-core { background: rgba(99, 102, 241, 0.2); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.4); }
+        .tag-filter { background: rgba(168, 85, 247, 0.2); color: #d8b4fe; border: 1px solid rgba(168, 85, 247, 0.4); }
+        .tag-vision { background: rgba(20, 184, 166, 0.2); color: #5eead4; border: 1px solid rgba(20, 184, 166, 0.4); }
+        .tag-nav { background: rgba(245, 158, 11, 0.2); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.4); }
+        .tag-hw { background: rgba(148, 163, 184, 0.2); color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.4); }
+
+        .topic-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .topic-item {
+            font-family: 'Fira Code', monospace;
+            font-size: 0.83rem;
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 6px 10px;
+            border-radius: 6px;
+            margin-bottom: 6px;
+            word-break: break-all;
+        }
+
+        .topic-name {
+            color: #38bdf8;
+            font-weight: 500;
+        }
+
+        .topic-msg-type {
+            color: #94a3b8;
+            font-size: 0.75rem;
+            display: block;
+            margin-top: 2px;
+        }
+
+        .tf-frame {
+            color: var(--accent-amber);
+            font-weight: 600;
+        }
+
+        .node-desc {
+            color: #cbd5e1;
+            font-size: 0.92rem;
+        }
+
+        .node-desc ul {
+            margin-left: 18px;
+            margin-top: 6px;
+        }
+
+        .node-desc li {
+            margin-bottom: 4px;
+        }
+
+        .highlight-text {
+            color: #818cf8;
+            font-weight: 600;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 40px;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>SLAM Nodes & Topics Matrix</h1>
+        <p class="subtitle">Complete Node Responsibilities, Publisher/Subscriber Topics, and TF Breakdown (Option B Architecture)</p>
+        <div class="badge-container">
+            <span class="badge"><i class="fa-solid fa-cube"></i> ROS 2 Jazzy</span>
+            <span class="badge"><i class="fa-solid fa-microchip"></i> robot_localization EKF</span>
+            <span class="badge"><i class="fa-solid fa-map"></i> RTAB-Map SLAM</span>
+            <span class="badge"><i class="fa-solid fa-layer-group"></i> Nav2 Costmap 2D</span>
+        </div>
+        <div class="action-bar">
+            <a href="slam_nodes_and_topics.html" download="slam_nodes_and_topics.html" class="btn-action">
+                <i class="fa-solid fa-download"></i> Download HTML File
+            </a>
+            <button onclick="window.print()" class="btn-action btn-secondary">
+                <i class="fa-solid fa-print"></i> Print / Save PDF
+            </button>
+        </div>
+    </header>
+
+    <div class="glass-panel">
+        <div class="search-box">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="text" id="nodeSearch" onkeyup="filterTable()" placeholder="Search node name, topic, or functionality...">
+        </div>
+
+        <table id="nodesTable">
+            <thead>
+                <tr>
+                    <th style="width: 22%;">Node / Component</th>
+                    <th style="width: 32%;">What Should Happen On It (Functionality & Purpose)</th>
+                    <th style="width: 23%;">Publishes</th>
+                    <th style="width: 23%;">Subscribers & TF Topics</th>
+                </tr>
+            </thead>
+            <tbody>
+
+                <!-- NODE 1 -->
+                <tr>
+                    <td>
+                        <div class="node-name"><i class="fa-solid fa-gauge-high"></i> Wheel Odometry Pre-Processor</div>
+                        <div class="node-file">encoder_ticks_to_odom.py</div>
+                        <div><span class="type-tag tag-filter">Pre-Processing</span></div>
+                    </td>
+                    <td>
+                        <div class="node-desc">
+                            <ul>
+                                <li>Reads raw wheel encoder rotation tick counts from rover wheel drive encoders.</li>
+                                <li>Calculates differential drive linear velocity ($v_x, v_y$) and angular velocity ($\omega_z$) based on rover chassis kinematics.</li>
+                                <li>Outputs raw wheel odometry twist data for slip filtering and EKF state estimation.</li>
+                            </ul>
+                        </div>
+                    </td>
+                    <td>
+                        <ul class="topic-list">
+                            <li class="topic-item">
+                                <span class="topic-name">/wheel/odom_raw</span>
+                                <span class="topic-msg-type">nav_msgs/msg/Odometry</span>
+                            </li>
+                        </ul>
+                    </td>
+                    <td>
+                        <ul class="topic-list">
+                            <li class="topic-item">
+                                <span class="topic-name">/wheel/ticks</span>
+                                <span class="topic-msg-type">Raw Encoders / std_msgs</span>
+                            </li>
+                        </ul>
+                    </td>
+                </tr>
+
+                <!-- NODE 2 -->
+                <tr>
+                    <td>
+                        <div class="node-name"><i class="fa-solid fa-shield-halved"></i> Heuristic Slip Checker</div>
+                        <div class="node-file">heuristic_slip_checker.py</div>
+                        <div><span class="type-tag tag-filter">Pre-Processing Filter</span></div>
+                    </td>
+                    <td>
+                        <div class="node-desc">
+                            <ul>
+                                <li>Detects wheel slippage in loose sand by comparing wheel linear velocity ($V_{wheels}$) vs IMU linear acceleration ($V_{imu}$) and wheel turning rate ($\omega_{wheel}$) vs IMU $Z$-axis gyro ($\omega_{imu}$).</li>
+                                <li><strong>Slip Rule:</strong> Flagged if $|V_{wheels} - V_{imu}| > 0.15\text{ m/s}$ or angular rate disagrees.</li>
+                                <li><strong>Dynamic Covariance Reaction:</strong> Dynamically inflates wheel process noise/covariance on `/wheel/odom_raw`, forcing EKF to ignore slipping wheels and rely on IMU + Visual SLAM.</li>
+                            </ul>
+                        </div>
+                    </td>
+                    <td>
+                        <ul class="topic-list">
+                            <li class="topic-item">
+                                <span class="topic-name">/wheel/odom_raw</span>
+                                <span class="topic-msg-type">nav_msgs/msg/Odometry (Updated Covariance)</span>
+                            </li>
+                        </ul>
+                    </td>
+                    <td>
+                        <ul class="topic-list">
+                            <li class="topic-item">
+                                <span class="topic-name">/wheel/odom_raw</span>
+                                <span class="topic-msg-type">nav_msgs/msg/Odometry</span>
+                            </li>
+                            <li class="topic-item">
+                                <span class="topic-name">/imu/data</span>
+                                <span class="topic-msg-type">sensor_msgs/msg/Imu</span>
+                            </li>
+                        </ul>
+                    </td>
+                </tr>
+
+                <!-- NODE 3 -->
+                <tr>
+                    <td>
+                        <div class="node-name"><i class="fa-solid fa-filter"></i> Depth Post-Processing Filter</div>
+                        <div class="node-file">vision_helper.launch.py</div>
+                        <div><span class="type-tag tag-vision">Vision Filter</span></div>
+                    </td>
+                    <td>
+                        <div class="node-desc">
+                            <ul>
+                                <li>Cleans raw Intel RealSense D435 depth images to fix outdoor IR interference and sunlight holes.</li>
+                                <li><strong>Decimation:</strong> Reduces depth resolution to save Jetson compute.</li>
+                                <li><strong>Spatial Filter:</strong> Edge-preserving smoothing of high-frequency noise spikes.</li>
+                                <li><strong>Temporal Filter:</strong> Averages consecutive frames to eliminate black pixel jitter.</li>
+                                <li><strong>Hole-Filling Filter:</strong> Extrapolates gaps from neighboring pixels.</li>
+                                <li><strong>Max Range Clip:</strong> Truncates depth $> 4.0\text{m}$ to remove noisy far-field data.</li>
+                            </ul>
+                        </div>
+                    </td>
+                    <td>
+                        <ul class="topic-list">
+                            <li class="topic-item">
+                                <span class="topic-name">/camera/depth/filtered</span>
+                                <span class="topic-msg-type">sensor_msgs/msg/Image</span>
+                            </li>
+                        </ul>
+                    </td>
+                    <td>
+                        <ul class="topic-list">
+                            <li class="topic-item">
+                                <span class="topic-name">/camera/depth/image_rect_raw</span>
+                                <span class="topic-msg-type">sensor_msgs/msg/Image</span>
+                            </li>
+                        </ul>
+                    </td>
+                </tr>
+
+                <!-- NODE 4 -->
+                <tr>
+                    <td>
+                        <div class="node-name"><i class="fa-solid fa-brain"></i> EKF Node (robot_localization)</div>
+                        <div class="node-file">config/ekf.yaml & launch/ekf.launch.py</div>
+                        <div><span class="type-tag tag-core">Local State Estimator</span></div>
+                    </td>
+                    <td>
+                        <div class="node-desc">
+                            <ul>
+                                <li>Fuses linear velocity ($X, Y$) from wheel odometry (`/wheel/odom_raw`) and orientation (Roll, Pitch, Yaw) + angular velocity from IMU (`/imu/data`).</li>
+                                <li>Runs at high frequency (<span class="highlight-text">100 Hz</span>) with zero latency and no coordinate jumps.</li>
+                                <li>Provides continuous local state estimation for the MPPI motion controller.</li>
+                                <li>Configured with <code>world_frame: odom</code> and <code>two_d_mode: false</code> for 3D slopes.</li>
+                            </ul>
+                        </div>
+                    </td>
+                    <td>
+                        <ul class="topic-list">
+                            <li class="topic-item">
+                                <span class="topic-name">/odometry/filtered</span>
+                                <span class="topic-msg-type">nav_msgs/msg/Odometry (100 Hz)</span>
+                            </li>
+                            <li class="topic-item">
+                                <span class="topic-name">TF: odom &rarr; base_link</span>
+                                <span class="topic-msg-type">Transform Frame (100 Hz)</span>
+                            </li>
+                        </ul>
+                    </td>
+                    <td>
+                        <ul class="topic-list">
+                            <li class="topic-item">
+                                <span class="topic-name">/wheel/odom_raw</span>
+                                <span class="topic-msg-type">nav_msgs/msg/Odometry</span>
+                            </li>
+                            <li class="topic-item">
+                                <span class="topic-name">/imu/data</span>
+                                <span class="topic-msg-type">sensor_msgs/msg/Imu</span>
+                            </li>
+                        </ul>
+                    </td>
+                </tr>
+
+                <!-- NODE 5 -->
+                <tr>
+                    <td>
+                        <div class="node-name"><i class="fa-solid fa-map-location-dot"></i> RTAB-Map Visual SLAM</div>
+                        <div class="node-file">config/rtabmap.yaml & rtabmap.launch.py</div>
+                        <div><span class="type-tag tag-core">Global SLAM Backend</span></div>
+                    </td>
+                    <td>
+                        <div class="node-desc">
+                            <ul>
+                                <li>Extracts visual features (FAST/GFTT) from RGB & filtered depth streams to build visual 3D memory map.</li>
+                                <li>Performs loop-closure detection and integrates 6-DOF ArUco landmark poses (`/perception/aruco_pose`) as global constraints.</li>
+                                <li>Calculates global drift offset between real world map frame and local odometry frame.</li>
+                                <li>Broadcasts global transform correction <span class="highlight-text">map &rarr; odom</span> (1–5 Hz) without jerking local wheel control loops.</li>
+                            </ul>
+                        </div>
+                    </td>
+                    <td>
+                        <ul class="topic-list">
+                            <li class="topic-item">
+                                <span class="topic-name">/map</span>
+                                <span class="topic-msg-type">nav_msgs/msg/OccupancyGrid</span>
+                            </li>
+                            <li class="topic-item">
+                                <span class="topic-name">TF: map &rarr; odom</span>
+                                <span class="topic-msg-type">Transform Frame (1–5 Hz)</span>
+                            </li>
+                            <li class="topic-item">
+                                <span class="topic-name">/rtabmap/grid_map</span>
+                                <span class="topic-msg-type">nav_msgs/msg/OccupancyGrid</span>
+                            </li>
+                        </ul>
+                    </td>
+                    <td>
+                        <ul class="topic-list">
+                            <li class="topic-item">
+                                <span class="topic-name">/camera/color/image_raw</span>
+                                <span class="topic-msg-type">sensor_msgs/msg/Image</span>
+                            </li>
+                            <li class="topic-item">
+                                <span class="topic-name">/camera/depth/filtered</span>
+                                <span class="topic-msg-type">sensor_msgs/msg/Image</span>
+                            </li>
+                            <li class="topic-item">
+                                <span class="topic-name">/odometry/filtered</span>
+                                <span class="topic-msg-type">nav_msgs/msg/Odometry</span>
+                            </li>
+                            <li class="topic-item">
+                                <span class="topic-name">/perception/aruco_pose</span>
+                                <span class="topic-msg-type">geometry_msgs/msg/PoseStamped</span>
+                            </li>
+                        </ul>
+                    </td>
+                </tr>
+
+                <!-- NODE 6 -->
+                <tr>
+                    <td>
+                        <div class="node-name"><i class="fa-solid fa-qrcode"></i> ArUco Detector Node</div>
+                        <div class="node-file">aruco_detector_node.py</div>
+                        <div><span class="type-tag tag-vision">Landmark Perception</span></div>
+                    </td>
+                    <td>
+                        <div class="node-desc">
+                            <ul>
+                                <li>Processes raw camera color stream `/camera/color/image_raw` using OpenCV (`cv2.aruco.detectMarkers()`).</li>
+                                <li>Solves Perspective-n-Point math (`cv2.solvePnP()`) using camera calibration matrix to compute exact 3D pose of detected markers.</li>
+                                <li>Publishes 6-DOF marker coordinates relative to camera frame as absolute landmark correction inputs for RTAB-Map.</li>
+                            </ul>
+                        </div>
+                    </td>
+                    <td>
+                        <ul class="topic-list">
+                            <li class="topic-item">
+                                <span class="topic-name">/perception/aruco_pose</span>
+                                <span class="topic-msg-type">geometry_msgs/msg/PoseStamped</span>
+                            </li>
+                        </ul>
+                    </td>
+                    <td>
+                        <ul class="topic-list">
+                            <li class="topic-item">
+                                <span class="topic-name">/camera/color/image_raw</span>
+                                <span class="topic-msg-type">sensor_msgs/msg/Image</span>
+                            </li>
+                            <li class="topic-item">
+                                <span class="topic-name">/camera/camera_info</span>
+                                <span class="topic-msg-type">sensor_msgs/msg/CameraInfo</span>
+                            </li>
+                        </ul>
+                    </td>
+                </tr>
+
+                <!-- NODE 7 -->
+                <tr>
+                    <td>
+                        <div class="node-name"><i class="fa-solid fa-border-all"></i> Nav2 Costmap 2D Server</div>
+                        <div class="node-file">config/costmap_params.yaml & costmap.launch.py</div>
+                        <div><span class="type-tag tag-nav">Navigation Costmap</span></div>
+                    </td>
+                    <td>
+                        <div class="node-desc">
+                            <ul>
+                                <li>Creates layered 2D occupancy grid map for global and local path planning.</li>
+                                <li><strong>Static Layer:</strong> Subscribes to static SLAM map `/map` from RTAB-Map.</li>
+                                <li><strong>Obstacle Layer:</strong> Subscribes to `/perception/obstacles_only` (rock point clouds/bounding boxes).</li>
+                                <li><strong>Inflation Layer:</strong> Inflates rock obstacle boundaries with safety cost gradients according to rover footprint size.</li>
+                            </ul>
+                        </div>
+                    </td>
+                    <td>
+                        <ul class="topic-list">
+                            <li class="topic-item">
+                                <span class="topic-name">/global_costmap/costmap</span>
+                                <span class="topic-msg-type">nav_msgs/msg/OccupancyGrid</span>
+                            </li>
+                            <li class="topic-item">
+                                <span class="topic-name">/local_costmap/costmap</span>
+                                <span class="topic-msg-type">nav_msgs/msg/OccupancyGrid</span>
+                            </li>
+                        </ul>
+                    </td>
+                    <td>
+                        <ul class="topic-list">
+                            <li class="topic-item">
+                                <span class="topic-name">/map</span>
+                                <span class="topic-msg-type">nav_msgs/msg/OccupancyGrid</span>
+                            </li>
+                            <li class="topic-item">
+                                <span class="topic-name">/perception/obstacles_only</span>
+                                <span class="topic-msg-type">sensor_msgs/msg/PointCloud2</span>
+                            </li>
+                            <li class="topic-item">
+                                <span class="topic-name">TF: map &rarr; base_link</span>
+                                <span class="topic-msg-type">Full TF Chain Lookup</span>
+                            </li>
+                        </ul>
+                    </td>
+                </tr>
+
+                <!-- NODE 8 -->
+                <tr>
+                    <td>
+                        <div class="node-name"><i class="fa-solid fa-diagram-project"></i> Static Transform Broadcaster</div>
+                        <div class="node-file">launch/static_transforms.launch.py</div>
+                        <div><span class="type-tag tag-hw">TF Infrastructure</span></div>
+                    </td>
+                    <td>
+                        <div class="node-desc">
+                            <ul>
+                                <li>Publishes fixed physical geometric transform offsets between chassis and hardware sensors.</li>
+                                <li>Establishes accurate physical spatial relations between robot center `base_link`, IMU (`imu_link`), camera (`camera_link`), and optical frame (`camera_depth_optical_frame`).</li>
+                            </ul>
+                        </div>
+                    </td>
+                    <td>
+                        <ul class="topic-list">
+                            <li class="topic-item">
+                                <span class="topic-name">TF: base_link &rarr; camera_link</span>
+                                <span class="topic-msg-type">Static Transform</span>
+                            </li>
+                            <li class="topic-item">
+                                <span class="topic-name">TF: base_link &rarr; imu_link</span>
+                                <span class="topic-msg-type">Static Transform</span>
+                            </li>
+                            <li class="topic-item">
+                                <span class="topic-name">TF: camera_link &rarr; optical_frame</span>
+                                <span class="topic-msg-type">Static Transform</span>
+                            </li>
+                        </ul>
+                    </td>
+                    <td>
+                        <ul class="topic-list">
+                            <li class="topic-item">
+                                <span class="topic-name">None</span>
+                                <span class="topic-msg-type">Broadcaster (Static TF)</span>
+                            </li>
+                        </ul>
+                    </td>
+                </tr>
+
+                <!-- NODE 9 -->
+                <tr>
+                    <td>
+                        <div class="node-name"><i class="fa-solid fa-mountain"></i> Perception Rock / Obstacle Node</div>
+                        <div class="node-file">costmap_test_stub.py (or Perception Module)</div>
+                        <div><span class="type-tag tag-vision">Perception / Test Stub</span></div>
+                    </td>
+                    <td>
+                        <div class="node-desc">
+                            <ul>
+                                <li>Perception module node (or test stub) that processes vision point clouds / stereo images to detect terrain rocks.</li>
+                                <li>Publishes 3D rock obstacle point clouds to feed Nav2 Costmap 2D.</li>
+                                <li><code>costmap_test_stub.py</code> acts as a mock publisher to test costmap inflation without requiring real hardware.</li>
+                            </ul>
+                        </div>
+                    </td>
+                    <td>
+                        <ul class="topic-list">
+                            <li class="topic-item">
+                                <span class="topic-name">/perception/obstacles_only</span>
+                                <span class="topic-msg-type">sensor_msgs/msg/PointCloud2</span>
+                            </li>
+                        </ul>
+                    </td>
+                    <td>
+                        <ul class="topic-list">
+                            <li class="topic-item">
+                                <span class="topic-name">Raw PointCloud / Stereo</span>
+                                <span class="topic-msg-type">sensor_msgs/msg/PointCloud2</span>
+                            </li>
+                        </ul>
+                    </td>
+                </tr>
+
+                <!-- NODE 10 -->
+                <tr>
+                    <td>
+                        <div class="node-name"><i class="fa-solid fa-microchip"></i> Hardware Drivers (Sensors & Motors)</div>
+                        <div class="node-file">realsense2_camera, BNO055 driver, Wheel Serial Driver</div>
+                        <div><span class="type-tag tag-hw">Hardware Layer</span></div>
+                    </td>
+                    <td>
+                        <div class="node-desc">
+                            <ul>
+                                <li>Hardware interface nodes communicating with microcontrollers, IMU chip, and RealSense USB camera.</li>
+                                <li>Converts physical motor tick counts, IMU registers, and camera sensor frames into standard ROS 2 topics.</li>
+                            </ul>
+                        </div>
+                    </td>
+                    <td>
+                        <ul class="topic-list">
+                            <li class="topic-item">
+                                <span class="topic-name">/wheel/ticks</span>
+                                <span class="topic-msg-type">nav_msgs/msg/Odometry</span>
+                            </li>
+                            <li class="topic-item">
+                                <span class="topic-name">/imu/data</span>
+                                <span class="topic-msg-type">sensor_msgs/msg/Imu</span>
+                            </li>
+                            <li class="topic-item">
+                                <span class="topic-name">/camera/color/image_raw</span>
+                                <span class="topic-msg-type">sensor_msgs/msg/Image</span>
+                            </li>
+                            <li class="topic-item">
+                                <span class="topic-name">/camera/depth/image_rect_raw</span>
+                                <span class="topic-msg-type">sensor_msgs/msg/Image</span>
+                            </li>
+                            <li class="topic-item">
+                                <span class="topic-name">/camera/camera_info</span>
+                                <span class="topic-msg-type">sensor_msgs/msg/CameraInfo</span>
+                            </li>
+                        </ul>
+                    </td>
+                    <td>
+                        <ul class="topic-list">
+                            <li class="topic-item">
+                                <span class="topic-name">Physical Hardware Buses</span>
+                                <span class="topic-msg-type">USB / I2C / UART / CAN</span>
+                            </li>
+                        </ul>
+                    </td>
+                </tr>
+
+            </tbody>
+        </table>
+    </div>
+
+    <footer>
+        <p>ERC Rover SLAM System Documentation | Generated from <code>saif SLAM.html</code> & <code>SlamAIWorkingGuide.html</code></p>
+    </footer>
+</div>
+
+<script>
+    function filterTable() {
+        var input = document.getElementById("nodeSearch");
+        var filter = input.value.toLowerCase();
+        var table = document.getElementById("nodesTable");
+        var tr = table.getElementsByTagName("tr");
+
+        for (var i = 1; i < tr.length; i++) {
+            var text = tr[i].textContent || tr[i].innerText;
+            if (text.toLowerCase().indexOf(filter) > -1) {
+                tr[i].style.display = "";
+            } else {
+                tr[i].style.display = "none";
+            }
+        }
+    }
+</script>
+
+</body>
+</html>
