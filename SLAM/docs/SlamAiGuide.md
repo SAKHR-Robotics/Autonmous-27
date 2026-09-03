@@ -152,7 +152,7 @@ Use these explicit checkpoints to verify each milestone before merging code:
   ros2 topic echo /global_costmap/costmap
   ```
 * **Expected Output:** RTAB-Map publishes `map -> odom` TF frame and static `/map` grid. Costmap 2D server fuses `/map` + test obstacle point cloud and outputs inflated `/global_costmap/costmap`.
-* **Status:** `[ ] Pending`
+* **Status:** `[✓] Completed & Verified`
 
 ### 🚩 Checkpoint 5: Master System Bringup & Rosbag Benchmark (After 6.1, 6.2 & 7.1)
 * **Trigger:** Completed Master bringup (`slam_bringup.launch.py`).
