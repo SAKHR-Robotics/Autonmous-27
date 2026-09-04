@@ -218,3 +218,12 @@ ros2 launch erc_path_planner rviz.launch.py
 # Terminal 3: Run Costmap Perception Bridge (if testing standalone)
 ros2 run erc_path_planner costmap_bridge_node
 ```
+
+---
+
+## 🧪 8. Standalone Testing & Benchmarking Suite
+
+For standalone closed-loop testing, mock simulation, and automated multi-scenario benchmark evaluation without Gazebo or hardware:
+* See the testing package at [`testing/PathPlanner/`](file:///e:/meseket/Autonmous-27/testing/PathPlanner/README.md).
+* See the detailed integration and GitHub tasks document at [`PathPlanner_doc.md`](file:///e:/meseket/Autonmous-27/PathPlanning/PathPlanner_doc.md).
+
