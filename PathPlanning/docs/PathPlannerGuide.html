@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="ERC 2026 Path Planning Module - Comprehensive Navigation Stack Guide">
+    <title>ERC 2026 Path Planning Guide</title>
+    <!-- Google Fonts: Inter and Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Mermaid for Flowcharts -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script>
+        mermaid.initialize({ 
+            startOnLoad: true, 
+            theme: 'dark',
+            themeVariables: {
+                primaryColor: '#0f172a',
+                primaryTextColor: '#f8fafc',
+                primaryBorderColor: '#0ea5e9',
+                lineColor: '#cbd5e1',
+                secondaryColor: '#1e293b',
+                tertiaryColor: '#14b8a6'
+            }
+        });
+    </script>
+
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --text-color: #f8fafc;
+            --heading-color: #38bdf8;
+            --accent-color: #0ea5e9;
+            --accent-teal: #14b8a6;
+            --card-bg: #1e293b;
+            --border-color: #334155;
+            --code-bg: #0b1120;
+            --success-color: #10b981;
+            --error-color: #ef4444;
+            --panel-bg: rgba(30, 41, 59, 0.65);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.7;
+            padding: 2rem;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            max-width: 900px;
+            width: 100%;
+            background-color: var(--card-bg);
+            padding: 3rem;
+            border-radius: 16px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+            border: 1px solid var(--border-color);
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 3rem;
+            padding-bottom: 2rem;
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        h1, h2, h3 {
+            font-family: 'Outfit', sans-serif;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            color: var(--heading-color);
+            margin-bottom: 1rem;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #ffffff 40%, #818cf8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            font-size: 1.1rem;
+            color: #94a3b8;
+            font-weight: 300;
+        }
+
+        .workflow {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.8rem;
+            margin: 2rem 0;
+            font-weight: 600;
+            color: var(--accent-color);
+        }
+
+        .workflow span {
+            background: rgba(14, 165, 233, 0.1);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            border: 1px solid rgba(14, 165, 233, 0.2);
+        }
+
+        h2 {
+            font-size: 1.8rem;
+            color: var(--heading-color);
+            margin: 2.5rem 0 1rem 0;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        h3 {
+            font-size: 1.2rem;
+            color: var(--accent-teal);
+            margin: 1.5rem 0 0.8rem 0;
+        }
+
+        ul {
+            padding-left: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        li, p {
+            margin-bottom: 0.8rem;
+            color: #cbd5e1;
+        }
+
+        .route-card { 
+            background: rgba(15, 23, 42, 0.45); 
+            border: 1px solid var(--border-color); 
+            border-radius: 12px; 
+            padding: 20px; 
+            margin-top: 20px; 
+            margin-bottom: 20px;
+        }
+
+        .highlight-box {
+            background: rgba(14, 165, 233, 0.05);
+            border-left: 4px solid var(--accent-color);
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+        }
+        
+        .highlight-box h4 {
+            color: var(--accent-color);
+            margin-top: 0;
+            margin-bottom: 10px;
+        }
+
+        .code-block {
+            background-color: var(--code-bg);
+            padding: 1.5rem;
+            border-radius: 8px;
+            font-family: 'Courier New', Courier, monospace;
+            overflow-x: auto;
+            border: 1px solid var(--border-color);
+            color: #e2e8f0;
+            margin: 1rem 0;
+            line-height: 1.5;
+        }
+
+        code { 
+            font-family: 'Fira Code', monospace; 
+            background: rgba(0,0,0,0.3); 
+            padding: 2px 6px; 
+            border-radius: 4px; 
+            color: #e2e8f0; 
+        }
+
+        .math-block {
+            background: rgba(255,255,255,0.03);
+            padding: 1rem;
+            border-left: 4px solid var(--accent-color);
+            border-radius: 4px;
+            margin: 1rem 0;
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 2rem 0;
+            background-color: var(--code-bg);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        th, td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        th {
+            background-color: rgba(255,255,255,0.05);
+            color: var(--heading-color);
+            font-weight: 600;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover td {
+            background-color: rgba(255,255,255,0.02);
+        }
+
+        .mermaid {
+            background: rgba(15, 23, 42, 0.6);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            margin: 25px 0;
+            overflow-x: auto;
+        }
+
+        /* Force Mermaid text to be white */
+        .mermaid text, 
+        .mermaid text *, 
+        .mermaid foreignObject, 
+        .mermaid foreignObject * {
+            color: #ffffff !important;
+            fill: #ffffff !important;
+        }
+
+        .conclusion {
+            background: linear-gradient(145deg, rgba(14, 165, 233, 0.1), rgba(15, 23, 42, 0));
+            padding: 2rem;
+            border-radius: 12px;
+            border: 1px solid var(--accent-color);
+            margin-top: 3rem;
+        }
+
+        .conclusion h3 {
+            color: var(--accent-color);
+            margin-top: 0;
+        }
+
+        @media (max-width: 768px) {
+            .container { padding: 1.5rem; }
+            body { padding: 1rem; }
+            h1 { font-size: 2rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1><i class="fa-solid fa-route"></i> ERC 2026 Path Planning Guide</h1>
+            <p class="subtitle">Comprehensive Navigation & Global Planning Architecture for the ERC Rover</p>
+            
+            <div class="workflow">
+                <span>Localization</span> → 
+                <span>Smac Hybrid A*</span> → 
+                <span>MPPI</span> → 
+                <span>Rover Control</span>
+            </div>
+        </header>
+
+        <section>
+            <h2>1. Global Path Planning Overview</h2>
+            <p>The <strong>Global Planner</strong> acts like the GPS navigation routing system. It looks at the overall static global map and calculates the shortest mathematical route from the rover's current position to the destination.</p>
+            
+            <div class="route-card">
+                <h3>How it works conceptually</h3>
+                <ul>
+                    <li>It receives a coordinate destination (Goal Pose).</li>
+                    <li>It reads the <code>/map</code> provided by SLAM.</li>
+                    <li>It runs algorithms like <strong>A* (A-Star)</strong> or <strong>Dijkstra</strong> to draw a continuous line through cells that have a cost of 0 (free space), totally avoiding cells marked as 100 (lethal obstacles).</li>
+                    <li>This is purely a mathematical path; it does not know how to steer the wheels or obey physics.</li>
+                </ul>
+            </div>
+        </section>
+
+        <section>
+            <h2>2. Global Planner: Why Smac Hybrid A*?</h2>
+            <ul>
+                <li>Considers rover kinematic constraints.</li>
+                <li>Produces smooth and feasible paths.</li>
+                <li>Supports turning radius limitations.</li>
+                <li>Works efficiently with costmaps.</li>
+                <li>Officially supported in ROS 2 Nav2.</li>
+            </ul>
+
+            <h3>State Representation & Cost Function</h3>
+            <div class="math-block">
+                A* State &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: (x, y)<br>
+                Hybrid A* State : (x, y, θ)<br><br>
+                f(n) = g(n) + h(n)<br><br>
+                <span style="color: #94a3b8; font-size: 0.9rem;">where g(n) = traveled cost, h(n) = estimated distance to goal.</span>
+            </div>
+
+            <h3>Why is it suitable for ERC?</h3>
+            <ul>
+                <li>Handles rough terrain and generates realistic trajectories.</li>
+                <li>Reduces slipping and rollover risks.</li>
+            </ul>
+        </section>
+
+        <section>
+            <h2>3. Local Planner & Controller: Why MPPI?</h2>
+            <p>In modern ROS 2 Nav2 architecture, the Local Planner and Controller are merged into one. MPPI (Model Predictive Path Integral) continuously generates thousands of short trajectories to follow the global path safely, and simultaneously calculates the motor velocities needed.</p>
+            
+            <h3>Optimization Function</h3>
+            <div class="math-block">
+                J = Goal Error + Obstacle Cost + Path Deviation + Terrain Cost
+            </div>
+
+            <h3>Advantages</h3>
+            <ul>
+                <li>Real-time obstacle avoidance.</li>
+                <li>Smooth, cinematic motion generation.</li>
+                <li>Handles localization errors smoothly.</li>
+                <li>Excellent performance in unknown and rough terrains.</li>
+            </ul>
+        </section>
+
+        <section>
+            <h2>4. Path Planning System Data Flowchart</h2>
+            <p>This flowchart illustrates exactly how the Nav2 stack interfaces with SLAM, Perception, and Low-Level Control.</p>
+            <div class="mermaid">
+graph TD
+    classDef input fill:#1e293b,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    classDef core fill:#1e3a8a,stroke:#60a5fa,stroke-width:2px,color:#f8fafc;
+    classDef output fill:#064e3b,stroke:#34d399,stroke-width:3px,color:#f8fafc;
+
+    subgraph Inputs [External Inputs]
+        GOAL([/goal_pose]):::input
+        MAP([/map]):::input
+        ODOM([/odometry/filtered]):::input
+        TF([TF Tree: map &rarr; odom &rarr; base_link]):::input
+        ROCKS([/perception/obstacles]):::input
+    end
+
+    subgraph Nav2 [ROS 2 Nav2 Stack]
+        COSTMAP[Global & Local Costmaps]:::core
+        SMAC[Smac Hybrid A* Global Planner]:::core
+        MPPI[MPPI Local Planner & Controller]:::core
+    end
+
+    subgraph Outputs [System Outputs]
+        PLAN([/plan]):::output
+        CMD([/cmd_vel]):::output
+        HARDWARE[Rover Motor Drivers]:::output
+    end
+
+    MAP --> COSTMAP
+    ROCKS --> COSTMAP
+    TF --> COSTMAP
+    
+    GOAL --> SMAC
+    COSTMAP --> SMAC
+    SMAC -->|Global Path| PLAN
+    
+    PLAN --> MPPI
+    ODOM --> MPPI
+    COSTMAP --> MPPI
+    
+    MPPI -->|Velocity Commands| CMD
+    CMD --> HARDWARE
+            </div>
+        </section>
+
+        <section>
+            <h2>5. System Inputs, Outputs & Topics</h2>
+            <p>To implement this system, these are the exact ROS 2 topics and coordinate frames required:</p>
+            
+            <h3>Critical Inputs</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Topic / Transform</th>
+                        <th>Type</th>
+                        <th>Source</th>
+                        <th>Role in Path Planning</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>/goal_pose</code></td>
+                        <td><code>geometry_msgs/PoseStamped</code></td>
+                        <td>Mission State Machine</td>
+                        <td>The exact X, Y destination coordinates where the rover needs to drive.</td>
+                    </tr>
+                    <tr>
+                        <td><code>/map</code></td>
+                        <td><code>nav_msgs/OccupancyGrid</code></td>
+                        <td>SLAM (RTAB-Map)</td>
+                        <td>The static global map used by Smac to find long-term obstacle-free routes.</td>
+                    </tr>
+                    <tr>
+                        <td><code>/perception/obstacles_only</code></td>
+                        <td><code>vision_msgs/Detection3DArray</code></td>
+                        <td>Perception (Persistent Memory)</td>
+                        <td>Persistent 3D bounding boxes of rocks converted via Costmap Bridge into PointCloud2 for real-time MPPI avoidance.</td>
+                    </tr>
+                    <tr>
+                        <td><code>/odometry/filtered</code></td>
+                        <td><code>nav_msgs/Odometry</code></td>
+                        <td>SLAM (EKF)</td>
+                        <td>High-speed (100 Hz) local velocity and pose feedback. Required by MPPI to calculate steering physics.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>TF Tree</strong></td>
+                        <td><code>tf2_msgs/TFMessage</code></td>
+                        <td>SLAM (EKF & RTAB)</td>
+                        <td>Transforms: <code>map &rarr; odom &rarr; base_link</code>. Crucial for Nav2 to know where the rover is on the map.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>System Outputs</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Topic</th>
+                        <th>Type</th>
+                        <th>Receiver</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>/plan</code></td>
+                        <td><code>nav_msgs/Path</code></td>
+                        <td>MPPI Controller</td>
+                        <td>The continuous array of coordinates forming the global route (drawn by Smac).</td>
+                    </tr>
+                    <tr>
+                        <td><code>/cmd_vel</code></td>
+                        <td><code>geometry_msgs/Twist</code></td>
+                        <td>Rover Hardware</td>
+                        <td>The final steering and throttle velocities (linear X, angular Z) generated by MPPI to drive the motors.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <section>
+            <h2>6. Implementation & Configuration Brief</h2>
+            <p>Implementing this stack utilizes the official <strong>ROS 2 Nav2</strong> framework. You do not write custom C++ path planners; you strictly configure and tune the Nav2 plugins via parameters.</p>
+            
+            <h3>Step 1: Install Nav2</h3>
+            <div class="code-block">
+sudo apt install ros-humble-navigation2 ros-humble-nav2-bringup
+            </div>
+
+            <h3>Step 2: Configure the Nav2 Parameters (nav2_params.yaml)</h3>
+            <p>You must map the Planner and Controller plugins inside your parameter file:</p>
+            
+            <div class="highlight-box">
+                <h4>Smac Hybrid A* Configuration</h4>
+                <div class="code-block">
+planner_server:
+  ros__parameters:
+    expected_planner_frequency: 1.0
+    planner_plugins: ["GridBased"]
+    GridBased:
+      plugin: "nav2_smac_planner/SmacPlannerHybrid"
+      motion_model_for_search: "REEDS_SHEPP"
+      minimum_turning_radius: 0.8
+      allow_unknown: true
+                </div>
+            </div>
+
+            <div class="highlight-box">
+                <h4>MPPI Controller Configuration</h4>
+                <div class="code-block">
+controller_server:
+  ros__parameters:
+    controller_frequency: 20.0
+    controller_plugins: ["FollowPath"]
+    FollowPath:
+      plugin: "nav2_mppi_controller::MPPIController"
+      time_steps: 56
+      model_dt: 0.05
+      batch_size: 2000
+      vx_std: 0.2
+      vy_std: 0.2
+      wz_std: 0.4
+      vx_max: 0.5
+      wz_max: 1.3
+                </div>
+            </div>
+
+            <h3>Step 3: Launching</h3>
+            <p>Create a ROS 2 launch file that boots the standard Nav2 bringup, pointing to your custom YAML file:</p>
+            <div class="code-block">
+ros2 launch nav2_bringup navigation_launch.py params_file:=/path/to/nav2_params.yaml
+            </div>
+        </section>
+
+        <section>
+            <h2>7. Why This Stack for ERC?</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Requirement</th>
+                        <th>Smac Hybrid A*</th>
+                        <th>MPPI</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Kinematic Feasibility</td>
+                        <td>✅</td>
+                        <td>✅</td>
+                    </tr>
+                    <tr>
+                        <td>Smooth Motion</td>
+                        <td>✅</td>
+                        <td>✅</td>
+                    </tr>
+                    <tr>
+                        <td>Rough Terrain</td>
+                        <td>✅</td>
+                        <td>✅</td>
+                    </tr>
+                    <tr>
+                        <td>Unexpected Obstacles</td>
+                        <td>❌</td>
+                        <td>✅</td>
+                    </tr>
+                    <tr>
+                        <td>ROS 2 Support</td>
+                        <td>✅</td>
+                        <td>✅</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <section>
+            <h2>8. Dynamic Obstacle Avoidance & Replanning Architecture</h2>
+            <p>During the competition, when dynamic obstacles appear on the terrain, Nav2 coordinates local swerving and global replanning through the Behavior Tree:</p>
+            
+            <div class="mermaid">
+            flowchart TD
+                BT["<b>Behavior Tree Navigator</b><br/>(Central Orchestrator)"]
+                GP["<b>Global Planner (Smac Hybrid A*)</b><br/><i>Computes macro route /plan on Global Costmap</i>"]
+                LP["<b>Local Controller (MPPI)</b><br/><i>Evaluates 2,000 rollouts @ 20Hz on Local Costmap</i>"]
+                
+                BT -->|"ComputePathToPose"| GP
+                GP -->|"/plan"| BT
+                BT -->|"FollowPath (/plan)"| LP
+                
+                LP -->|"20Hz Cycle"| EVAL{"Can MPPI swerve safely?"}
+                EVAL -->|"YES"| DRIVE["<b>Output /cmd_vel</b><br/>(Swerve around rock & rejoin plan)"]
+                EVAL -->|"NO (Trapped / Blocked)"| FAIL["<b>Return FAILURE</b><br/>(NO_VALID_TRAJECTORY)"]
+                
+                FAIL -->|"Trigger Immediate Replanning"| BT
+                BT -->|"Compute Detour Path"| GP
+                
+                GP -->|"If Path Blocked Everywhere"| REC["<b>Recovery Behaviors</b><br/>1. Clear Costmap (Remove sensor noise)<br/>2. BackUp 0.8m from Hazard<br/>3. Spin 360° to Scan<br/>4. Retry Plan"]
+            </div>
+
+            <div class="highlight-box" style="margin-top: 1.5rem;">
+                <h4>Coordination Principles</h4>
+                <ul style="margin-top: 0.5rem; margin-bottom: 0;">
+                    <li><strong>MPPI never talks to Global Planner directly</strong>; the Behavior Tree handles state transitions and replanning triggers.</li>
+                    <li><strong>Small Obstacles:</strong> MPPI's <code>ConstraintCritic</code> avoids the rock locally at 20 Hz without interrupting global navigation.</li>
+                    <li><strong>Major Blockages:</strong> When all 2,000 MPPI rollouts fail, BT immediately invokes Smac Planner to compute a fresh detour on the updated global costmap.</li>
+                </ul>
+            </div>
+        </section>
+
+        <div class="conclusion">
+            <h3>Conclusion</h3>
+            <p>By defining Smac Hybrid A* as the Global Planner and merging Local Planning/Control into the MPPI plugin, we achieve a streamlined, high-performance architecture. This setup provides:</p>
+            <ul style="margin-top: 1rem; margin-bottom: 0;">
+                <li>Feasible, smooth trajectories.</li>
+                <li>Robust obstacle avoidance using Costmaps.</li>
+                <li>Direct compatibility with ROS 2 Humble and Jetson Orin Nano.</li>
+                <li>A highly suitable solution for the ERC 2026 Traverse Task.</li>
+            </ul>
+        </div>
+    </div>
+
+</body>
+</html>

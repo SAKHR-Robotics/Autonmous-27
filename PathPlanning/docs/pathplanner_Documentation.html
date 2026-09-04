@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="ERC 2026 Autonomous Rover - Path Planning Module Documentation & Integration Guide">
+    <title>Path Planning Module | Integration & System Documentation</title>
+    
+    <!-- Google Fonts: Inter & Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Mermaid.js for Vector Flowcharts -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script>
+        mermaid.initialize({ 
+            startOnLoad: true, 
+            theme: 'dark',
+            themeVariables: {
+                darkMode: true,
+                background: '#0f172a',
+                primaryColor: '#1e293b',
+                primaryTextColor: '#f8fafc',
+                primaryBorderColor: '#38bdf8',
+                lineColor: '#38bdf8',
+                secondaryColor: '#1e293b',
+                tertiaryColor: '#0f172a',
+                fontFamily: 'Inter, sans-serif'
+            }
+        });
+    </script>
+
+    <style>
+        :root {
+            --bg-body: #0b1120;
+            --bg-card: #131d33;
+            --bg-card-elevated: #1a2744;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-cyan: #38bdf8;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-purple: #a855f7;
+            --accent-amber: #f59e0b;
+            --border-ui: #243454;
+            --border-highlight: #38bdf8;
+            --code-bg: #070d18;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            line-height: 1.65;
+            padding: 2.5rem 1rem;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            max-width: 1000px;
+            width: 100%;
+            background: var(--bg-card);
+            padding: 3.5rem;
+            border-radius: 20px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+            border: 1px solid var(--border-ui);
+        }
+
+        /* Header */
+        header {
+            border-bottom: 2px solid var(--border-ui);
+            padding-bottom: 2rem;
+            margin-bottom: 3rem;
+            text-align: center;
+        }
+
+        .badge-bar {
+            display: flex;
+            justify-content: center;
+            gap: 0.75rem;
+            margin-bottom: 1.25rem;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.35rem 0.9rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+            border-radius: 9999px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .badge-verified {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--accent-green);
+            border: 1px solid rgba(16, 185, 129, 0.4);
+        }
+
+        .badge-ros {
+            background: rgba(56, 189, 248, 0.15);
+            color: var(--accent-cyan);
+            border: 1px solid rgba(56, 189, 248, 0.4);
+        }
+
+        .badge-erc {
+            background: rgba(168, 85, 247, 0.15);
+            color: var(--accent-purple);
+            border: 1px solid rgba(168, 85, 247, 0.4);
+        }
+
+        h1, h2, h3, h4 {
+            font-family: 'Outfit', sans-serif;
+            color: #ffffff;
+        }
+
+        h1 {
+            font-size: 2.75rem;
+            font-weight: 800;
+            line-height: 1.2;
+            background: linear-gradient(135deg, #ffffff 40%, #38bdf8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.75rem;
+        }
+
+        .subtitle {
+            font-size: 1.15rem;
+            color: var(--text-muted);
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        /* Section Headings */
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 1.6rem;
+            margin: 2.5rem 0 1.25rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border-ui);
+        }
+
+        .section-header i {
+            color: var(--accent-cyan);
+            font-size: 1.4rem;
+        }
+
+        /* Cards Grid */
+        .grid-2x2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+            gap: 1.25rem;
+            margin-bottom: 2rem;
+        }
+
+        .card {
+            background: var(--bg-card-elevated);
+            border: 1px solid var(--border-ui);
+            border-radius: 14px;
+            padding: 1.5rem;
+            transition: all 0.25s ease;
+        }
+
+        .card:hover {
+            border-color: var(--accent-cyan);
+            transform: translateY(-2px);
+            box-shadow: 0 12px 24px -10px rgba(56, 189, 248, 0.15);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .card-header i {
+            font-size: 1.2rem;
+            color: var(--accent-cyan);
+        }
+
+        .card-header h3 {
+            font-size: 1.2rem;
+        }
+
+        .card p {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .card ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .card ul li {
+            font-size: 0.9rem;
+            color: #cbd5e1;
+            margin-bottom: 0.4rem;
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+
+        .card ul li i {
+            color: var(--accent-green);
+            font-size: 0.8rem;
+            margin-top: 0.35rem;
+        }
+
+        /* Flowchart Box */
+        .diagram-container {
+            background: #090e18;
+            border: 1px solid var(--border-ui);
+            border-radius: 16px;
+            padding: 2rem;
+            margin: 1.5rem 0 2.5rem;
+            display: flex;
+            justify-content: center;
+            overflow-x: auto;
+        }
+
+        /* Tables */
+        .table-wrap {
+            background: var(--bg-card-elevated);
+            border: 1px solid var(--border-ui);
+            border-radius: 14px;
+            overflow: hidden;
+            margin-bottom: 2rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.92rem;
+        }
+
+        th, td {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border-ui);
+        }
+
+        th {
+            background: #0f182c;
+            color: var(--text-main);
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.015);
+        }
+
+        .code-pill {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            color: #38bdf8;
+            background: rgba(56, 189, 248, 0.1);
+            padding: 0.2rem 0.5rem;
+            border-radius: 6px;
+            border: 1px solid rgba(56, 189, 248, 0.2);
+            display: inline-block;
+        }
+
+        .msg-type {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: #c084fc;
+        }
+
+        .tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            padding: 0.2rem 0.55rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .tag-mission { background: rgba(236, 72, 153, 0.15); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.3); }
+        .tag-slam { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
+        .tag-perception { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+        .tag-control { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+
+        /* Code Block */
+        pre {
+            background: var(--code-bg);
+            border: 1px solid var(--border-ui);
+            border-radius: 10px;
+            padding: 1.25rem;
+            overflow-x: auto;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.88rem;
+            color: #e2e8f0;
+            line-height: 1.5;
+        }
+
+        /* Footer */
+        footer {
+            margin-top: 4rem;
+            padding-top: 2rem;
+            border-top: 1px solid var(--border-ui);
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        
+        <!-- HEADER -->
+        <header>
+            <div class="badge-bar">
+                <span class="badge badge-verified"><i class="fa-solid fa-circle-check"></i> Fully Tested & Verified</span>
+                <span class="badge badge-ros"><i class="fa-solid fa-robot"></i> ROS 2 Jazzy Nav2</span>
+                <span class="badge badge-erc"><i class="fa-solid fa-rocket"></i> ERC 2026</span>
+            </div>
+            <h1>Path Planning Module</h1>
+            <p class="subtitle">System Architecture, Inter-Module Interface Specifications (I/O), and Integration Reference for the Autonomous Rover.</p>
+        </header>
+
+        <!-- 1. COMPLETED COMPONENTS -->
+        <h2 class="section-header"><i class="fa-solid fa-layer-group"></i> 1. Completed & Functional Modules</h2>
+        
+        <div class="grid-2x2">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fa-solid fa-route"></i>
+                    <h3>Smac Hybrid A* Global Planner</h3>
+                </div>
+                <p>Computes kinematically feasible global routes considering turning constraints and footprint.</p>
+                <ul>
+                    <li><i class="fa-solid fa-check"></i> <strong>Plugin:</strong> <code>nav2_smac_planner::SmacPlannerHybrid</code></li>
+                    <li><i class="fa-solid fa-check"></i> <strong>Kinematic Model:</strong> Reeds-Shepp (Forward/Reverse)</li>
+                    <li><i class="fa-solid fa-check"></i> <strong>Min Turn Radius:</strong> 0.8 meters</li>
+                    <li><i class="fa-solid fa-check"></i> <strong>Search Frequency:</strong> 20.0 Hz</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <i class="fa-solid fa-gamepad"></i>
+                    <h3>MPPI Local Controller</h3>
+                </div>
+                <p>High-speed sampling predictive controller generating optimal, collision-free velocity commands.</p>
+                <ul>
+                    <li><i class="fa-solid fa-check"></i> <strong>Plugin:</strong> <code>nav2_mppi_controller::MPPIController</code></li>
+                    <li><i class="fa-solid fa-check"></i> <strong>Batch Size:</strong> 2000 rollouts / 56 time steps</li>
+                    <li><i class="fa-solid fa-check"></i> <strong>Velocity Envelope:</strong> Vx: [-0.5, 1.0] m/s | Wz: 1.0 rad/s</li>
+                    <li><i class="fa-solid fa-check"></i> <strong>Active Critics:</strong> PathAlign, Goal, Constraint, PreferForward</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <i class="fa-solid fa-map"></i>
+                    <h3>Dual-Layer Costmaps</h3>
+                </div>
+                <p>Synchronous global environment mapping alongside dynamic rolling local window.</p>
+                <ul>
+                    <li><i class="fa-solid fa-check"></i> <strong>Global Costmap:</strong> Static Layer + Inflation Layer</li>
+                    <li><i class="fa-solid fa-check"></i> <strong>Local Costmap:</strong> 10x10m Rolling Window (0.05m res)</li>
+                    <li><i class="fa-solid fa-check"></i> <strong>Reliability:</strong> <code>always_send_full_costmap: true</code></li>
+                    <li><i class="fa-solid fa-check"></i> <strong>Obstacles:</strong> Real-time 3D PointCloud2 integration</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <i class="fa-solid fa-bridge"></i>
+                    <h3>Perception Bridge Node</h3>
+                </div>
+                <p>High-efficiency C++ node converting custom camera obstacle arrays into standard point clouds.</p>
+                <ul>
+                    <li><i class="fa-solid fa-check"></i> <strong>Executable:</strong> <code>costmap_bridge_node</code> (C++17)</li>
+                    <li><i class="fa-solid fa-check"></i> <strong>Input Topic:</strong> <code>/terrain/obstacle_features</code></li>
+                    <li><i class="fa-solid fa-check"></i> <strong>Output Topic:</strong> <code>/bridge/pointcloud</code> (PointCloud2)</li>
+                    <li><i class="fa-solid fa-check"></i> <strong>Processing:</strong> Zero-copy centroid parsing</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- 2. ARCHITECTURE FLOWCHART -->
+        <h2 class="section-header"><i class="fa-solid fa-network-wired"></i> 2. System Interconnection Architecture</h2>
+        <p style="color: var(--text-muted); margin-bottom: 1rem;">Dynamic data-flow between Path Planning and external rover subsystems:</p>
+
+        <div class="diagram-container">
+            <pre class="mermaid">
+graph LR
+    subgraph UI ["🕹️ Mission Control & GUI"]
+        Goal["/goal_pose<br/>(geometry_msgs/PoseStamped)"]
+    end
+
+    subgraph SLAM ["🗺️ SLAM & State Estimation"]
+        Map["/map<br/>(OccupancyGrid)"]
+        Odom["/odometry/filtered<br/>(nav_msgs/Odometry)"]
+        TF["TF Tree<br/>(map ➔ odom ➔ base_link)"]
+    end
+
+    subgraph PERCEPTION ["📷 Perception & Vision"]
+        Obs["/terrain/obstacle_features<br/>(ObstacleFeatureArray)"]
+    end
+
+    subgraph PLANNING ["⚡ Path Planning Stack (erc_path_planner)"]
+        Bridge["costmap_bridge_node"]
+        PC["/bridge/pointcloud"]
+        GCost["Global Costmap"]
+        LCost["Local Costmap"]
+        Smac["Smac Hybrid A*<br/>Global Planner"]
+        MPPI["MPPI Controller<br/>Local Planner"]
+
+        Obs --> Bridge --> PC --> LCost
+        Map --> GCost
+        GCost --> Smac
+        LCost --> MPPI
+        Goal --> Smac
+        Smac -- "/plan" --> MPPI
+        Odom --> MPPI
+        TF -.-> GCost
+        TF -.-> LCost
+    end
+
+    subgraph CONTROL ["⚙️ Motor Control & Hardware"]
+        CmdVel["/cmd_vel_nav<br/>(TwistStamped)"]
+        CmdVelOut["/cmd_vel<br/>(TwistStamped)"]
+    end
+
+    subgraph TELEMETRY ["📊 Monitoring & RViz"]
+        PlanViz["/plan (Global Route)"]
+        LocalViz["/local_plan (MPPI Trajectory)"]
+    end
+
+    MPPI --> CmdVel --> CmdVelOut
+    Smac --> PlanViz
+    MPPI --> LocalViz
+
+    style PLANNING fill:#131d33,stroke:#38bdf8,stroke-width:2px;
+    style UI fill:#1e293b,stroke:#ec4899;
+    style SLAM fill:#1e293b,stroke:#3b82f6;
+    style PERCEPTION fill:#1e293b,stroke:#f59e0b;
+    style CONTROL fill:#1e293b,stroke:#10b981;
+    style TELEMETRY fill:#1e293b,stroke:#a855f7;
+            </pre>
+        </div>
+
+        <!-- 3. INPUT SPECIFICATIONS -->
+        <h2 class="section-header"><i class="fa-solid fa-arrow-right-to-bracket"></i> 3. Module Inputs (Required by Path Planning)</h2>
+        <p style="color: var(--text-muted); margin-bottom: 1rem;">These topics must be published by external subsystems for path planning to operate:</p>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Topic Name</th>
+                        <th>Message Type</th>
+                        <th>Frequency / QoS</th>
+                        <th>Source Subsystem</th>
+                        <th>Usage in Path Planning</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><span class="code-pill">/goal_pose</span></td>
+                        <td><span class="msg-type">geometry_msgs/msg/PoseStamped</span></td>
+                        <td>On-Demand (Transient Local)</td>
+                        <td><span class="tag tag-mission"><i class="fa-solid fa-flag"></i> Mission / GUI</span></td>
+                        <td>Target coordinate and destination orientation on the <code>map</code> frame.</td>
+                    </tr>
+                    <tr>
+                        <td><span class="code-pill">/map</span></td>
+                        <td><span class="msg-type">nav_msgs/msg/OccupancyGrid</span></td>
+                        <td>Latched / 1 Hz (Transient Local)</td>
+                        <td><span class="tag tag-slam"><i class="fa-solid fa-map-location-dot"></i> SLAM</span></td>
+                        <td>Global 2D static grid map consumed by the Global Costmap and Smac Planner.</td>
+                    </tr>
+                    <tr>
+                        <td><span class="code-pill">/odometry/filtered</span></td>
+                        <td><span class="msg-type">nav_msgs/msg/Odometry</span></td>
+                        <td>50 - 100 Hz (Reliable)</td>
+                        <td><span class="tag tag-slam"><i class="fa-solid fa-compass"></i> EKF / Encoders</span></td>
+                        <td>Fused vehicle velocity feedback for MPPI trajectory rollout evaluations.</td>
+                    </tr>
+                    <tr>
+                        <td><span class="code-pill">/terrain/obstacle_features</span></td>
+                        <td><span class="msg-type">terrain_geometry_msgs/ObstacleFeatureArray</span></td>
+                        <td>10 - 20 Hz</td>
+                        <td><span class="tag tag-perception"><i class="fa-solid fa-eye"></i> Perception (D435i)</span></td>
+                        <td>Centroids and geometric bounding features of rocks/hazards detected on the terrain.</td>
+                    </tr>
+                    <tr>
+                        <td><span class="code-pill">TF Transforms</span></td>
+                        <td><span class="msg-type">tf2_msgs/msg/TFMessage</span></td>
+                        <td>50 - 100 Hz</td>
+                        <td><span class="tag tag-slam"><i class="fa-solid fa-diagram-project"></i> EKF & State Pub</span></td>
+                        <td>Continuous spatial transform chain: <code>map</code> ➔ <code>odom</code> ➔ <code>base_link</code>.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 4. OUTPUT SPECIFICATIONS -->
+        <h2 class="section-header"><i class="fa-solid fa-arrow-up-from-bracket"></i> 4. Module Outputs (Provided by Path Planning)</h2>
+        <p style="color: var(--text-muted); margin-bottom: 1rem;">These topics are generated by the Path Planning module for downstream consumers:</p>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Topic Name</th>
+                        <th>Message Type</th>
+                        <th>Frequency</th>
+                        <th>Target Subsystem</th>
+                        <th>Description / Usage</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><span class="code-pill">/cmd_vel_nav</span></td>
+                        <td><span class="msg-type">geometry_msgs/msg/TwistStamped</span></td>
+                        <td>20.0 Hz</td>
+                        <td><span class="tag tag-control"><i class="fa-solid fa-gears"></i> Motor Controllers</span></td>
+                        <td>Raw linear and angular velocity commands computed by the MPPI controller.</td>
+                    </tr>
+                    <tr>
+                        <td><span class="code-pill">/cmd_vel</span></td>
+                        <td><span class="msg-type">geometry_msgs/msg/TwistStamped</span></td>
+                        <td>20.0 Hz</td>
+                        <td><span class="tag tag-control"><i class="fa-solid fa-microchip"></i> Hardware Interface</span></td>
+                        <td>Final velocity stream validated through collision monitor safety checks.</td>
+                    </tr>
+                    <tr>
+                        <td><span class="code-pill">/plan</span></td>
+                        <td><span class="msg-type">nav_msgs/msg/Path</span></td>
+                        <td>On Planning / Replanning</td>
+                        <td><span class="tag tag-mission"><i class="fa-solid fa-desktop"></i> Telemetry / UI</span></td>
+                        <td>Complete global path calculated by Smac Hybrid A* to reach the goal.</td>
+                    </tr>
+                    <tr>
+                        <td><span class="code-pill">/local_plan</span></td>
+                        <td><span class="msg-type">nav_msgs/msg/Path</span></td>
+                        <td>20.0 Hz</td>
+                        <td><span class="tag tag-mission"><i class="fa-solid fa-desktop"></i> Telemetry / UI</span></td>
+                        <td>Optimal local trajectory currently being tracked by the MPPI controller.</td>
+                    </tr>
+                    <tr>
+                        <td><span class="code-pill">/bridge/pointcloud</span></td>
+                        <td><span class="msg-type">sensor_msgs/msg/PointCloud2</span></td>
+                        <td>10 - 20 Hz</td>
+                        <td><span class="tag tag-mission"><i class="fa-solid fa-cube"></i> Costmap / RViz</span></td>
+                        <td>Transformed obstacle pointcloud generated by <code>costmap_bridge_node</code>.</td>
+                    </tr>
+                    <tr>
+                        <td><span class="code-pill">/global_costmap/costmap</span></td>
+                        <td><span class="msg-type">nav_msgs/msg/OccupancyGrid</span></td>
+                        <td>1.0 Hz</td>
+                        <td><span class="tag tag-mission"><i class="fa-solid fa-chart-area"></i> Monitoring</span></td>
+                        <td>Full 2D inflated global obstacle costmap.</td>
+                    </tr>
+                    <tr>
+                        <td><span class="code-pill">/local_costmap/costmap</span></td>
+                        <td><span class="msg-type">nav_msgs/msg/OccupancyGrid</span></td>
+                        <td>5.0 Hz</td>
+                        <td><span class="tag tag-mission"><i class="fa-solid fa-chart-area"></i> Monitoring</span></td>
+                        <td>Rolling local obstacle costmap with live perception hazard inflation.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 5. QUICKSTART COMMANDS -->
+        <h2 class="section-header"><i class="fa-solid fa-terminal"></i> 5. Execution Reference</h2>
+        
+        <p style="color: var(--text-muted); margin-bottom: 0.5rem;"><strong>Standalone Testing (With Lightweight Mock Base):</strong></p>
+        <pre><code># Terminal 1: Launch Nav2 Path Planning Stack
+ros2 launch erc_path_planner path_planning.launch.py
+
+# Terminal 2: Launch RViz2
+ros2 launch erc_path_planner rviz.launch.py
+
+# Terminal 3: Run Lightweight Mock Base (Odometry & TF simulator)</code></pre>
+
+        <!-- 6. DYNAMIC OBSTACLE AVOIDANCE & REPLANNING ORCHESTRATION -->
+        <h2 class="section-header"><i class="fa-solid fa-route"></i> 6. Dynamic Obstacle Avoidance & Replanning Flow</h2>
+        <p style="color: var(--text-muted); margin-bottom: 1.5rem;">
+            Detailed architectural breakdown of how the <strong>Behavior Tree Navigator</strong>, <strong>MPPI Local Controller</strong>, and <strong>Smac Hybrid A* Global Planner</strong> coordinate when new obstacles (rocks, craters, dynamic hazards) appear on the competition terrain.
+        </p>
+
+        <div style="background: var(--bg-card-elevated); padding: 1.5rem; border-radius: 12px; border: 1px solid var(--border-ui); margin-bottom: 2rem;">
+            <div class="mermaid">
+            flowchart TD
+                BT["<b>Behavior Tree Navigator</b><br/>(Master Orchestrator)"]
+                GP["<b>Global Planner</b><br/>(Smac Hybrid A*)<br/><i>Plans macro route on Global Costmap</i>"]
+                LP["<b>Local Controller</b><br/>(MPPI Controller)<br/><i>Samples 2,000 rollouts @ 20Hz</i>"]
+                OBS["<b>Perception / RealSense</b><br/><i>Detects dynamic obstacle</i>"]
+                LC["<b>Costmaps (Local & Global)</b><br/><i>Marks obstacle area as LETHAL</i>"]
+                
+                OBS -->|"/terrain/obstacle_features"| LC
+                LC -->|Live Obstacle Layer| GP
+                LC -->|Rolling Window (10x10m)| LP
+                
+                BT -->|"ComputePathToPose"| GP
+                GP -->|"/plan (Global Highway)"| BT
+                BT -->|"FollowPath (/plan)"| LP
+                
+                LP -->|"20Hz Evaluation"| CHECK{"Can MPPI swerve<br/>safely around rock?"}
+                CHECK -->|"YES"| CMD["<b>Output /cmd_vel</b><br/>(Swerve & rejoin global path)"]
+                CHECK -->|"NO (Trapped / Blocked)"| FAIL["<b>Return FAILURE</b><br/>(NO_VALID_TRAJECTORY)"]
+                
+                FAIL -->|"Trigger Emergency Replanning"| BT
+                BT -->|"Compute New Detour Route"| GP
+                
+                GP -->|"If All Routes Blocked"| REC["<b>Recovery Behaviors</b><br/>1. Clear Dynamic Costmap<br/>2. BackUp 0.8m from Hazard<br/>3. Spin 360° to Scan<br/>4. Retry Planning"]
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem;">
+            <div style="background: var(--bg-card-elevated); padding: 1.5rem; border-radius: 12px; border-left: 4px solid var(--accent-cyan);">
+                <h4 style="color: var(--accent-cyan); margin-bottom: 0.5rem;"><i class="fa-solid fa-bolt"></i> 1. High-Frequency Local Swerving (20 Hz)</h4>
+                <p style="font-size: 0.92rem; color: var(--text-muted);">
+                    When the RealSense camera detects a localized rock, the <code>local_costmap</code> marks it. MPPI evaluates 2,000 trajectory rollouts per cycle. <code>ConstraintCritic</code> prunes colliding curves while <code>PathAlignCritic</code> selects a collision-free path that swerves around the rock and steers smoothly back onto <code>/plan</code> without stopping.
+                </p>
+            </div>
+
+            <div style="background: var(--bg-card-elevated); padding: 1.5rem; border-radius: 12px; border-left: 4px solid var(--accent-amber);">
+                <h4 style="color: var(--accent-amber); margin-bottom: 0.5rem;"><i class="fa-solid fa-triangle-exclamation"></i> 2. Local Controller Failure (Passage Blocked)</h4>
+                <p style="font-size: 0.92rem; color: var(--text-muted);">
+                    If a boulder completely blocks a narrow passage or crater rim, all 2,000 MPPI rollouts result in collision. MPPI halts the rover (0 m/s) to prevent a crash and reports <code>NO_VALID_TRAJECTORY</code> back to the Behavior Tree. MPPI does not communicate with the global planner directly.
+                </p>
+            </div>
+
+            <div style="background: var(--bg-card-elevated); padding: 1.5rem; border-radius: 12px; border-left: 4px solid var(--accent-green);">
+                <h4 style="color: var(--accent-green); margin-bottom: 0.5rem;"><i class="fa-solid fa-map-location-dot"></i> 3. Global Detour Generation</h4>
+                <p style="font-size: 0.92rem; color: var(--text-muted);">
+                    The Behavior Tree catches MPPI's failure signal and triggers the <strong>Smac Hybrid A* Global Planner</strong>. Because the global costmap includes an <code>obstacle_layer</code>, the planner recognizes the blockage and computes a brand new macro route (e.g. detour around the entire hill/canyon) and feeds it to MPPI.
+                </p>
+            </div>
+
+            <div style="background: var(--bg-card-elevated); padding: 1.5rem; border-radius: 12px; border-left: 4px solid var(--accent-purple);">
+                <h4 style="color: var(--accent-purple); margin-bottom: 0.5rem;"><i class="fa-solid fa-shield-halved"></i> 4. Nav2 Recovery Fallbacks</h4>
+                <p style="font-size: 0.92rem; color: var(--text-muted);">
+                    If the rover is boxed in and even the Global Planner fails: the BT executes recovery plugins sequentially: (1) <strong>Costmap Clear</strong> to flush sensor ghosts, (2) <strong>BackUp</strong> to reverse 0.8m out of the bottleneck, and (3) <strong>Spin</strong> to refresh 360° terrain visibility before retrying.
+                </p>
+            </div>
+        </div>
+
+        <!-- FOOTER -->
+        <footer>
+            <p>European Rover Challenge (ERC 2026) | Autonomous Navigation Subsystem | Document Version 1.2.0</p>
+        </footer>
+
+    </div>
+</body>
+</html>

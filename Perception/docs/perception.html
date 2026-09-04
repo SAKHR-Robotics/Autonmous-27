@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Perception Module Architecture & Guide | ERC Rover</title>
+    
+    <!-- Premium Fonts & Mermaid -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script>
+        mermaid.initialize({ 
+            startOnLoad: true, 
+            theme: 'dark',
+            themeVariables: {
+                primaryColor: '#0f172a',
+                primaryTextColor: '#f8fafc',
+                primaryBorderColor: '#6366f1',
+                lineColor: '#cbd5e1',
+                secondaryColor: '#1e293b',
+                tertiaryColor: '#14b8a6'
+            }
+        });
+    </script>
+
+    <style>
+        :root {
+            --bg-color: #060913;
+            --panel-bg: rgba(13, 20, 38, 0.65);
+            --panel-border: rgba(255, 255, 255, 0.08);
+            --primary: #6366f1; /* Indigo */
+            --primary-glow: rgba(99, 102, 241, 0.2);
+            --accent-teal: #14b8a6; /* Teal */
+            --accent-green: #059669; /* Green */
+            --accent-amber: #f59e0b; /* Amber */
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --code-bg: rgba(15, 23, 42, 0.85);
+            --card-radius: 16px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            background-image: radial-gradient(circle at 5% 10%, rgba(99, 102, 241, 0.09) 0%, transparent 40%),
+                              radial-gradient(circle at 95% 90%, rgba(20, 184, 166, 0.09) 0%, transparent 40%);
+            background-attachment: fixed;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 1050px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 50px;
+            border-bottom: 1px solid var(--panel-border);
+            padding-bottom: 30px;
+        }
+
+        h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2.8rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #ffffff 40%, #818cf8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 15px;
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            color: var(--text-muted);
+            font-weight: 300;
+        }
+
+        .badge-container {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .badge {
+            background-color: rgba(99, 102, 241, 0.1);
+            color: #818cf8;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .badge.green {
+            background-color: rgba(5, 150, 105, 0.1);
+            color: #34d399;
+            border-color: rgba(5, 150, 105, 0.2);
+        }
+
+        .badge.amber {
+            background-color: rgba(245, 158, 11, 0.1);
+            color: #fbbf24;
+            border-color: rgba(245, 158, 11, 0.2);
+        }
+
+        .nav-links {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 40px;
+            background: var(--panel-bg);
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid var(--panel-border);
+            backdrop-filter: blur(12px);
+        }
+
+        .nav-links a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.88rem;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        .nav-links a:hover {
+            color: white;
+        }
+
+        .glass-panel {
+            background: var(--panel-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--card-radius);
+            padding: 40px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            margin-bottom: 40px;
+        }
+
+        h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.6rem;
+            color: var(--primary);
+            margin-bottom: 20px;
+            border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+            padding-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        h3 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.25rem;
+            color: var(--text-main);
+            margin: 25px 0 12px 0;
+        }
+
+        p, li {
+            color: #cbd5e1;
+            font-size: 1.05rem;
+            line-height: 1.7;
+            margin-bottom: 14px;
+        }
+
+        ul, ol {
+            margin-left: 24px;
+            margin-bottom: 20px;
+        }
+
+        li {
+            margin-bottom: 8px;
+        }
+
+        li strong {
+            color: white;
+        }
+
+        .mermaid {
+            background: rgba(15, 23, 42, 0.6);
+            padding: 24px;
+            border-radius: 12px;
+            border: 1px solid var(--panel-border);
+            margin: 25px 0;
+            overflow-x: auto;
+            text-align: center;
+        }
+
+        /* Force Mermaid text to be white & clean */
+        .mermaid text, 
+        .mermaid text *, 
+        .mermaid foreignObject, 
+        .mermaid foreignObject * {
+            color: #ffffff !important;
+            fill: #ffffff !important;
+            font-family: 'Inter', sans-serif !important;
+        }
+
+        .highlight-box {
+            background: rgba(20, 184, 166, 0.1);
+            border-left: 4px solid var(--accent-teal);
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .highlight-box h4 {
+            color: var(--accent-teal);
+            margin-bottom: 8px;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        .warning-box {
+            background: rgba(245, 158, 11, 0.1);
+            border-left: 4px solid var(--accent-amber);
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .warning-box h4 {
+            color: var(--accent-amber);
+            margin-bottom: 8px;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        .info-box {
+            background: rgba(99, 102, 241, 0.1);
+            border-left: 4px solid var(--primary);
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .info-box h4 {
+            color: #818cf8;
+            margin-bottom: 8px;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 25px 0;
+            font-size: 0.95rem;
+            background: rgba(15, 23, 42, 0.4);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid var(--panel-border);
+        }
+
+        th {
+            background-color: rgba(255, 255, 255, 0.05);
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        tr:hover {
+            background-color: rgba(255, 255, 255, 0.02);
+        }
+
+        pre {
+            background: var(--code-bg);
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid var(--panel-border);
+            overflow-x: auto;
+            margin: 15px 0;
+        }
+
+        code {
+            font-family: 'Fira Code', monospace;
+            font-size: 0.9rem;
+            color: #e2e8f0;
+        }
+
+        .inline-code {
+            background: rgba(0,0,0,0.3);
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: #818cf8;
+            font-family: 'Fira Code', monospace;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Perception Module Architecture</h1>
+        <p class="subtitle">3D Terrain Geometry, Obstacle Detection & ArUco Vision Subsystem</p>
+        <div class="badge-container">
+            <span class="badge">NVIDIA Jetson Orin Nano</span>
+            <span class="badge">Intel RealSense D435</span>
+            <span class="badge green">PCL (Point Cloud Library)</span>
+            <span class="badge green">OpenCV ArUco PnP</span>
+            <span class="badge amber">Nav2 Costmap Integration</span>
+        </div>
+    </header>
+
+    <div class="nav-links">
+        <a href="#concept">1. Core Role & System Scope</a>
+        <a href="#delegation">1.5. Perception vs SLAM Boundary</a>
+        <a href="#flowchart">2. System Data Flowchart</a>
+        <a href="#pipeline-deepdive">2.5. 3D Point Cloud Pipeline</a>
+        <a href="#inputs">3. System Inputs</a>
+        <a href="#outputs">4. System Outputs</a>
+        <a href="#breakdown">4.5. Component Breakdown</a>
+        <a href="#aruco-vision">5. ArUco Vision & 3D PnP Math</a>
+        <a href="#sync-guide">6. Synchronization with Saif SLAM</a>
+        <a href="#testing-guide">7. Testing & RViz Validation</a>
+    </div>
+
+    <!-- SECTION 1: CORE ROLE -->
+    <div id="concept" class="glass-panel">
+        <h2><i class="fa-solid fa-eye"></i> 1. Core Role & System Scope</h2>
+        <p>The Perception Module acts as the environmental recognition engine of the autonomous rover. Its primary responsibility is to transform raw sensor feeds (3D Point Clouds and 2D Camera Frames) into structured geometric telemetry and costmaps so the navigation stack can steer safely around rocks, craters, and steep slopes.</p>
+        
+        <h3>Core Tasks Executed by Perception:</h3>
+        <ul>
+            <li><strong>Terrain Analysis & Ground Removal:</strong> Distinguishes flat driving surfaces from dangerous obstacles using height segmentation algorithms (Patchwork++ / RANSAC).</li>
+            <li><strong>3D Obstacle Clustering:</strong> Filters raw point cloud data using Voxel Downsampling and groups remaining obstacle points into physical 3D bounding boxes using DBSCAN clustering.</li>
+            <li><strong>Costmap Generation:</strong> Produces a unified 2D inflated obstacle costmap (<code>/terrain/costmap</code>) ready for direct consumption by Nav2 local and global path planners.</li>
+            <li><strong>Target Recognition (ArUco Vision):</strong> Detects mission objective markers in the RGB stream, calculates their ID and exact 3D distance/pose ($X, Y, Z$, Roll, Pitch, Yaw) via OpenCV Perspective-n-Point (PnP) math, and passes anchor updates to SLAM and the State Machine.</li>
+        </ul>
+    </div>
+
+    <!-- SECTION 1.5: PERCEPTION VS SLAM -->
+    <div id="delegation" class="glass-panel">
+        <h2><i class="fa-solid fa-handshake-simple"></i> 1.5. Division of Labor: Perception vs Saif SLAM</h2>
+        <p>To avoid duplicated work and save Jetson Orin Nano compute resources, the tasks between Perception and SLAM are strictly partitioned according to the <strong>Saif SLAM Reference Architecture</strong>:</p>
+
+        <div class="highlight-box">
+            <h4><i class="fa-solid fa-microchip"></i> What the Perception Module Does:</h4>
+            <ul>
+                <li>Processes the raw 3D Point Cloud (<code>/camera/depth/color/points</code>).</li>
+                <li>Filters ground terrain and extracts rock obstacle boundaries.</li>
+                <li>Publishes local costmaps (<code>/terrain/costmap</code>) and feature arrays (<code>/terrain/obstacle_features</code>).</li>
+                <li>Executes ArUco marker corner extraction and calculates 3D marker pose (<code>/perception/aruco_pose</code>).</li>
+            </ul>
+        </div>
+
+        <div class="warning-box">
+            <h4><i class="fa-solid fa-route"></i> What is Delegated to Saif SLAM (External):</h4>
+            <ul>
+                <li><strong>Wheel-Inertial Fusion:</strong> Running the Extended Kalman Filter (EKF via <code>robot_localization</code>) to broadcast the high-speed <code>odom &rarr; base_link</code> transform at 100 Hz.</li>
+                <li><strong>Visual SLAM & Loop Closure:</strong> Running <strong>RTAB-Map</strong> to track camera movement, construct the global map, and output the <code>map &rarr; odom</code> drift-correction transform.</li>
+                <li><strong>Encoder Slip Check:</strong> Comparing wheel ticks against IMU accelerations to dynamically adjust fusion noise weights.</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- SECTION 2: FLOWCHART -->
+    <div id="flowchart" class="glass-panel">
+        <h2><i class="fa-solid fa-diagram-project"></i> 2. System Data Flowchart</h2>
+        <p>This flowchart details every node, input topic, intermediate filtering stage, and output topic generated by the Perception Module, alongside its connections to Nav2, RViz, and Saif SLAM.</p>
+
+        <div class="mermaid">
+graph TD
+    classDef hardware fill:#0f172a,stroke:#94a3b8,stroke-width:2px,color:#f8fafc;
+    classDef inputTopic fill:#1e293b,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    classDef nodeCore fill:#1e3a8a,stroke:#60a5fa,stroke-width:2px,color:#f8fafc;
+    classDef filterStage fill:#4c1d95,stroke:#a78bfa,stroke-width:2px,color:#f8fafc;
+    classDef externalModule fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc;
+    classDef outputTopic fill:#065f46,stroke:#34d399,stroke-width:3px,color:#f8fafc;
+    classDef debugTopic fill:#854d0e,stroke:#fde047,stroke-width:1px,color:#f8fafc;
+
+    subgraph S1 ["1. Hardware Sensors & ROS 2 Inputs"]
+        HW_CAM["Intel RealSense D435"]:::hardware
+        TF_IN["TF System (/tf & /tf_static)"]:::hardware
+        T_CLOUD["/camera/depth/color/points<br/>(sensor_msgs/PointCloud2)"]:::inputTopic
+        T_RGB["/camera/color/image_raw<br/>(sensor_msgs/Image)"]:::inputTopic
+        T_INFO["/camera/camera_info<br/>(sensor_msgs/CameraInfo)"]:::inputTopic
+    end
+
+    HW_CAM --> T_CLOUD
+    HW_CAM --> T_RGB
+    HW_CAM --> T_INFO
+
+    subgraph S2 ["2. Perception Subsystem Pipeline"]
+        subgraph Pipeline_A ["Terrain Geometry Pipeline (C++ / PCL)"]
+            STAGE_ROI["1. ROI Spatial Filtering<br/>(base_link Forward Box)"]:::filterStage
+            STAGE_GROUND["2. Ground Removal<br/>(Patchwork++ / RANSAC)"]:::filterStage
+            STAGE_VOXEL["3. Voxel Grid Downsample<br/>(5cm Leaf Size)"]:::filterStage
+            STAGE_ROR["4. Radius Outlier Removal<br/>(Noise Reduction)"]:::filterStage
+            STAGE_DBSCAN["5. DBSCAN Clustering<br/>(Euclidean Proximity)"]:::filterStage
+            STAGE_MEM["6. Persistent Memory Node<br/>(EMA Rock Tracker)"]:::filterStage
+        end
+
+        subgraph Pipeline_B ["ArUco Vision Pipeline (OpenCV PnP)"]
+            STAGE_CORNER["1. ArUco Corner Extraction"]:::filterStage
+            STAGE_PNP["2. SolvePnP Math<br/>(Intrinsic Projection)"]:::filterStage
+        end
+    end
+
+    T_CLOUD --> STAGE_ROI
+    TF_IN --> STAGE_ROI
+    STAGE_ROI --> STAGE_GROUND
+    STAGE_GROUND --> STAGE_VOXEL
+    STAGE_VOXEL --> STAGE_ROR
+    STAGE_ROR --> STAGE_DBSCAN
+    STAGE_DBSCAN --> STAGE_MEM
+
+    T_RGB --> STAGE_CORNER
+    T_INFO --> STAGE_PNP
+    STAGE_CORNER --> STAGE_PNP
+
+    subgraph S3 ["3. Published Perception Output Topics"]
+        OUT_LOCAL_BBOX["/perception/local_bboxes<br/>(vision_msgs/Detection3DArray)"]:::outputTopic
+        OUT_MEM_BBOX["/perception/obstacles_only<br/>(vision_msgs/Detection3DArray)"]:::outputTopic
+        OUT_MARK(["/terrain/obstacle_markers<br/>(visualization_msgs/MarkerArray)"]):::outputTopic
+        OUT_ARUCO["/perception/aruco_pose<br/>(geometry_msgs/PoseStamped)"]:::outputTopic
+
+        DBG_GND["/terrain/debug/ground_cloud"]:::debugTopic
+        DBG_VOX["/terrain/debug/voxel_cloud"]:::debugTopic
+        DBG_CLS["/terrain/debug/clustered_cloud"]:::debugTopic
+    end
+
+    STAGE_DBSCAN ==> OUT_LOCAL_BBOX
+    STAGE_MEM ==> OUT_MEM_BBOX
+    STAGE_MEM ==> OUT_MARK
+
+    STAGE_GROUND -.-> DBG_GND
+    STAGE_VOXEL -.-> DBG_VOX
+    STAGE_DBSCAN -.-> DBG_CLS
+
+    STAGE_PNP ==> OUT_ARUCO
+
+    subgraph S4 ["4. Downstream Consumers"]
+        NAV2["Nav2 Costmap 2D Server<br/>(Local & Global Planning)"]:::externalModule
+        RVIZ["RViz2 Visualization"]:::externalModule
+        SLAM_SYS["Saif SLAM Module<br/>(RTAB-Map Landmark Correction)"]:::externalModule
+        STATE_MACH["Mission State Machine"]:::externalModule
+    end
+
+    OUT_COSTMAP ==> NAV2
+    OUT_FEAT ==> NAV2
+    OUT_MARK ==> RVIZ
+    DBG_GND -.-> RVIZ
+    DBG_VOX -.-> RVIZ
+    DBG_CLS -.-> RVIZ
+
+    OUT_ARUCO ==> SLAM_SYS
+    OUT_ARUCO ==> STATE_MACH
+        </div>
+    </div>
+
+    <!-- SECTION 2.5: PIPELINE DEEP DIVE -->
+    <div id="pipeline-deepdive" class="glass-panel">
+        <h2><i class="fa-solid fa-cubes"></i> 2.5. Deep Dive: 3D Point Cloud Processing Pipeline</h2>
+        <p>The processing pipeline in <code>terrain_node.py</code> transforms millions of raw 3D depth camera points per second into clean geometric boundaries through 6 distinct mathematical stages:</p>
+
+        <div class="highlight-box">
+            <h4>Stage 1: ROI Spatial Filtering & Coordinate Transformation</h4>
+            <p>Raw point clouds arrive in the camera optical coordinate frame (<code>camera_depth_optical_frame</code>). The node transforms the cloud into the rover's physical center frame (<code>base_link</code>) using <code>tf2</code>. It then crops points outside the driving Region of Interest (ROI) (e.g., $X \in [0.2, 8.0]\text{m}$, $Y \in [-4.0, 4.0]\text{m}$, $Z \in [-0.5, 1.5]\text{m}$) to eliminate chassis self-reflections and far-field camera noise.</p>
+        </div>
+
+        <div class="highlight-box" style="background: rgba(99, 102, 241, 0.08); border-left-color: var(--primary);">
+            <h4 style="color: #818cf8;">Stage 2: Ground Removal (Patchwork++ / RANSAC)</h4>
+            <p>To identify rocks, the node must first remove the flat dirt terrain. It evaluates concentric radial zones and applies <strong>Patchwork++ / RANSAC Plane Segmentation</strong> to solve for the ground plane equation ($Ax + By + Cz + D = 0$). All points falling within a threshold height ($\le 0.15\text{m}$) of the ground plane are stripped away and sent to the ground debug topic.</p>
+        </div>
+
+        <div class="highlight-box" style="background: rgba(5, 150, 105, 0.08); border-left-color: var(--accent-green);">
+            <h4 style="color: #34d399;">Stage 3: Voxel Grid Downsampling</h4>
+            <p>Processing raw point clouds containing over 300,000 points per frame will overload the Jetson Orin Nano CPU. The node applies a 3D Voxel Grid filter with a leaf size of $5\text{cm} \times 5\text{cm} \times 5\text{cm}$. All points inside each $5\text{cm}$ cube are centroid-averaged into a single point, shrinking total data volume by up to <strong>90%</strong> while preserving obstacle shape.</p>
+        </div>
+
+        <div class="highlight-box">
+            <h4>Stage 4: Radius Outlier Removal (ROR)</h4>
+            <p>Airborne dust or sensor noise can produce floating "ghost" points. The ROR filter searches a sphere of radius $r=0.2\text{m}$ around every point. If a point has fewer than 5 neighboring points inside that sphere, it is discarded as sensor noise.</p>
+        </div>
+
+        <div class="highlight-box" style="background: rgba(245, 158, 11, 0.08); border-left-color: var(--accent-amber);">
+            <h4 style="color: #fbbf24;">Stage 5: DBSCAN Euclidean Clustering</h4>
+            <p>The remaining obstacle points are grouped using <strong>DBSCAN (Density-Based Spatial Clustering of Applications with Noise)</strong> with a cluster radius $\epsilon = 0.3\text{m}$. Nearby points are clustered into distinct objects (individual rocks). For each cluster, the node calculates its 3D centroid, bounding box dimensions ($X_{size}, Y_{size}, Z_{size}$), and Euclidean distance to the rover.</p>
+        </div>
+
+        <div class="highlight-box" style="background: rgba(20, 184, 166, 0.08); border-left-color: var(--accent-teal);">
+            <h4>Stage 6: Occupancy Grid & Costmap Inflation</h4>
+            <p>The detected clusters are rasterized onto a 2D grid ($200 \times 200$ cells at $5\text{cm}$ resolution). The node inflates obstacle boundaries by the rover's footprint radius ($0.3\text{m}$) plus a safety inflation buffer ($0.6\text{m}$), producing an exponential cost decay gradient (values $0 \dots 100$) so Nav2 path planners keep a safe distance from rocks.</p>
+        </div>
+    </div>
+
+    <!-- SECTION 3: INPUTS -->
+    <div id="inputs" class="glass-panel">
+        <h2><i class="fa-solid fa-arrow-right-to-bracket"></i> 3. System Inputs</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Hardware / Source</th>
+                    <th>ROS Topic</th>
+                    <th>Message Type</th>
+                    <th>Description & Role</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>RealSense D435</strong></td>
+                    <td><code>/camera/depth/color/points</code></td>
+                    <td><code>sensor_msgs/msg/PointCloud2</code></td>
+                    <td>Raw 3D point cloud feed generated from synchronized RGB-D frames.</td>
+                </tr>
+                <tr>
+                    <td><strong>RealSense D435</strong></td>
+                    <td><code>/camera/color/image_raw</code></td>
+                    <td><code>sensor_msgs/msg/Image</code></td>
+                    <td>Raw 2D RGB video stream used by the ArUco node for marker corner extraction.</td>
+                </tr>
+                <tr>
+                    <td><strong>RealSense D435</strong></td>
+                    <td><code>/camera/camera_info</code></td>
+                    <td><code>sensor_msgs/msg/CameraInfo</code></td>
+                    <td>Focal length ($f_x, f_y$) and optical center distortion matrix for PnP distance math.</td>
+                </tr>
+                <tr>
+                    <td><strong>TF System</strong></td>
+                    <td><code>/tf</code> & <code>/tf_static</code></td>
+                    <td><code>tf2_msgs/msg/TFMessage</code></td>
+                    <td>Transform tree mapping <code>camera_depth_optical_frame</code> to <code>base_link</code>.</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- SECTION 4: OUTPUTS -->
+    <div id="outputs" class="glass-panel">
+        <h2><i class="fa-solid fa-arrow-right-from-bracket"></i> 4. System Outputs</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Output Data</th>
+                    <th>ROS Topic</th>
+                    <th>Message Type</th>
+                    <th>Primary Consumer & Purpose</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Local Bounding Boxes</strong></td>
+                    <td><code>/perception/local_bboxes</code></td>
+                    <td><code>vision_msgs/msg/Detection3DArray</code></td>
+                    <td><strong>Memory Node:</strong> Raw unfiltered rock bounding boxes generated from Euclidean clustering.</td>
+                </tr>
+                <tr>
+                    <td><strong>Global Bounding Boxes</strong></td>
+                    <td><code>/perception/obstacles_only</code></td>
+                    <td><code>vision_msgs/msg/Detection3DArray</code></td>
+                    <td><strong>Nav2 Costmap Server:</strong> Fused and persistent rock bounding boxes used to paint global costmap obstacles.</td>
+                </tr>
+                <tr>
+                    <td><strong>3D Markers</strong></td>
+                    <td><code>/terrain/obstacle_markers</code></td>
+                    <td><code>visualization_msgs/msg/MarkerArray</code></td>
+                    <td><strong>RViz2:</strong> 3D visual bounding boxes and text labels for operator monitoring.</td>
+                </tr>
+                <tr>
+                    <td><strong>ArUco 3D Pose</strong></td>
+                    <td><code>/perception/aruco_pose</code></td>
+                    <td><code>geometry_msgs/msg/PoseStamped</code></td>
+                    <td><strong>Saif SLAM / State Machine:</strong> 6-DOF pose of detected mission target markers.</td>
+                </tr>
+                <tr>
+                    <td><strong>Ground Cloud (Debug)</strong></td>
+                    <td><code>/terrain/debug/ground_cloud</code></td>
+                    <td><code>sensor_msgs/msg/PointCloud2</code></td>
+                    <td><strong>RViz2:</strong> Visualizes separated ground terrain points (solid green).</td>
+                </tr>
+                <tr>
+                    <td><strong>Clusters (Debug)</strong></td>
+                    <td><code>/terrain/debug/clustered_cloud</code></td>
+                    <td><code>sensor_msgs/msg/PointCloud2</code></td>
+                    <td><strong>RViz2:</strong> Visualizes obstacle clusters colored by DBSCAN Cluster ID.</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- SECTION 4.5: COMPONENT BREAKDOWN -->
+    <div id="breakdown" class="glass-panel">
+        <h2><i class="fa-solid fa-boxes-stacked"></i> 4.5. Component & Codebase Breakdown</h2>
+        
+        <div class="info-box">
+            <h4><i class="fa-solid fa-code"></i> Workspace Organization (Under <code>Perception/</code>)</h4>
+        </div>
+
+        <h3>1. <code>terrain_geometry</code> (3D Point Cloud & Costmaps)</h3>
+        <ul>
+            <li><strong><code>terrain_node.py</code>:</strong> Main ROS 2 executable node orchestrating parameters, subscriptions, execution stages, and publishing streams.</li>
+            <li><strong><code>ground_removal.py</code>:</strong> Contains RANSAC and Patchwork++ ground extraction algorithms.</li>
+            <li><strong><code>voxel_filter.py</code>:</strong> Implements 3D spatial voxel grid downsampling (5cm leaf size).</li>
+            <li><strong><code>outlier_filter.py</code>:</strong> Implements Radius Outlier Removal (ROR).</li>
+            <li><strong><code>clustering.py</code>:</strong> Implements DBSCAN Euclidean clustering and bounding box extraction.</li>
+            <li><strong><code>occupancy_grid.py</code> & <code>costmap_inflation.py</code>:</strong> Converts 3D clusters to 2D occupancy cells and applies exponential cost inflation.</li>
+            <li><strong><code>tf_transform.py</code>:</strong> Manages coordinate frame transformations between camera frames and <code>base_link</code>.</li>
+            <li><strong><code>terrain_geometry_msgs</code>:</strong> Custom interface package defining <code>ObstacleFeature</code> and <code>ObstacleFeatureArray</code> ROS 2 messages.</li>
+        </ul>
+
+        <h3>2. <code>marker_detection</code> (ArUco Visual Tracking & SolvePnP)</h3>
+        <ul>
+            <li><strong><code>aruco_detector.py</code> & <code>detection_validator.py</code>:</strong> 2D marker corner extraction and geometric sanity gating.</li>
+            <li><strong><code>pose_estimator.py</code>:</strong> OpenCV SolvePnP 6-DOF translation/rotation estimation using camera intrinsics.</li>
+            <li><strong><code>depth_processor.py</code>:</strong> Robust median depth association and MAD noise rejection.</li>
+            <li><strong><code>tracker_manager.py</code> & <code>position_kalman.py</code>:</strong> Temporal tracking, Kalman filtering, and quaternion orientation smoothing.</li>
+            <li><strong><code>marker_detection_msgs</code>:</strong> Custom interface package defining <code>MarkerPose</code> and <code>MarkerPoseArray</code>.</li>
+        </ul>
+    </div>
+
+    <!-- SECTION 5: ARUCO VISION -->
+    <div id="aruco-vision" class="glass-panel">
+        <h2><i class="fa-solid fa-crosshairs"></i> 5. ArUco Marker Vision & 3D PnP Distance Math</h2>
+        <p>ArUco detection operates on 2D color images and uses projective geometry to calculate 3D position without suffering from depth sensor infrared noise or sunlight blinding.</p>
+
+        <h3>How 3D Distance is Calculated (Perspective-n-Point):</h3>
+        <ol>
+            <li><strong>Corner Detection:</strong> OpenCV scans the RGB frame (<code>/camera/color/image_raw</code>) to detect the 4 square corners of the ArUco marker in 2D image coordinates ($(u, v)$ pixels).</li>
+            <li><strong>Marker Decoding:</strong> Reads the internal binary matrix code to identify the <strong>Marker ID number</strong>.</li>
+            <li><strong>SolvePnP Math:</strong> By feeding the known physical marker size (e.g., $20\text{cm}$ square), the 4 pixel corner coordinates, and the camera calibration matrix ($f_x, f_y, c_x, c_y$ from <code>/camera/camera_info</code>), OpenCV solves the <strong>Perspective-n-Point (PnP)</strong> transformation:
+                $$\begin{bmatrix} u \\ v \\ 1 \end{bmatrix} = \mathbf{K} \begin{bmatrix} \mathbf{R} & \mathbf{t} \end{bmatrix} \begin{bmatrix} X \\ Y \\ Z \\ 1 \end{bmatrix}$$
+            </li>
+            <li><strong>3D Pose Output:</strong> This outputs the exact 3D translation vector $\mathbf{t} = [X, Y, Z]$ (distance forward, left, and up) and rotation vector $\mathbf{R}$ (angles) relative to the camera optical frame.</li>
+            <li><strong>Temporal &amp; Distance Gating (Noise Rejection):</strong> To prevent transient false positives or high optical jitter from corrupting SLAM coordinates, the node applies gating:
+                <ul>
+                    <li><em>Distance Gating:</em> Ignore markers situated beyond 3.5 meters from the camera, as depth calculation errors grow exponentially with distance.</li>
+                    <li><em>Temporal Gating:</em> Only publish the marker pose on <code>/perception/aruco_pose</code> if the same Marker ID is detected continuously across at least 3 consecutive frames.</li>
+                </ul>
+            </li>
+        </ol>
+
+        <div class="highlight-box">
+            <h4>Integration with Saif SLAM:</h4>
+            <p>The node publishes this data on <code>/perception/aruco_pose</code>. When RTAB-Map in Saif SLAM receives this pose, it matches the marker ID against surveyed arena coordinates and applies a global map correction to eliminate accumulated wheel drift.</p>
+        </div>
+    </div>
+
+    <!-- SECTION 6: SYNC GUIDE -->
+    <div id="sync-guide" class="glass-panel">
+        <h2><i class="fa-solid fa-rotate"></i> 6. Synchronization with Saif SLAM & Nav2</h2>
+        <p>To ensure Perception, Saif SLAM, and Nav2 work seamlessly together without latency or coordinate mismatch, enforce the following configuration rules:</p>
+
+        <ul>
+            <li><strong>TF Chain Consistency:</strong> Ensure perception's target frame parameter is set to <code>base_link</code>. The ROS 2 TF tree parent-to-child flow runs downwards from the map:
+                <div style="text-align: center; margin: 15px 0; font-family: monospace; font-size: 1.05rem; color: var(--accent-teal);">
+                    map &rarr; odom &rarr; base_link &rarr; camera_link &rarr; camera_depth_optical_frame
+                </div>
+            </li>
+            <li><strong>QoS Policy Matching:</strong> RealSense cameras publish point clouds with <strong>Best Effort</strong> QoS. The perception subscription must use <code>QoSReliabilityPolicy.BEST_EFFORT</code> to avoid dropped frames. Perception outputs use <code>RELIABLE</code> QoS so Nav2 never misses a costmap update.</li>
+            <li><strong>Depth Camera Driver Outputs:</strong> Configure the camera driver (<code>realsense2_camera</code> node) to publish both standard depth/RGB image frames for RTAB-Map SLAM and the 3D Point Cloud topic (<code>/camera/depth/color/points</code>) by setting <code>enable_pointcloud:=true</code> in your launch parameters.</li>
+            <li><strong>Compute Optimization:</strong> Set point cloud processing rates to **10–15 Hz** on the Jetson Orin Nano to leave sufficient GPU/CPU headroom for RTAB-Map and Nav2.</li>
+        </ul>
+    </div>
+
+    <!-- SECTION 7: TESTING & RVIZ -->
+    <div id="testing-guide" class="glass-panel">
+        <h2><i class="fa-solid fa-vial"></i> 7. Testing & RViz Validation Guide</h2>
+
+        <h3>1. Launching Modular Packages vs Centralized System:</h3>
+        <pre><code># Option A: Standalone Terrain Geometry + Modular RViz
+ros2 launch terrain_geometry terrain.launch.py
+ros2 launch terrain_geometry rviz.launch.py
+
+# Option B: Standalone Marker Detection + Modular RViz
+ros2 launch marker_detection marker_detection.launch.py
+ros2 launch marker_detection rviz.launch.py
+
+# Option C: Full Perception Subsystem + Centralized System RViz
+ros2 launch terrain_geometry perception_system.launch.py
+rviz2 -d Perception/rviz/perception_system_view.rviz</code></pre>
+
+        <h3>2. Testing with Gazebo Rover Simulation:</h3>
+        <pre><code># Terminal 1: Launch Gazebo world and spawn rover
+ros2 launch my_robot_description gazebo.launch.py world:=world1.world
+
+# Terminal 2: Run Full Perception System
+ros2 launch terrain_geometry perception_system.launch.py
+
+# Terminal 3: Teleoperate rover
+ros2 run teleop_twist_keyboard teleop_twist_keyboard</code></pre>
+
+        <h3>3. RViz Display Configuration Checklist:</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Data to Validate</th>
+                    <th>RViz Display Type</th>
+                    <th>Topic</th>
+                    <th>QoS Reliability Setting</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Raw Camera RGB</strong></td>
+                    <td>Image</td>
+                    <td><code>/camera/color/image_raw</code></td>
+                    <td><strong>Best Effort</strong></td>
+                </tr>
+                <tr>
+                    <td><strong>Raw 3D Point Cloud</strong></td>
+                    <td>PointCloud2</td>
+                    <td><code>/camera/depth/color/points</code></td>
+                    <td><strong>Best Effort</strong></td>
+                </tr>
+                <tr>
+                    <td><strong>Perception Costmap</strong></td>
+                    <td>OccupancyGrid</td>
+                    <td><code>/terrain/costmap</code></td>
+                    <td>Reliable</td>
+                </tr>
+                <tr>
+                    <td><strong>3D Obstacle Boxes</strong></td>
+                    <td>MarkerArray</td>
+                    <td><code>/terrain/obstacle_markers</code></td>
+                    <td>Reliable</td>
+                </tr>
+                <tr>
+                    <td><strong>Persistent Obstacles</strong></td>
+                    <td>Detection3DArray</td>
+                    <td><code>/perception/obstacles_only</code></td>
+                    <td>Reliable</td>
+                </tr>
+                <tr>
+                    <td><strong>ArUco Target Pose</strong></td>
+                    <td>PoseStamped / TF</td>
+                    <td><code>/perception/aruco_pose</code></td>
+                    <td>Reliable</td>
+                </tr>
+                <tr>
+                    <td><strong>Debug Ground Cloud</strong></td>
+                    <td>PointCloud2</td>
+                    <td><code>/terrain/debug/ground_cloud</code></td>
+                    <td>Best Effort</td>
+                </tr>
+                <tr>
+                    <td><strong>Debug Clusters</strong></td>
+                    <td>PointCloud2</td>
+                    <td><code>/terrain/debug/clustered_cloud</code></td>
+                    <td>Best Effort</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="warning-box">
+            <h4><i class="fa-solid fa-triangle-exclamation"></i> Troubleshooting RViz Mismatch Warnings:</h4>
+            <p>If point clouds or raw images fail to show in RViz, change the <strong>Reliability Policy</strong> setting inside the RViz display dropdown from <em>Reliable</em> to <em>Best Effort</em>. RealSense drivers publish sensor topics with Best Effort QoS by default.</p>
+        </div>
+    </div>
+
+</div>
+
+</body>
+</html>
