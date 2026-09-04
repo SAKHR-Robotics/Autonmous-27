@@ -53,6 +53,7 @@ install(
     launch
     rviz
     behavior_trees
+    maps
   DESTINATION
     share/${PROJECT_NAME}
 )

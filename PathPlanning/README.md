@@ -221,9 +221,57 @@ ros2 run erc_path_planner costmap_bridge_node
 
 ---
 
-## 🧪 8. Standalone Testing & Benchmarking Suite
+## 🗺️ 8. Benchmark & Operational Maps
+
+All custom 2D occupancy grid maps are located in [`PathPlanning/erc_path_planner/maps/`](file:///e:/meseket/Autonmous-27/PathPlanning/erc_path_planner/maps/):
+
+| Map Name | Image / YAML | Dimensions & Resolution | Terrain Description | Key Test Objective |
+| :--- | :--- | :---: | :--- | :--- |
+| **Rock Field** | `rock_field.yaml` (`.pgm`) | $10\text{m} \times 10\text{m}$ ($0.05\text{m/px}$) | Dense field of randomly scattered boulders | Smac Reeds-Shepp global swerving & MPPI avoidance |
+| **Narrow Corridor** | `narrow_corridor.yaml` (`.pgm`) | $10\text{m} \times 10\text{m}$ ($0.05\text{m/px}$) | $1.2\text{m}$ canyon gate between walls | High-precision tracking through tight clearances |
+| **Dead End** | `dead_end.yaml` (`.pgm`) | $10\text{m} \times 10\text{m}$ ($0.05\text{m/px}$) | U-shaped obstacle trap | Smac heuristic escape & reverse turnarounds |
+
+### How to Launch the Real Full Path Planner with Custom Maps
+
+#### Option A: Pass the Map Directly via CLI
+```bash
+# Launch with the rock field map
+ros2 launch erc_path_planner path_planning.launch.py map:=$(ros2 pkg prefix erc_path_planner)/share/erc_path_planner/maps/rock_field.yaml
+
+# Launch with the narrow corridor map
+ros2 launch erc_path_planner path_planning.launch.py map:=$(ros2 pkg prefix erc_path_planner)/share/erc_path_planner/maps/narrow_corridor.yaml
+
+# Launch with the dead end trap map
+ros2 launch erc_path_planner path_planning.launch.py map:=$(ros2 pkg prefix erc_path_planner)/share/erc_path_planner/maps/dead_end.yaml
+```
+
+#### Option B: Change Default Map in `path_planning.launch.py`
+To make a specific map the permanent default when running `ros2 launch erc_path_planner path_planning.launch.py` without arguments, edit [`PathPlanning/erc_path_planner/launch/path_planning.launch.py`](file:///e:/meseket/Autonmous-27/PathPlanning/erc_path_planner/launch/path_planning.launch.py):
+```python
+default_map = os.path.join(
+    erc_path_planner_dir,
+    'maps',
+    'rock_field.yaml'
+)
+```
+
+#### Option C: Dynamic Map Swapping at Runtime (Without restarting Nav2)
+If Nav2 is already running and you want to swap the active map on-the-fly:
+```bash
+# 1. Run the map server with the new map YAML
+ros2 run nav2_map_server map_server --ros-args -p yaml_filename:=$(ros2 pkg prefix erc_path_planner)/share/erc_path_planner/maps/dead_end.yaml
+
+# 2. Activate the map server lifecycle node
+ros2 lifecycle set /map_server configure
+ros2 lifecycle set /map_server activate
+```
+
+---
+
+## 🧪 9. Standalone Testing & Benchmarking Suite
 
 For standalone closed-loop testing, mock simulation, and automated multi-scenario benchmark evaluation without Gazebo or hardware:
 * See the testing package at [`testing/PathPlanner/`](file:///e:/meseket/Autonmous-27/testing/PathPlanner/README.md).
-* See the detailed integration and GitHub tasks document at [`PathPlanner_doc.md`](file:///e:/meseket/Autonmous-27/PathPlanning/PathPlanner_doc.md).
+* See the detailed tester tasks and developer guide at [`Path&controlTestingDoc.md`](file:///e:/meseket/Autonmous-27/testing/PathPlanner/Path&controlTestingDoc.md).
+
 

@@ -1,233 +1,224 @@
-# Perception Testing & Benchmarking Technical Documentation (`PerTesterDoc`)
+# 📋 Detailed GitHub Projects Task Breakdown (`PerTesterDoc`)
 
-This document outlines the complete technical blueprint, mathematical foundations, architectural specifications, and GitHub project tasks for implementing the **Perception Testing Suite & Benchmarking Node** (`testing/Perception`).
+Below is the complete, developer-friendly task decomposition ready for GitHub Projects / Issues.
 
----
-
-# 1. System Requirements & Interface Specification
-
-The Perception Subsystem under test comprises two main packages:
-1. **`terrain_geometry`**: 3D LiDAR / Depth Point Cloud ground extraction (Patchwork++), downsampling, DBSCAN obstacle clustering, 3D bounding box estimation, and 2D Costmap generation.
-2. **`marker_detection`**: RGB-D ArUco visual detection, SolvePnP 6-DOF pose estimation, and Kalman filter tracking.
-
-### 1.1 Input Topics Required by Perception Nodes
-| Topic Name | Message Type | Target Node | Purpose |
-| :--- | :--- | :--- | :--- |
-| `/camera/depth/color/points` | `sensor_msgs/msg/PointCloud2` | `terrain_geometry_node` | 3D Point cloud of terrain & obstacles in `camera_depth_optical_frame` |
-| `/camera/color/image_raw` | `sensor_msgs/msg/Image` | `marker_detection_node` | 8-bit RGB camera feed (e.g. 1280x720 or 640x480) |
-| `/camera/camera_info` | `sensor_msgs/msg/CameraInfo` | `marker_detection_node` | Camera intrinsic matrix ($K$) and distortion coefficients ($D$) |
-| `/tf`, `/tf_static` | `tf2_msgs/msg/TFMessage` | Both nodes | Dynamic & static transforms linking sensor frames to `base_link` |
-
-### 1.2 Output Topics to be Monitored & Evaluated
-| Topic Name | Message Type | Source Node | Metrics to Evaluate |
-| :--- | :--- | :--- | :--- |
-| `/terrain/costmap` | `nav_msgs/msg/OccupancyGrid` | `terrain_geometry_node` | 2D obstacle footprint IoU, inflation boundary accuracy |
-| `/terrain/obstacle_features` | `terrain_geometry_msgs/msg/ObstacleFeatureArray` | `terrain_geometry_node` | 3D obstacle centroid RMSE, dimension errors ($\Delta w, \Delta l, \Delta h$) |
-| `/perception/obstacles_only` | `vision_msgs/msg/Detection3DArray` | `terrain_geometry_node` | 3D Bounding Box IoU, Precision, Recall, False Positives |
-| `/perception/aruco_pose` | `geometry_msgs/msg/PoseStamped` | `marker_detection_node` | 6-DOF Translation Error (mm) & Rotation Angle Error ($^\circ$) |
-| `/terrain/debug/ground_cloud` | `sensor_msgs/msg/PointCloud2` | `terrain_geometry_node` | Ground segmentation Precision / Recall against true ground labels |
+> For full architectural blueprints, mathematical scoring formulas, system requirements, and scenario tables, refer to [README.md](file:///e:/meseket/Autonmous-27/testing/Perception/README.md).
 
 ---
 
-# 2. Autonomous Mock & Synthetic Data Generation
+### 📌 Task 1: Package Scaffolding, Process Lifecycle & Configuration
+* **Files to Create**:
+  * `testing/Perception/package.xml`
+  * `testing/Perception/setup.py`
+  * `testing/Perception/setup.cfg`
+  * `testing/Perception/perception_benchmarking/__init__.py`
+  * `testing/Perception/config/benchmark_config.yaml`
+  * `testing/Perception/config/scenarios.yaml`
 
-If external datasets or bag files are missing, the benchmarking suite must autonomously synthesize complete 3D and 2D sensor feeds with mathematically exact Ground Truth.
+* **Detailed Implementation Recipe**:
+  1. **Dependencies**:
+     Declare dependencies in `package.xml`: `rclpy`, `sensor_msgs`, `sensor_msgs_py`, `geometry_msgs`, `nav_msgs`, `vision_msgs`, `visualization_msgs`, `tf2_ros`, `tf2_geometry_msgs`, `cv_bridge`, `terrain_geometry_msgs`, `marker_detection_msgs`.
+  2. **Process Cleanup Utility (`clean_old_processes`)**:
+     Implement a robust cleanup routine in `perception_benchmarking/utils.py` matching PathPlanner's `clean_old_processes()`:
+     ```python
+     def clean_old_processes():
+         print("[INFO] Cleaning up stale ROS 2 perception processes...")
+         targets = ["terrain_geometry_node", "marker_detection_node", "mock_sensor_node", "benchmarking_node"]
+         for target in targets:
+             try:
+                 subprocess.run(["pkill", "-f", "-9", target], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+             except Exception:
+                 pass
+         time.sleep(1.0)
+     ```
+  3. **Configuration YAMLs**:
+     * `config/benchmark_config.yaml`: Contains tolerances, weights, and directory paths.
+     * `config/scenarios.yaml`: Fully defines all 9 scenarios with obstacle lists, centroids, dimensions, ground types, and ArUco poses.
 
-### 2.1 Synthetic 3D Point Cloud Generation (`synthetic_generator.py`)
-1. **Ground Surface Generation**:
-   * *Flat Plane*: $z = 0 + \mathcal{N}(0, \sigma_{\text{ground}})$.
-   * *Inclined Slope*: $z(x, y) = x \tan(\theta_{\text{pitch}}) + y \tan(\theta_{\text{roll}})$.
-   * *Rough Mars Terrain (Perlin/Simplex Noise)*: $z(x, y) = \sum_{k=1}^N A_k \sin(f_k x + \phi_k) \cos(f_k y + \psi_k)$.
-2. **Positive Obstacles (Boulders & Rocks)**:
-   * Upper hemisphere / triaxial ellipsoid:
-     $$\frac{(x - x_0)^2}{a^2} + \frac{(y - y_0)^2}{b^2} + \frac{(z - z_0)^2}{c^2} \le 1, \quad z \ge z_0$$
-3. **Negative Obstacles (Craters / Trenches)**:
-   * Parabolic / Gaussian depression:
-     $$z(x, y) = z_{\text{ground}} - d_{\text{crater}} \exp\left(-\frac{(x - x_c)^2 + (y - y_c)^2}{2 r_c^2}\right)$$
-4. **Sensor Realism & Noise Model**:
-   * Radial depth jitter: $\sigma_d(r) = \sigma_0 + k \cdot r^2$ (simulating RealSense depth degradation over range).
-   * Dropout rate: random sparsity of $1\% - 5\%$ simulating infrared surface absorption or clipping.
-
-### 2.2 Synthetic ArUco RGB-D Scene Generation
-1. **Marker Rendering & Perspective Warping**:
-   * Generate canonical ArUco binary image (e.g. `DICT_4X4_50`, ID: 0 to 49) using OpenCV ArUco.
-   * Given ground truth pose $\mathbf{T}_{\text{cam}}^{\text{marker}} = [\mathbf{R} \mid \mathbf{t}]$ and camera matrix $K$:
-     $$\mathbf{p}_{\text{img}} \sim K \cdot (\mathbf{R} \cdot \mathbf{p}_{\text{marker\_3D}} + \mathbf{t})$$
-   * Warp marker quad into the background RGB canvas with perspective transform (`cv2.warpPerspective`).
-2. **Depth Map Alignment**:
-   * Render corresponding 16-bit depth image (`16UC1` in mm) matching the marker plane depth $z$.
-3. **Simulated Disturbances**:
-   * Brightness scaling, Gaussian blur, Poisson noise, partial occlusions (e.g. $10\%$ to $40\%$ corner masking).
-
----
-
-# 3. Mathematical Evaluation Metrics Engine
-
-The `metrics_evaluator.py` module executes quantitative scoring against ground truth annotations.
-
-### 3.1 3D Bounding Box Intersection-over-Union (3D IoU)
-Given Ground Truth box $B_{gt}$ and Detected box $B_{det}$:
-$$\text{IoU}_{3D} = \frac{\text{Vol}(B_{gt} \cap B_{det})}{\text{Vol}(B_{gt} \cup B_{det})} = \frac{\text{Vol}(B_{gt} \cap B_{det})}{\text{Vol}(B_{gt}) + \text{Vol}(B_{det}) - \text{Vol}(B_{gt} \cap B_{det})}$$
-* Bipartite matching via Hungarian Algorithm (Munkres) pairs detected boxes with ground truth instances based on centroid distance and 3D IoU.
-
-### 3.2 Centroid Position RMSE
-For $M$ matched obstacles:
-$$\text{RMSE}_{\text{pos}} = \sqrt{\frac{1}{M} \sum_{i=1}^M \|\mathbf{c}_{i, det} - \mathbf{c}_{i, gt}\|^2}$$
-$$\Delta x = |x_{det} - x_{gt}|, \quad \Delta y = |y_{det} - y_{gt}|, \quad \Delta z = |z_{det} - z_{gt}|$$
-
-### 3.3 ArUco 6-DOF Pose Estimation Error
-* **Translation Error**:
-  $$e_{\text{trans}} = \|\mathbf{t}_{\text{est}} - \mathbf{t}_{\text{gt}}\|_2 = \sqrt{(x_e - x_g)^2 + (y_e - y_g)^2 + (z_e - z_g)^2}$$
-* **Rotation Geodesic Error**:
-  $$\Delta \mathbf{R} = \mathbf{R}_{\text{est}} \mathbf{R}_{\text{gt}}^T$$
-  $$e_{\text{rot}} = \arccos\left(\frac{\text{Tr}(\Delta \mathbf{R}) - 1}{2}\right) \quad [\text{or in quaternion form: } 2 \arccos(|\mathbf{q}_{\text{est}} \cdot \mathbf{q}_{\text{gt}}|)]$$
-
-### 3.4 Ground Segmentation Accuracy
-Using point-level ground truth binary labels ($y_i \in \{0: \text{obstacle}, 1: \text{ground}\}$):
-$$\text{Precision} = \frac{TP}{TP + FP}, \quad \text{Recall} = \frac{TP}{TP + FN}, \quad F_1 = \frac{2 \cdot \text{Precision} \cdot \text{Recall}}{\text{Precision} + \text{Recall}}$$
-
-### 3.5 Latency & Throughput
-* **Frame Latency**: $\Delta T = t_{\text{published\_output}} - t_{\text{input\_sensor\_stamp}}$ (measured in ms).
-* **Processing Rate**: $\text{FPS} = \frac{N_{\text{frames}}}{\sum \Delta T}$.
-
----
-
-# 4. Benchmarking Node & Testing Pipeline Architecture
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant BenchNode as Benchmarking Node
-    participant MockSensor as Mock Sensor Feeder
-    participant SUT as Perception Subsystem
-    participant Evaluator as Metrics Evaluator
-    participant Visualizer as RViz2 & Report Builder
-
-    BenchNode->>MockSensor: Load Scenario Config (e.g. "rough_terrain_3_rocks")
-    MockSensor->>MockSensor: Check local cache / Generate synthetic PointCloud & ArUco
-    MockSensor->>SUT: Publish /camera/depth/color/points & /camera/color/image_raw & TF
-    MockSensor->>BenchNode: Send Ground Truth Metadata (Centroids, Poses, Ground Mask)
-    SUT->>BenchNode: Publish /terrain/costmap, /terrain/obstacle_features, /perception/aruco_pose
-    BenchNode->>Evaluator: Submit (Ground Truth, Detected Outputs, Timestamps)
-    Evaluator->>Evaluator: Compute 3D IoU, RMSE, Pose Error, Latency
-    Evaluator-->>BenchNode: Return Metric Scorecard
-    BenchNode->>Visualizer: Broadcast /benchmark/ground_truth_markers & Error Lines
-    BenchNode->>Visualizer: Export CSV, HTML & PDF Report Summary
-```
-
----
-
-# 5. GitHub Projects Task Breakdown
-
-Below is the complete task decomposition designed to be imported directly into GitHub Projects / Issues.
-
----
-
-### 📌 Task 1: Perception Benchmarking Package Scaffolding & Configuration
-* **Description**: Create the ROS 2 Python package structure (`testing/Perception`), setup dependencies (`package.xml`, `setup.py`), and define the benchmark configuration and scenario schemas.
-* **Suggested Implementation Guide**:
-  1. Initialize `package.xml` with dependencies: `rclpy`, `sensor_msgs`, `geometry_msgs`, `nav_msgs`, `vision_msgs`, `visualization_msgs`, `tf2_ros`, `cv_bridge`, `terrain_geometry_msgs`, `marker_detection_msgs`.
-  2. Implement `config/benchmark_config.yaml` specifying error thresholds (e.g., max allowed centroid RMSE $< 0.10\,\text{m}$, max pose angle error $< 3.0^\circ$, max latency $< 100\,\text{ms}$).
-  3. Implement `config/scenarios.yaml` specifying test scenarios with ground truth definitions (flat ground, scattered boulders, slopes, ArUco distances from $1\,\text{m}$ to $8\,\text{m}$).
 * **Acceptance Criteria**:
-  * `colcon build --packages-select perception_benchmarking` succeeds without warnings.
-  * Configuration YAMLs are parsed cleanly into Python dictionaries.
+  * `colcon build --packages-select perception_benchmarking` builds without errors.
+  * `python3 -c "from perception_benchmarking.utils import clean_old_processes; clean_old_processes()"` runs cleanly.
 
 ---
 
-### 📌 Task 2: Synthetic 3D Terrain & Point Cloud Generator
-* **Description**: Implement `synthetic_generator.py` capable of mathematically generating synthetic 3D Point Clouds with ground surfaces, positive obstacles (boulders), negative obstacles (craters), and sensor noise.
-* **Suggested Implementation Guide**:
-  1. Build parametric ground generators (flat, sloped at angle $\alpha$, noisy undulating surface).
-  2. Add ellipsoid/box obstacle injectors that append obstacle 3D points and record ground truth 3D bounding boxes and centroids.
-  3. Implement depth noise and dropout modeling.
-  4. Convert NumPy `(N, 3)` or `(N, 4)` point arrays to ROS 2 `sensor_msgs/msg/PointCloud2` using `sensor_msgs_py.point_cloud2`.
-  5. Cache generated synthetic clouds to `synthetic_data/pointclouds/` for fast replay.
+### 📌 Task 2: Autonomous 3D Terrain & PointCloud Generator
+* **File to Create**: `testing/Perception/perception_benchmarking/synthetic_generator.py`
+
+* **Detailed Implementation Recipe**:
+  1. **Ground Synthesis**:
+     * Flat: $z = \mathcal{N}(0, 0.01)\,\text{m}$.
+     * Slopes: $z(x, y) = x \tan(\theta_{\text{pitch}}) + y \tan(\theta_{\text{roll}})$.
+     * Mars Undulation: Superposition of low-frequency sine/cosine waves.
+  2. **Obstacle Synthesis**:
+     * Inject triaxial ellipsoids at $(x_0, y_0, z_0)$ with semi-axes $(a, b, c)$:
+       $$\text{Points: } x = x_0 + a r \sin\theta \cos\phi, \quad y = y_0 + b r \sin\theta \sin\phi, \quad z = z_0 + c r \cos\theta \quad (\text{for } z \ge z_0)$$
+     * Inject craters using 2D Gaussian height depression.
+  3. **Sensor Noise & PointCloud2 Conversion**:
+     * Add quadratic depth noise: $\sigma(z) = 0.005 + 0.0012 \cdot z^2$.
+     * Serialize NumPy array `[x, y, z, intensity, ground_flag]` to `sensor_msgs/msg/PointCloud2` using `sensor_msgs_py.point_cloud2.create_cloud()`.
+     * Automatically cache generated files to `synthetic_data/pointclouds/<scenario_id>.npy` to ensure instant load times on subsequent runs.
+
 * **Acceptance Criteria**:
-  * PointCloud2 messages have correct optical frame headers (`camera_depth_optical_frame`).
-  * Generates valid synthetic point clouds in $< 50\,\text{ms}$ on the fly if missing.
+  * If `synthetic_data/` is empty, generator creates point cloud files in $<50\,\text{ms}$.
+  * Generated PointCloud2 contains valid optical frame headers and zero NaN/Inf entries.
 
 ---
 
-### 📌 Task 3: Synthetic RGB-D ArUco Image Generator
-* **Description**: Implement visual synthesis routines in `synthetic_generator.py` to generate synthetic ArUco RGB images and aligned 16-bit depth images across different distances and angles.
-* **Suggested Implementation Guide**:
-  1. Use `cv2.aruco` to render standard dictionaries (`DICT_4X4_50`, etc.).
-  2. Implement 3D homography / perspective warp projecting the marker to target 3D camera coordinates $(x, y, z, \text{roll}, \text{pitch}, \text{yaw})$.
-  3. Generate aligned 16-bit millimeter depth maps (`16UC1`).
-  4. Implement perturbation options: Gaussian blur, glare, motion blur, partial occlusion masks.
-  5. Provide `CameraInfo` message factory populating $K$ and $D$ matrices.
+### 📌 Task 3: Autonomous ArUco RGB-D Scene Generator
+* **File to Create**: `testing/Perception/perception_benchmarking/synthetic_generator.py` (Vision Module)
+
+* **Detailed Implementation Recipe**:
+  1. **Marker Rendering & Geometric Projection**:
+     * Generate canonical ArUco image (`cv2.aruco.generateImageMarker(dictionary, marker_id, side_px)`).
+     * Define 3D corner coordinates in marker local frame ($z=0$).
+     * Given target pose $\mathbf{T}_{\text{cam}}^{\text{marker}} = [\mathbf{R} \mid \mathbf{t}]$, project 3D corners to 2D image coordinates:
+       $$\mathbf{u} = K \cdot (\mathbf{R} \cdot \mathbf{X} + \mathbf{t})$$
+     * Use `cv2.getPerspectiveTransform` and `cv2.warpPerspective` to render the marker onto the 1280x720 RGB canvas.
+  2. **Aligned Depth Image Rendering**:
+     * Render a 16-bit single-channel depth image (`np.uint16` in millimeters) corresponding to the planar distance $Z$ of the marker surface.
+  3. **Visual Perturbations**:
+     * Support configurable shadow/occlusion masks ($10\%\text{--}40\%$ polygon overlays).
+     * Add lighting attenuation and Gaussian blur for stress testing.
+
 * **Acceptance Criteria**:
-  * Output RGB image and depth image match OpenCV pinhole projection geometry.
-  * Ground truth marker 3D pose matches projected visual corners exactly.
+  * Projected ArUco corners match theoretical pinhole camera coordinates within $<0.1\,\text{px}$.
+  * OpenCV `cv2.aruco.detectMarkers` detects synthetic markers at distances up to $8.0\,\text{m}$.
 
 ---
 
 ### 📌 Task 4: Mock Sensor & Transform Broadcaster Node
-* **Description**: Implement `mock_sensor_node.py` to publish synthetic/cached sensor streams, broadcast TF frames, and publish ground truth metadata to the benchmarking coordinator.
-* **Suggested Implementation Guide**:
-  1. Create ROS 2 Node `MockSensorNode`.
-  2. Publish `/camera/depth/color/points`, `/camera/color/image_raw`, `/camera/camera_info` at configurable rates (e.g. 10 Hz / 30 Hz or single-shot stepped mode).
-  3. Broadcast static/dynamic TF transforms: `base_link` $\rightarrow$ `camera_link` $\rightarrow$ `camera_depth_optical_frame` / `camera_color_optical_frame`.
-  4. Publish ground truth marker arrays for RViz visualization on `/benchmark/ground_truth_markers`.
+* **File to Create**: `testing/Perception/perception_benchmarking/mock_sensor_node.py`
+
+* **Detailed Implementation Recipe**:
+  1. **ROS 2 Node Implementation (`MockSensorNode`)**:
+     * Subscribes to `/benchmark/load_scenario` (`std_msgs/msg/String`).
+     * Publishes:
+       * `/camera/depth/color/points` (`sensor_msgs/msg/PointCloud2` at 10 Hz)
+       * `/camera/color/image_raw` (`sensor_msgs/msg/Image` at 10 Hz via `cv_bridge`)
+       * `/camera/camera_info` (`sensor_msgs/msg/CameraInfo` at 10 Hz)
+       * `/benchmark/ground_truth_markers` (`visualization_msgs/msg/MarkerArray`)
+       * `/benchmark/ground_truth_meta` (`std_msgs/msg/String` - JSON encoded GT objects)
+  2. **TF Tree Broadcaster**:
+     * Broadcasts `base_link -> camera_link -> camera_depth_optical_frame` and `camera_color_optical_frame` via `tf2_ros.StaticTransformBroadcaster`.
+  3. **Synchronized Playback**:
+     * Stamp all published sensor messages with `node.get_clock().now().to_msg()` to enable exact downstream latency profiling.
+
 * **Acceptance Criteria**:
-  * Nodes under test (`terrain_geometry_node` and `marker_detection_node`) receive inputs without topic mismatch errors.
-  * TF tree is complete and valid with no lookup exceptions.
+  * `ros2 topic hz /camera/depth/color/points` outputs steady $10.0 \pm 0.5\,\text{Hz}$.
+  * TF tree lookup from `base_link` to `camera_depth_optical_frame` succeeds without delay.
 
 ---
 
 ### 📌 Task 5: Mathematical Metrics Evaluator Engine
-* **Description**: Implement `metrics_evaluator.py` containing pure numerical evaluation routines (IoU, RMSE, Quaternion Geodesic Error, Ground Classification F1, Costmap Overlap).
-* **Suggested Implementation Guide**:
-  1. Implement 3D Oriented Bounding Box (OBB) and Axis-Aligned Bounding Box (AABB) IoU calculator.
-  2. Implement Hungarian algorithm matching between detected centroids and ground truth centroids.
-  3. Implement translation RMSE and quaternion rotation geodesic angular error.
-  4. Implement ground classification precision, recall, and false positive metrics.
-  5. Implement 2D costmap occupancy grid matching vs true obstacle masks.
+* **File to Create**: `testing/Perception/perception_benchmarking/metrics_evaluator.py`
+
+* **Detailed Implementation Recipe**:
+  1. **Hungarian Bipartite Matching**:
+     * Compute pairwise Euclidean distance matrix $C_{ij} = \|\mathbf{c}_{i,\text{det}} - \mathbf{c}_{j,\text{gt}}\|$.
+     * Apply `scipy.optimize.linear_sum_assignment(C)`.
+     * Pair matches if distance $< 0.5\,\text{m}$; classify unmatched as FP/FN.
+  2. **3D Bounding Box IoU**:
+     * Calculate 3D intersection volume and union volume for axis-aligned/oriented boxes.
+  3. **ArUco 6-DOF Errors**:
+     * Translation: $e_{\text{trans}} = \|\mathbf{t}_{\text{est}} - \mathbf{t}_{\text{gt}}\|_2 \times 1000\,\text{mm}$.
+     * Rotation: $e_{\text{rot}} = 2 \arccos(\min(1.0, |\mathbf{q}_{\text{est}} \cdot \mathbf{q}_{\text{gt}}|)) \times \frac{180}{\pi}$.
+  4. **Ground Segmentation & Costmap Scores**:
+     * Point-level Ground Precision, Recall, $F_1$.
+     * 2D Costmap grid correlation.
+  5. **Composite Score Calculation**:
+     * Evaluates $S_{\text{overall}}$ based on the formulas in README Section 7.
+
 * **Acceptance Criteria**:
-  * Unit tests verify mathematical correctness of all distance and angle error functions.
-  * Evaluation executes in $< 10\,\text{ms}$ per frame.
+  * Unit tests in `test/test_metrics_evaluator.py` pass with $100\%$ code coverage on mathematical routines.
 
 ---
 
 ### 📌 Task 6: Perception Benchmarking Coordinator Node
-* **Description**: Implement `benchmarking_node.py` to orchestrate scenario execution, synchronize sensor feeds with perception outputs, record latency, and aggregate metric scorecards.
-* **Suggested Implementation Guide**:
-  1. Implement scenario state machine (Idle $\rightarrow$ Load Scenario $\rightarrow$ Feed Sensor Data $\rightarrow$ Capture Perception Outputs $\rightarrow$ Evaluate $\rightarrow$ Record Scorecard $\rightarrow$ Next Scenario).
-  2. Subscribe to `/terrain/costmap`, `/terrain/obstacle_features`, `/perception/obstacles_only`, `/perception/aruco_pose`.
-  3. Time-sync outputs with inputs to record end-to-end processing latency.
-  4. Aggregate results into structured run dictionaries and write out raw summary CSVs.
+* **File to Create**: `testing/Perception/perception_benchmarking/benchmarking_node.py`
+
+* **Detailed Implementation Recipe**:
+  1. **Scenario Orchestration State Machine**:
+     ```
+     [STARTUP] --> [CLEAN_PROCESSES] --> [LOAD_SCENARIO_i] --> [FEED_MOCK_DATA]
+                                                                     |
+     [GENERATE_REPORTS] <-- [EVALUATE_SCENARIO_i] <-- [CAPTURE_OUTPUTS_50_FRAMES]
+     ```
+  2. **Subscribed Evaluation Topics**:
+     * `/terrain/costmap` (`nav_msgs/msg/OccupancyGrid`)
+     * `/terrain/obstacle_features` (`terrain_geometry_msgs/msg/ObstacleFeatureArray`)
+     * `/perception/obstacles_only` (`vision_msgs/msg/Detection3DArray`)
+     * `/perception/aruco_pose` (`geometry_msgs/msg/PoseStamped`)
+     * `/terrain/debug/ground_cloud` (`sensor_msgs/msg/PointCloud2`)
+  3. **Latency Measurement**:
+     * Calculate $\Delta T = t_{\text{received}} - t_{\text{sensor\_header\_stamp}}$ in milliseconds.
+  4. **Data Logging**:
+     * Save raw frame data and scenario scorecards to `reports/benchmark_raw.json`.
+
 * **Acceptance Criteria**:
-  * Automatically cycles through all scenarios in batch mode.
-  * Gracefully handles timeouts (e.g. if a module fails to detect or crashes).
+  * Node executes all 9 scenarios in batch mode without manual intervention and generates aggregated summary logs.
 
 ---
 
-### 📌 Task 7: RViz Live Benchmarking Overlay & Visualizer
-* **Description**: Create unified RViz configuration and dynamic marker publishers in `benchmarking_node.py` to visualize Ground Truth vs Perception Detections live side-by-side.
-* **Suggested Implementation Guide**:
-  1. Publish Ground Truth 3D bounding boxes as semi-transparent green wireframes/cubes.
-  2. Publish Detected 3D bounding boxes as solid yellow/red cubes.
-  3. Publish real-time error vectors (lines connecting detected centroids to ground truth centroids).
-  4. Publish ArUco ground truth coordinate axes vs estimated coordinate axes.
-  5. Create `rviz/perception_benchmark.rviz` with pre-configured display layers for ground cloud, clustered cloud, costmap, and benchmark marker overlays.
+### 📌 Task 7: Live RViz2 Telemetry & Visual Overlay
+* **Files to Create**:
+  * `testing/Perception/rviz/perception_benchmark.rviz`
+  * `testing/Perception/launch/live_test.launch.py`
+
+* **Detailed Implementation Recipe**:
+  1. **RViz Marker Conventions**:
+     * **Ground Truth Obstacles**: Semi-transparent **Green Wireframe Cubes** (`RGBA = 0.0, 1.0, 0.0, 0.4`).
+     * **Perception Detections**: Solid **Yellow/Red Cubes** (`RGBA = 1.0, 0.8, 0.0, 0.8`).
+     * **Error Offset Vectors**: Cyan/Magenta `Marker.LINE_LIST` connecting true centroids to detected centroids.
+     * **True vs Estimated ArUco Axes**: RGB arrows showing 6-DOF orientation comparisons.
+  2. **Pre-Configured Displays in RViz**:
+     * Fixed Frame: `base_link`.
+     * PointCloud2 Displays: `/camera/depth/color/points` (Z-color), `/terrain/debug/ground_cloud` (Green), `/terrain/debug/clustered_cloud` (Cluster Colors).
+     * Map Display: `/terrain/costmap`.
+     * MarkerArray Displays: `/benchmark/ground_truth_markers`, `/terrain/obstacle_markers`.
+  3. **Live Test Launcher (`live_test.launch.py`)**:
+     * Launches `mock_sensor_node`, SUT perception nodes, `benchmarking_node`, and `rviz2`.
+
 * **Acceptance Criteria**:
-  * Launching `ros2 launch perception_benchmarking live_test.launch.py` opens RViz2 with all displays active.
-  * Ground truth (green) and detected (red/yellow) objects are clearly distinguishable.
+  * `ros2 launch perception_benchmarking live_test.launch.py scenario:=scattered_boulders` opens RViz2 with all visual layers active and visible.
 
 ---
 
 ### 📌 Task 8: Automated HTML, PDF & CSV Report Generator
-* **Description**: Implement `report_generator.py` to parse benchmark scorecards and generate visual, publication-quality HTML, PDF, and CSV reports with matplotlib charts.
-* **Suggested Implementation Guide**:
-  1. Implement CSV exporter detailing metrics per scenario.
-  2. Generate Matplotlib summary graphs:
-     * Centroid error vs distance from camera.
-     * ArUco position/orientation error vs true distance & yaw angle.
-     * Latency distribution boxplots.
-     * 2D top-down ground truth vs detected obstacle overlay plots.
-  3. Implement Jinja2 / HTML report template with pass/fail badges, scorecards, and embedded matplotlib plots.
-  4. Add PDF conversion utility (via `weasyprint`, `pdfkit`, or `matplotlib.backends.backend_pdf`).
+* **Files to Create**:
+  * `testing/Perception/perception_benchmarking/report_generator.py`
+  * `testing/Perception/launch/benchmark.launch.py`
+
+* **Detailed Implementation Recipe**:
+  1. **Matplotlib Visual Figures**:
+     * `obstacle_error_scatter.png`: Centroid position error vs distance from camera.
+     * `aruco_range_accuracy.png`: Translation & rotation error degradation curves across $1.0\text{--}8.0\,\text{m}$.
+     * `latency_boxplot.png`: End-to-end latency boxplots across all 9 scenarios.
+     * `bev_detection_overlay.png`: 2D Bird's Eye View comparing true obstacle circles against detected bounding box footprints.
+  2. **HTML Dashboard & PDF Export**:
+     * Interactive HTML template with dark-mode Glassmorphism styling, pass/fail score badges, and embedded Base64 plots.
+     * Export to printable PDF via `matplotlib.backends.backend_pdf` or `weasyprint`.
+     * Export raw metrics table to `reports/benchmark_summary.csv`.
+  3. **Automated Batch Launcher (`benchmark.launch.py`)**:
+     * Supports `gui:=true` (Live RViz sequential batch) and `gui:=false` (Headless CI/CD run).
+
 * **Acceptance Criteria**:
-  * Generates clean HTML and PDF reports in `testing/Perception/reports/`.
-  * Summary table highlights tests that failed predefined tolerance thresholds in red.
+  * `ros2 launch perception_benchmarking benchmark.launch.py` executes all 9 scenarios, saves complete HTML/PDF/CSV reports in `reports/`, and outputs a terminal summary table.
+
+---
+
+## 🚀 Quick Execution Guide
+
+```bash
+# 1. Build the benchmarking package
+colcon build --packages-select perception_benchmarking
+source install/setup.bash
+
+# 2. Run Mode 1: Live Interactive Test on a specific scenario with RViz
+ros2 launch perception_benchmarking live_test.launch.py scenario:=scattered_boulders
+
+# 3. Run Mode 2: Live Sequential Batch Benchmark with RViz
+ros2 launch perception_benchmarking benchmark.launch.py gui:=true
+
+# 4. Run Mode 3: Headless Automated CI/CD Benchmark & PDF Report Generation
+ros2 launch perception_benchmarking benchmark.launch.py gui:=false
+```
