@@ -100,6 +100,7 @@ class MarkerDetectionNode(Node):
             "adaptiveThreshConstant", "minMarkerPerimeterRate", "maxMarkerPerimeterRate",
             "polygonalApproxAccuracyRate", "minCornerDistanceRate", "minDistanceToBorder",
             "perspectiveRemovePixelPerCell", "perspectiveRemoveIgnoredMarginPerCell",
+<<<<<<< HEAD:Perception/marker_detection  ver2/marker_detection/marker_detection/marker_detection_node.py
             "maxErroneousBitsInBorderRate", "errorCorrectionRate",
             "cornerRefinementWinSize", "cornerRefinementMaxIterations", "cornerRefinementMinAccuracy")}
         # Section 7: cornerRefinementMethod is declared as a readable string (matching the
@@ -108,6 +109,9 @@ class MarkerDetectionNode(Node):
         # unit-tested (test_aruco_detector.py) so a bad value fails loudly at startup, not silently.
         detector_values["cornerRefinementMethod"] = resolve_corner_refinement_method(
             str(self.get_parameter("cornerRefinementMethod").value))
+=======
+            "maxErroneousBitsInBorderRate", "errorCorrectionRate")}
+>>>>>>> 18eebae ( solvint proplems with the marker detection and the terrian geo):Perception/marker_detection/marker_detection/marker_detection_node.py
         dict_name = str(self.get_parameter("aruco_dictionary").value)
         self.detector = ArucoDetector(dict_name, detector_values)
         allowed_ids_param = self.get_parameter("allowed_marker_ids").value
@@ -656,8 +660,11 @@ class MarkerDetectionNode(Node):
             depth_consistent = (not self.get_parameter("validate_against_depth").value or np.isnan(difference) or
                                 difference <= self.get_parameter("max_depth_position_difference_m").value)
             flags = int(QualityFlag(item.quality_flags) | QualityFlag(pose.quality_flags))
+<<<<<<< HEAD:Perception/marker_detection  ver2/marker_detection/marker_detection/marker_detection_node.py
             if camera_info_stale:
                 flags |= int(QualityFlag.STALE_DATA)
+=======
+>>>>>>> 18eebae ( solvint proplems with the marker detection and the terrian geo):Perception/marker_detection/marker_detection/marker_detection_node.py
             output.append(AssociatedPose(item, pose, difference, bool(pose.valid and depth_consistent), flags))
         return output
 
