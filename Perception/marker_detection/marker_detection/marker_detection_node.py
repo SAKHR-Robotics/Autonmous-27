@@ -100,6 +100,8 @@ class MarkerDetectionNode(Node):
             "polygonalApproxAccuracyRate", "minCornerDistanceRate", "minDistanceToBorder",
             "perspectiveRemovePixelPerCell", "perspectiveRemoveIgnoredMarginPerCell",
             "maxErroneousBitsInBorderRate", "errorCorrectionRate")}
+        dict_name = str(self.get_parameter("aruco_dictionary").value)
+        self.detector = ArucoDetector(dict_name, detector_values)
         allowed_ids_param = self.get_parameter("allowed_marker_ids").value
         allowed_ids = list(allowed_ids_param) if allowed_ids_param is not None else []
         self.validator = DetectionValidator(
@@ -571,7 +573,7 @@ class MarkerDetectionNode(Node):
             depth_consistent = (not self.get_parameter("validate_against_depth").value or np.isnan(difference) or
                                 difference <= self.get_parameter("max_depth_position_difference_m").value)
             flags = int(QualityFlag(item.quality_flags) | QualityFlag(pose.quality_flags))
-            output.append(AssociatedPose(item, pose, difference, pose.valid and depth_consistent, flags))
+            output.append(AssociatedPose(item, pose, difference, bool(pose.valid and depth_consistent), flags))
         return output
 
     def _report_sync_health(self) -> None:
@@ -613,7 +615,7 @@ class MarkerDetectionNode(Node):
                 marker.marker_id, marker.center[0], marker.center[1], marker.area_px)
             (message.corner_1_x, message.corner_1_y, message.corner_2_x, message.corner_2_y,
              message.corner_3_x, message.corner_3_y, message.corner_4_x, message.corner_4_y) = marker.corners.flatten().tolist()
-            message.valid_depth = estimate.valid
+            message.valid_depth = bool(estimate.valid)
             message.valid_depth_samples = estimate.valid_samples
             message.depth_quality = estimate.quality
             message.depth_mad = estimate.mad_m
@@ -656,7 +658,7 @@ class MarkerDetectionNode(Node):
                 message.orientation.x, message.orientation.y, message.orientation.z, message.orientation.w = pose.quaternion
             if pose.euler is not None and self.get_parameter("publish_euler_angles").value:
                 message.roll, message.pitch, message.yaw = pose.euler
-            message.pose_valid = item.valid
+            message.pose_valid = bool(item.valid)
             output.markers.append(message)
         self.raw_pose_pub.publish(output)
 
@@ -671,7 +673,7 @@ class MarkerDetectionNode(Node):
                                    pose.mean_reprojection_error_px, quality_flags=item.quality_flags))
             else:
                 raw.append(RawPose(association.marker.marker_id, pose.tvec.reshape(3), np.asarray(pose.quaternion),
-                                   item.valid, pose.mean_reprojection_error_px, position_noise=pose.position_noise,
+                                   bool(item.valid), pose.mean_reprojection_error_px, position_noise=pose.position_noise,
                                    depth_z_m=depth_z, depth_z_variance=depth_variance,
                                    detection_confidence=association.detection_confidence, pose_quality=pose.pose_quality,
                                    viewing_angle_deg=pose.viewing_angle_deg, quality_flags=item.quality_flags))
@@ -687,13 +689,13 @@ class MarkerDetectionNode(Node):
             message.id = track.marker_id
             message.position.x, message.position.y, message.position.z = track.position.tolist()
             message.orientation.x, message.orientation.y, message.orientation.z, message.orientation.w = track.orientation.tolist()
-            message.detection_valid, message.tracking_valid, message.track_state = track.detection_valid, track.tracking_valid, track.state.value
+            message.detection_valid, message.tracking_valid, message.track_state = bool(track.detection_valid), bool(track.tracking_valid), track.state.value
             message.confidence, message.reprojection_error_px = track.confidence, track.reprojection_error_px
             message.position_innovation_m, message.orientation_innovation_deg = track.position_innovation_m, track.orientation_innovation_deg
             message.detection_count, message.missed_frames = track.detection_count, track.missed_frames
             message.detection_confidence, message.pose_quality = track.detection_confidence, track.pose_quality
             message.tracking_confidence, message.viewing_angle_deg = track.tracking_confidence, track.viewing_angle_deg
-            message.distance_m, message.quality_flags, message.depth_fused = track.distance_m, track.quality_flags, track.depth_fused
+            message.distance_m, message.quality_flags, message.depth_fused = track.distance_m, track.quality_flags, bool(track.depth_fused)
             message.age_seconds = track.age_seconds
             if track.position_covariance is not None:
                 covariance = np.zeros((3, 3))
@@ -856,7 +858,8 @@ def main(args: list[str] | None = None) -> None:
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":
