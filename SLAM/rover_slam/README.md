@@ -6,6 +6,38 @@ This ROS 2 package implements **Option B Architecture** for the ERC Autonomous M
 * **Global Mapping Backend:** `rtabmap_ros` publishing static `/map` grid and `map -> odom` transform offset (1-5 Hz), incorporating ArUco landmark 6-DOF poses.
 * **Costmap Server:** `nav2_costmap_2d` server fusing static map & dynamic rock obstacle point clouds into `/global_costmap/costmap`.
 
+```mermaid
+graph TD
+    subgraph PreProcessing ["1. Pre-Processing Layer"]
+        Ticks["Raw Encoders (/wheel/ticks)"] --> OdomNode["encoder_ticks_to_odom"]
+        OdomNode -->|/wheel/odom_raw| SlipChecker["heuristic_slip_checker"]
+        IMU_raw["IMU (/imu/data)"] --> SlipChecker
+        Cam_raw["RealSense D435 Raw Depth"] --> VisionHelper["vision_helper (Depth Filters)"]
+    end
+
+    subgraph LocalFusion ["2. Local State Estimation (High Rate ~50-100Hz)"]
+        SlipChecker -->|/wheel/odom_filtered| EKF["robot_localization (EKF)"]
+        IMU_raw --> EKF
+        EKF -->|TF: odom -> base_link| OdomFiltered["/odometry/filtered"]
+    end
+
+    subgraph GlobalSLAM ["3. Global SLAM & Loop Closure (1-5Hz)"]
+        VisionHelper -->|/camera/depth/filtered| RTAB["RTAB-Map (rtabmap_slam)"]
+        Cam_RGB["RealSense RGB + CameraInfo"] --> RTAB
+        OdomFiltered --> RTAB
+        ArUco["ArUco Markers (/perception/aruco_pose)"] --> RTAB
+        RTAB -->|TF: map -> odom| GlobalMap["/map (OccupancyGrid)"]
+    end
+
+    subgraph NavigationLayer ["4. Navigation Costmap Layer"]
+        GlobalMap --> Costmap["Nav2 Costmap 2D"]
+        Rocks["Terrain Obstacles (/bridge/pointcloud)"] --> Costmap
+        Costmap --> OutCostmap["/global_costmap/costmap & /local_costmap"]
+    end
+```
+
+> 📖 For full end-to-end dataflow (inputs, outputs, topics, and message types), see [**`SLAM/README.md`**](../README.md).
+
 ## 📦 Package Layout
 ```text
 rover_slam/
