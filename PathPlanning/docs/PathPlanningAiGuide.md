@@ -87,12 +87,12 @@ PathPlaning/
 
 **Perception Bridge Node:**
 - [ ] **Task B-3.1:** Write the ROS 2 C++ boilerplate for `src/costmap_bridge_node.cpp`. (done)
-- [ ] **Task B-3.2:** Add subscriber to `terrain_geometry_msgs/ObstacleFeatureArray`. (done)
-- [ ] **Task B-4.1:** Add publisher for standard `sensor_msgs/PointCloud2`. (done)
-- [ ] **Task B-4.2:** Implement the custom conversion logic inside the node's callback. (done)
-- [ ] **Task B-5.1:** Update `CMakeLists.txt` to compile `costmap_bridge_node.cpp`. (done)
+- [ ] **Task B-3.2:** Subscribe to `/perception/obstacles_only` (`vision_msgs/msg/Detection3DArray`). (done)
+- [ ] **Task B-4.1:** Add publisher for standard `sensor_msgs/PointCloud2` on `/bridge/pointcloud`. (done)
+- [ ] **Task B-4.2:** Implement 3D bounding box point grid sampling inside node's callback. (done)
+- [ ] **Task B-5.1:** Update `CMakeLists.txt` and `package.xml` to depend on `vision_msgs`. (done)
 - [ ] **Check B-5.2 (Validation):** Build `costmap_bridge_node`. (done)
-- [ ] **Check B-5.3 (Validation):** Publish dummy `ObstacleFeatureArray` via CLI, verify `PointCloud2` output. (done)
+- [ ] **Check B-5.3 (Validation):** Publish dummy `Detection3DArray` via CLI, verify `PointCloud2` output. (done)
 
 **Visualization:**
 - [ ] **Task B-6.1:** Create `launch/rviz.launch.py`. (done)

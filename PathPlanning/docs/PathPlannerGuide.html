@@ -404,10 +404,10 @@ graph TD
                         <td>The static global map used by Smac to find long-term obstacle-free routes.</td>
                     </tr>
                     <tr>
-                        <td><code>/perception/obstacles</code></td>
+                        <td><code>/perception/obstacles_only</code></td>
                         <td><code>vision_msgs/Detection3DArray</code></td>
-                        <td>Perception Module</td>
-                        <td>3D bounding boxes of rocks injected into the Costmap for real-time MPPI avoidance.</td>
+                        <td>Perception (Persistent Memory)</td>
+                        <td>Persistent 3D bounding boxes of rocks converted via Costmap Bridge into PointCloud2 for real-time MPPI avoidance.</td>
                     </tr>
                     <tr>
                         <td><code>/odometry/filtered</code></td>
@@ -543,6 +543,40 @@ ros2 launch nav2_bringup navigation_launch.py params_file:=/path/to/nav2_params.
                     </tr>
                 </tbody>
             </table>
+        </section>
+
+        <section>
+            <h2>8. Dynamic Obstacle Avoidance & Replanning Architecture</h2>
+            <p>During the competition, when dynamic obstacles appear on the terrain, Nav2 coordinates local swerving and global replanning through the Behavior Tree:</p>
+            
+            <div class="mermaid">
+            flowchart TD
+                BT["<b>Behavior Tree Navigator</b><br/>(Central Orchestrator)"]
+                GP["<b>Global Planner (Smac Hybrid A*)</b><br/><i>Computes macro route /plan on Global Costmap</i>"]
+                LP["<b>Local Controller (MPPI)</b><br/><i>Evaluates 2,000 rollouts @ 20Hz on Local Costmap</i>"]
+                
+                BT -->|"ComputePathToPose"| GP
+                GP -->|"/plan"| BT
+                BT -->|"FollowPath (/plan)"| LP
+                
+                LP -->|"20Hz Cycle"| EVAL{"Can MPPI swerve safely?"}
+                EVAL -->|"YES"| DRIVE["<b>Output /cmd_vel</b><br/>(Swerve around rock & rejoin plan)"]
+                EVAL -->|"NO (Trapped / Blocked)"| FAIL["<b>Return FAILURE</b><br/>(NO_VALID_TRAJECTORY)"]
+                
+                FAIL -->|"Trigger Immediate Replanning"| BT
+                BT -->|"Compute Detour Path"| GP
+                
+                GP -->|"If Path Blocked Everywhere"| REC["<b>Recovery Behaviors</b><br/>1. Clear Costmap (Remove sensor noise)<br/>2. BackUp 0.8m from Hazard<br/>3. Spin 360° to Scan<br/>4. Retry Plan"]
+            </div>
+
+            <div class="highlight-box" style="margin-top: 1.5rem;">
+                <h4>Coordination Principles</h4>
+                <ul style="margin-top: 0.5rem; margin-bottom: 0;">
+                    <li><strong>MPPI never talks to Global Planner directly</strong>; the Behavior Tree handles state transitions and replanning triggers.</li>
+                    <li><strong>Small Obstacles:</strong> MPPI's <code>ConstraintCritic</code> avoids the rock locally at 20 Hz without interrupting global navigation.</li>
+                    <li><strong>Major Blockages:</strong> When all 2,000 MPPI rollouts fail, BT immediately invokes Smac Planner to compute a fresh detour on the updated global costmap.</li>
+                </ul>
+            </div>
         </section>
 
         <div class="conclusion">

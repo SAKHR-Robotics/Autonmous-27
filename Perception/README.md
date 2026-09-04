@@ -1,137 +1,157 @@
-# Perception Module: Terrain Geometry & Obstacle Detection
+# Perception Subsystem: 3D Terrain Geometry, Obstacle Detection & ArUco Vision
 
-This module processes raw 3D depth camera feeds into local costmaps and obstacle arrays, enabling the path planner to safely route the rover around rocks, slopes, and crater terrain.
-
----
-
-## 1. Input & Output Topics
-
-The core processing node (`terrain_node`) communicates over the following ROS 2 interfaces:
-
-### Subscriptions (Input)
-*   **`/camera/depth/color/points`** (`sensor_msgs/msg/PointCloud2`)
-    *   Raw 3D point cloud in the camera optical frame.
-*   **`/tf` & `/tf_static`** (`tf2_msgs/msg/TFMessage`)
-    *   D435i camera sensor to base coordinate frame transform (`camera_link` $\rightarrow$ `base_link`).
-
-### Publications (Output)
-*   **`/terrain/costmap`** (`nav_msgs/OccupancyGrid`)
-    *   Unified inflated obstacle costmap ready for SLAM or path planners.
-*   **`/terrain/obstacle_features`** (`terrain_geometry_msgs/ObstacleFeatureArray`)
-    *   Geometric telemetry for detected obstacles (centroid, size dimensions, distance).
-*   **`/terrain/obstacle_markers`** (`visualization_msgs/MarkerArray`)
-    *   3D visual bounding boxes and text labels for RViz2 display.
-
-### Debug Publications (Active if `publish_debug_topics` is `True`)
-*   **`/terrain/debug/ground_cloud`** (`sensor_msgs/PointCloud2`): Ground planes separated by Ground Removal.
-*   **`/terrain/debug/voxel_cloud`** (`sensor_msgs/PointCloud2`): Point cloud filtered by Voxel Downsampling.
-*   **`/terrain/debug/clustered_cloud`** (`sensor_msgs/PointCloud2`): Points colored by DBSCAN Cluster IDs.
+The **Perception Subsystem** provides 3D spatial awareness, terrain geometry segmentation, obstacle extraction, and visual landmark/marker tracking for an autonomous Mars-analog ERC rover.
 
 ---
 
-## 2. Running & Using the Terrain Geometry Node
+## 🏛️ 1. Subsystem Architecture & Packages
 
-Make sure your workspace is built and sourced:
+The Perception workspace contains two primary functional modules alongside their custom interface definition packages:
+
+```
+Perception/
+├── docs/                                    # Architectural HTML & AI implementation guides
+│   ├── perception.html                      # Interactive Glassmorphism Architecture Report
+│   └── PerceptionAiGuide.md                 # Detailed AI Roadmap & Milestone Gates
+│
+├── rviz/                                    # 🌐 Centralized Master RViz View
+│   └── perception_system_view.rviz          # Unified visualizer (Terrain + Obstacles + ArUco + TF)
+│
+├── terrain_geometry/                        # 🪨 Core 3D Point Cloud Processing Package
+│   ├── terrain_geometry/                    # Python pipeline (ROI, Ground, Voxel, DBSCAN, Costmap)
+│   ├── config/                              # Terrain configuration YAMLs
+│   ├── launch/                              # Standalone terrain & RViz launchers
+│   └── rviz/                                # 📦 Modular Package RViz View
+│       └── terrain_geometry_view.rviz       # Dedicated Terrain Geometry display config
+│
+├── terrain_geometry_msgs/                   # 📜 Custom Terrain Message Definitions
+│   └── msg/
+│       ├── ObstacleFeature.msg              # Single obstacle centroid & 3D bounding box dimensions
+│       └── ObstacleFeatureArray.msg         # Array of detected obstacle features
+│
+├── marker_detection/                        # 🎯 ArUco Vision & SolvePnP 3D Pose Package
+│   ├── marker_detection/                    # Multi-stage detection, SolvePnP, Kalman tracking
+│   ├── config/                              # Marker detection YAML parameters
+│   ├── launch/                              # Marker detection launchers
+│   └── rviz/                                # 📦 Modular Package RViz View
+│       └── marker_detection_view.rviz       # Dedicated Marker Detection display config
+│
+└── marker_detection_msgs/                   # 📜 Custom Marker Message Definitions
+    └── msg/
+        ├── MarkerPose.msg                   # Filtered 6-DOF marker pose with covariance
+        └── MarkerPoseArray.msg              # Array of detected active markers
+```
+
+---
+
+## 📡 2. Input & Output Topics
+
+### A. Subscriptions (Sensor Inputs)
+*   **`/camera/depth/color/points`** (`sensor_msgs/msg/PointCloud2`): Raw 3D point cloud in the camera optical frame.
+*   **`/camera/color/image_raw`** (`sensor_msgs/msg/Image`): Raw RGB camera feed for ArUco marker extraction.
+*   **`/camera/camera_info`** (`sensor_msgs/msg/CameraInfo`): Camera intrinsic calibration matrix ($f_x, f_y, c_x, c_y$).
+*   **`/tf` & `/tf_static`** (`tf2_msgs/msg/TFMessage`): Dynamic and static coordinate transforms (`camera_link` $\rightarrow$ `base_link`).
+
+### B. Publications (Outputs to SLAM & Nav2)
+*   **`/perception/local_bboxes`** (`vision_msgs/msg/Detection3DArray`): Raw single-frame 3D rock bounding boxes.
+*   **`/perception/obstacles_only`** (`vision_msgs/msg/Detection3DArray`): Smoothed, persistent rock obstacles with blind-spot retention for the Nav2 Costmap Server.
+*   **`/terrain/costmap`** (`nav_msgs/msg/OccupancyGrid`): Direct 2D inflated obstacle costmap at 5cm resolution.
+*   **`/terrain/obstacle_features`** (`terrain_geometry_msgs/msg/ObstacleFeatureArray`): Obstacle telemetry (centroid, size dimensions, distance).
+*   **`/terrain/obstacle_markers`** (`visualization_msgs/msg/MarkerArray`): 3D visual bounding boxes and text labels for RViz2.
+*   **`/perception/aruco_pose`** (`geometry_msgs/msg/PoseStamped`): 6-DOF marker target pose for Saif SLAM loop closure / drift hard resets.
+
+### C. Debug Publications (Active when `publish_debug_topics: True`)
+*   **`/terrain/debug/ground_cloud`** (`sensor_msgs/msg/PointCloud2`): Ground planes separated by Patchwork++.
+*   **`/terrain/debug/voxel_cloud`** (`sensor_msgs/msg/PointCloud2`): Point cloud filtered by Voxel Downsampling.
+*   **`/terrain/debug/clustered_cloud`** (`sensor_msgs/msg/PointCloud2`): Points colored by DBSCAN Cluster IDs.
+
+---
+
+## 🖥️ 3. RViz2 Visualization Setup: Modular vs Centralized
+
+To maintain a clean separation of concerns, the workspace provides both **modular package-level views** and a **centralized master perception view**:
+
+| View Scope | Configuration Path | What It Displays |
+| :--- | :--- | :--- |
+| **Centralized System View** | `Perception/rviz/perception_system_view.rviz` | **Full Perception Subsystem**: Live RGB stream, 3D PointCloud, DBSCAN clusters, 2D Inflated Costmap, Persistent Obstacle BBoxes, and ArUco 3D target markers/TF frames simultaneously. |
+| **Terrain Geometry View** | `Perception/terrain_geometry/rviz/terrain_geometry_view.rviz` | **Terrain Only**: PointCloud, ground separation, voxel grid, cluster markers, and `/terrain/costmap`. |
+| **Marker Detection View** | `Perception/marker_detection/rviz/marker_detection_view.rviz` | **ArUco Only**: RGB image overlay with 2D corner detections, 3D marker coordinate axes, and `/marker_detection/targets`. |
+
+---
+
+## 🚀 4. Running & Launching
+
+### A. Build the Workspace
 ```bash
-# Compile and source workspace from the repository root (outside Autonmous_Ws)
 cd /path/to/your/cloned/repository
-source /opt/ros/humble/setup.bash
+source /opt/ros/humble/setup.bash # Or jazzy
 colcon build
 source install/setup.bash
 ```
 
-To run the Terrain Geometry node standalone with default configurations:
+### B. Launching Individual Modules (Modular)
+
+**1. Terrain Geometry (Standalone):**
 ```bash
 ros2 launch terrain_geometry terrain.launch.py
+# Optional: Launch modular RViz
+ros2 launch terrain_geometry rviz.launch.py
+```
+
+**2. Marker Detection (Standalone):**
+```bash
+ros2 launch marker_detection marker_detection.launch.py
+# Optional: Launch modular RViz
+ros2 launch marker_detection rviz.launch.py
+```
+
+### C. Launching the Full Perception Subsystem
+```bash
+ros2 launch terrain_geometry perception_system.launch.py
+# Open Centralized System RViz:
+rviz2 -d Perception/rviz/perception_system_view.rviz
 ```
 
 ---
 
-## 3. Testing Methods & Validation Guide
+## 🧪 5. Testing & Validation Workflows
 
-You can validate the perception node using two distinct workflows:
+### Method A: Testing in Gazebo Mars Yard Simulation (Recommended)
+1. **Start World & Spawn Rover:**
+   ```bash
+   ros2 launch my_robot_description gazebo.launch.py world:=world1.world
+   ```
+2. **Launch Perception:**
+   ```bash
+   ros2 launch terrain_geometry perception_system.launch.py
+   ```
+3. **Drive the Rover:**
+   ```bash
+   ros2 run teleop_twist_keyboard teleop_twist_keyboard
+   ```
+4. **Inspect RViz2:**
+   Open `Perception/rviz/perception_system_view.rviz` in RViz2 to verify costmap updates and 3D bounding box stability.
 
-### Method A: Testing with the Simulated Rover (Recommended)
-This closed-loop test runs the active rover simulation inside the Mars Yard world in Gazebo alongside the perception node.
-
-1.  **Start the World & Rover Simulation:**
-    Choose one of the following two options:
-    *   **Option 1 (Two Commands):**
-        First launch the world:
-        ```bash
-        ros2 launch worlds world1.launch.py
-        ```
-        Then, in a separate terminal, spawn the rover:
-        ```bash
-        ros2 launch my_robot_description spawn_rover.launch.py
-        ```
-    *   **Option 2 (Single Command):**
-        Launch the world and spawn the rover together:
-        ```bash
-        ros2 launch my_robot_description gazebo.launch.py world:=world1.world
-        ```
-2.  **Launch the Terrain Geometry Node:**
-    ```bash
-    ros2 launch terrain_geometry terrain.launch.py
-    ```
-3.  **Drive the Rover:**
-    Open a terminal to teleoperate the rover:
-    ```bash
-    ros2 run teleop_twist_keyboard teleop_twist_keyboard
-    ```
-4.  **Visualize results in RViz2:**
-    Run RViz2:
-    ```bash
-    rviz2
-    ```
-    *   Add `/terrain/costmap` (OccupancyGrid display) to see real-time obstacle avoidance layers updating as you approach rocks.
-    *   Add `/terrain/obstacle_markers` (MarkerArray display) to see 3D bounding boxes drawn around detected stones.
+### Method B: Testing with ROS 2 Bag Playback
+1. **Publish Camera TF (if not in bag):**
+   ```bash
+   ros2 run tf2_ros static_transform_publisher 0.5 0 0.5 0 0 0 base_link camera_link
+   ```
+2. **Play Bag:**
+   ```bash
+   ros2 bag play /path/to/bag_file/
+   ```
+3. **Launch Perception:**
+   ```bash
+   ros2 launch terrain_geometry terrain.launch.py
+   ```
 
 ---
 
-### Method B: Testing with a ROS Bag (RealSense Log Playback)
-This offline validation runs the perception pipeline using pre-recorded depth camera bag files.
+## ⚠️ 6. Important Notes on QoS Configuration
 
-1.  **Publish a Static Transform (If needed):**
-    Because the recorded bag might lack TF transforms mapping the camera to the rover frame, broadcast a static transform so the TF transformer doesn't fail:
-    ```bash
-    ros2 run tf2_ros static_transform_publisher 0.5 0 0.5 0 0 0 base_link camera_link
-    ```
-2.  **Play the ROS Bag:**
-    Run the playback command on your local bag file:
-    ```bash
-    # For ROS 2 (.db3 or metadata.yaml bag formats):
-    ros2 bag play /path/to/your/bag_file/
-    ```
-    > [!TIP]
-    > If the bag records the point cloud on a different topic than `/camera/depth/color/points`, remap it:
-    > ```bash
-    > ros2 bag play /path/to/your/bag_file/ --remap /original_pointcloud_topic:=/camera/depth/color/points
-    > ```
-3.  **Launch the Terrain Geometry Node:**
-    ```bash
-    ros2 launch terrain_geometry terrain.launch.py
-    ```
-4.  **Verify the Outputs:**
-    Open RViz2 to verify `/terrain/costmap` and `/terrain/obstacle_markers` output matching the playback stream.
+RealSense camera drivers and Gazebo simulation plugins publish raw sensor streams (`/camera/depth/color/points`, `/camera/color/image_raw`) using **Best Effort** QoS. 
 
----
+*   All perception input subscribers are configured to use `QoSReliabilityPolicy.BEST_EFFORT` to prevent silent message drops.
+*   If viewing raw feeds in RViz2, make sure each display's **Reliability Policy** is set to **Best Effort**.
 
-### What Data You Can Visualize and Validate in RViz
-
-You can visualize all data from the camera and the perception node. Here is the checklist of what to add (using the **Add** button in the bottom-left of RViz):
-
-| Data to Validate | RViz Display Type | Topic | What to look for |
-| :--- | :--- | :--- | :--- |
-| **Raw Camera Video** | Image | `/camera/image_raw` | Live RGB video feed from the front of the rover. |
-| **Raw 3D Point Cloud** | PointCloud2 | `/camera/depth/color/points` | 3D colored points showing the terrain directly in front of the rover. |
-| **3D Obstacle Boxes** | MarkerArray | `/terrain/obstacle_markers` | 3D bounding boxes drawn around rocks, labeled with their cluster ID. |
-| **Perception Costmap** | OccupancyGrid | `/terrain/costmap` | A flat 2D grid overlay showing safe areas (clear) and dangerous areas (occupied by rocks in red/purple). |
-| **Debug Ground Cloud** | PointCloud2 | `/terrain/debug/ground_cloud` | Ground points separated by Patchwork++ (colored in solid green/gray). |
-| **Debug Clusters** | PointCloud2 | `/terrain/debug/clustered_cloud` | Remaining points after ground removal, colored by DBSCAN cluster ID. |
-
-> [!IMPORTANT]
-> **QoS Configuration (Avoiding Warnings & Missing Data):**
-> If you see warnings or if raw feeds (video, point clouds) do not display, check the **Reliability Policy** in the settings of the RViz display element:
-> * Change it from **Reliable** to **Best Effort** for `/camera/image_raw` and `/camera/depth/color/points`.
-> * RealSense cameras and Gazebo simulations publish high-bandwidth sensor topics using a *Best Effort* QoS profile. RViz will output status warnings and fail to show data if its profile is mismatched (left on *Reliable*). Changing them to *Best Effort* immediately resolves the warnings and displays the streams.
