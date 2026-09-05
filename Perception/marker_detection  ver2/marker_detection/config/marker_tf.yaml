@@ -1,0 +1,10 @@
+marker_tf_broadcaster:
+  ros__parameters:
+    tracked_pose_topic: "/marker_poses"
+    marker_frame_prefix: "aruco_marker_"
+    publish_tf: true
+    publish_only_confirmed: true
+    publish_predicted_lost: false
+    # Leave empty to trust the Step 4 pose header. Set after inspecting the live RealSense TF tree.
+    expected_parent_frame: ""
+    debug_logging: false
