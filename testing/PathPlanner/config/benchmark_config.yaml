@@ -11,3 +11,77 @@ benchmark:
     target_planning_time: 2.0
     timeout_planning_time: 10.0
     target_length_ratio: 1.35
+
+# ==============================================================================
+# 🚀 Universal Target Module Configuration
+# ==============================================================================
+# Set use_external_module to true if you are running your planner / controller
+# separately or from an external terminal. If false, the tester can bring up
+# target_package and target_launch automatically.
+target_module:
+  use_external_module: false
+  target_package: "erc_path_planner"
+  target_launch: "path_planning.launch.py"
+
+# ==============================================================================
+# 🔌 Universal ROS 2 Topic & Action Interface Contracts
+# ==============================================================================
+interfaces:
+  # Goal interface: "auto" (tries Nav2 action first, falls back to topic),
+  #                 "action" (Nav2 NavigateThroughPoses / NavigateToPose),
+  #                 "topic" (/goal_pose & /start_pose)
+  goal_type: "auto"
+  
+  # Command velocity interface:
+  # cmd_vel_type: "auto" (accepts both Twist and TwistStamped), "twist", "twist_stamped"
+  cmd_vel_topic: "/cmd_vel"
+  cmd_vel_type: "auto"
+  
+  # Navigation feedback & map topics
+  plan_topic: "/plan"
+  local_plan_topic: "/local_plan"
+  map_topic: "/map"
+  odom_topic: "/odometry/filtered"
+  
+  # Perception output mode from mock_perception:
+  # "all": publishes PointCloud2 (/bridge/pointcloud), LaserScan (/scan), and ObstacleFeatureArray
+  # "pointcloud": publishes PointCloud2 only
+  # "laserscan": publishes LaserScan only
+  # "features": publishes ObstacleFeatureArray only
+  perception_mode: "all"
+
+# ==============================================================================
+# 🏎️ Simulation Physics & Physical Actuator Dynamics
+# ==============================================================================
+simulation_physics:
+  wheel_radius: 0.15                  # meters
+  track_width: 0.65                   # meters
+  max_linear_accel: 1.2               # m/s^2 (slew rate limit)
+  max_angular_accel: 2.0              # rad/s^2 (slew rate limit)
+  max_rpm: 120.0                      # max motor RPM (~1.88 m/s)
+  deadband_linear: 0.02               # m/s (commands below this produce 0 movement)
+  deadband_angular: 0.03              # rad/s
+  slip_ratio_linear: 0.15             # 15% longitudinal slip on loose Martian soil
+  slip_ratio_angular: 0.10            # 10% rotational slip
+  noise_std_v: 0.02                   # m/s Gaussian velocity sensor noise
+  noise_std_w: 0.03                   # rad/s Gaussian angular velocity sensor noise
+  publish_tf: true
+  update_rate: 50.0                   # Hz
+
+# ==============================================================================
+# 🎮 Control Subsystem Benchmarking (Tier 1 vs Tier 2)
+# ==============================================================================
+control_benchmarking:
+  # "cmd_vel": Test Trajectory Controller (Local Planner) outputting /cmd_vel
+  # "motor_rpm": Test Low-Level Motor Driver node outputting wheel RPMs on /rover/motor_rpm
+  control_mode: "cmd_vel"
+  motor_rpm_topic: "/rover/motor_rpm"
+  joint_states_topic: "/rover/joint_states"
+  
+  # Metric Weights for Controller Score
+  weights:
+    cte: 0.35
+    smoothness: 0.25
+    control_effort: 0.20
+    heading_accuracy: 0.10
+    goal_accuracy: 0.10

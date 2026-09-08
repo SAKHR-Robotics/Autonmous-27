@@ -203,6 +203,9 @@ def calculate_control_metrics(cmd_history, odom_history, planned_coords, goal_po
         "angular_jerk_std": 0.0,
         "cmd_freq_hz": 20.0,
         "goal_accuracy_m": 0.05,
+        "control_effort": 0.0,
+        "steering_reversals": 0,
+        "heading_rmse_deg": 0.0,
         "controller_score": 95.0
     }
 
@@ -293,15 +296,65 @@ def calculate_control_metrics(cmd_history, odom_history, planned_coords, goal_po
         gy = goal_pose.pose.position.y
         goal_acc = math.sqrt((last_x - gx)**2 + (last_y - gy)**2)
 
-    # 4. Controller Score (0-100)
+    # 4. Advanced Control Effort & Steering Chatter
+    control_effort = 0.0
+    steering_reversals = 0
+    for i in range(len(cmd_history) - 1):
+        dt = cmd_history[i+1][0] - cmd_history[i][0]
+        if dt > 1e-4:
+            v_k = math.sqrt(cmd_history[i][1]**2 + cmd_history[i][2]**2)
+            w_k = cmd_history[i][3]
+            control_effort += (v_k**2 + w_k**2) * dt
+
+    for i in range(1, len(ang_accels)):
+        if (ang_accels[i] * ang_accels[i-1] < 0) and (abs(ang_accels[i]) > 0.05):
+            steering_reversals += 1
+
+    # 5. Heading Tracking RMSE (deviation between rover heading and path tangent)
+    heading_errors_deg = []
+    if odom_history and planned_coords and len(planned_coords) >= 2:
+        for item in odom_history:
+            rx, ry, ryaw = item[1], item[2], item[3]
+            min_d = float('inf')
+            best_seg_yaw = 0.0
+            for i in range(len(planned_coords) - 1):
+                ax, ay = planned_coords[i]
+                bx, by = planned_coords[i+1]
+                dx = bx - ax
+                dy = by - ay
+                seg_len_sq = dx**2 + dy**2
+                if seg_len_sq > 1e-6:
+                    u = max(0.0, min(1.0, ((rx - ax)*dx + (ry - ay)*dy) / seg_len_sq))
+                    px = ax + u * dx
+                    py = ay + u * dy
+                    d = math.sqrt((rx - px)**2 + (ry - py)**2)
+                    if d < min_d:
+                        min_d = d
+                        best_seg_yaw = math.atan2(dy, dx)
+            diff = math.atan2(math.sin(ryaw - best_seg_yaw), math.cos(ryaw - best_seg_yaw))
+            heading_errors_deg.append(math.degrees(abs(diff)))
+
+    heading_rmse_deg = float(np.sqrt(np.mean(np.array(heading_errors_deg)**2))) if heading_errors_deg else 3.5
+
+    # 6. Controller Score (0-100)
     # S_cte: 100 at 0m error, 0 at 0.50m error
     s_cte = max(0.0, 100.0 * (1.0 - mean_cte / 0.50))
     # S_smooth: 100 for smooth inputs (<1.0 m/s^2 std), 0 for violent oscillations (>5.0 m/s^2)
     s_smooth = max(0.0, 100.0 * (1.0 - min(5.0, lin_jerk_std) / 5.0))
+    # S_effort: 100 for < 5.0, 0 for > 50.0
+    s_effort = max(0.0, 100.0 * (1.0 - min(50.0, control_effort) / 50.0))
+    # S_heading: 100 at 0 deg, 0 at 45 deg
+    s_heading = max(0.0, 100.0 * (1.0 - min(45.0, heading_rmse_deg) / 45.0))
     # S_acc: 100 at <0.20m, 0 at >1.0m
     s_acc = max(0.0, 100.0 * (1.0 - min(1.0, goal_acc) / 1.0))
-    
-    controller_score = 0.40 * s_cte + 0.30 * s_smooth + 0.30 * s_acc
+
+    controller_score = (
+        0.30 * s_cte +
+        0.25 * s_smooth +
+        0.20 * s_effort +
+        0.15 * s_heading +
+        0.10 * s_acc
+    )
 
     return {
         "mean_cte": mean_cte,
@@ -315,6 +368,9 @@ def calculate_control_metrics(cmd_history, odom_history, planned_coords, goal_po
         "angular_jerk_std": ang_jerk_std,
         "cmd_freq_hz": cmd_freq_hz,
         "goal_accuracy_m": goal_acc,
+        "control_effort": control_effort,
+        "steering_reversals": steering_reversals,
+        "heading_rmse_deg": heading_rmse_deg,
         "controller_score": controller_score
     }
 

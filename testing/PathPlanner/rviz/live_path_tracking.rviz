@@ -22,6 +22,10 @@ Visualization Manager:
     - Class: rviz_default_plugins/Map
       Name: Global Map
       Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
         Value: /map
       Color Scheme: map
       Value: true
@@ -29,6 +33,10 @@ Visualization Manager:
     - Class: rviz_default_plugins/Map
       Name: Global Costmap
       Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
         Value: /global_costmap/costmap
       Color Scheme: costmap
       Value: true
@@ -36,6 +44,10 @@ Visualization Manager:
     - Class: rviz_default_plugins/Map
       Name: Local Costmap
       Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
         Value: /local_costmap/costmap
       Color Scheme: costmap
       Value: true
