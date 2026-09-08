@@ -10,8 +10,8 @@ ekf_filter_node:
     base_link_frame: base_link
     world_frame: odom  # Local EKF outputs odom -> base_link ONLY
 
-    # Wheel Encoder Input (Linear velocity X, Y, Yaw velocity)
-    odom0: /wheel/odom_raw
+    # Wheel Encoder Input (Filtered via heuristic_slip_checker with dynamic covariance)
+    odom0: /wheel/odom_filtered
     odom0_config: [false, false, false,
                    false, false, false,
                    true,  true,  false,

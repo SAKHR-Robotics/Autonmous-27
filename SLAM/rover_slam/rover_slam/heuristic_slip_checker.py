@@ -39,7 +39,7 @@ class SlipCheckerCore:
     def __init__(
         self,
         slip_rot_threshold: float = 0.35,
-        slip_accel_threshold: float = 0.30,
+        slip_accel_threshold: float = 0.18,
         slip_vel_threshold: float = 0.20,
         covariance_scale: float = 100.0,
         nominal_linear_cov: float = 0.02,
@@ -131,24 +131,24 @@ class SlipCheckerCore:
 
             # Clear obstacle block if driver commands motion away from obstacle
             if self.obstacle_blocked:
-                if (self.blocked_direction > 0 and v_wheel < -0.08) or (self.blocked_direction < 0 and v_wheel > 0.08):
+                if (self.blocked_direction > 0 and v_wheel < -0.05) or (self.blocked_direction < 0 and v_wheel > 0.05):
                     self.obstacle_blocked = False
                     self.blocked_direction = 0
 
             # Register dynamic body acceleration indicating genuine vehicle traction
             if not self.takeoff_accel_seen:
-                if (v_wheel > 0.12 and a_dynamic_x > 0.20) or (v_wheel < -0.12 and a_dynamic_x < -0.20):
+                if (v_wheel > 0.08 and a_dynamic_x > 0.08) or (v_wheel < -0.08 and a_dynamic_x < -0.08):
                     self.takeoff_accel_seen = True
 
         # Rule 2: Collision Impact Detection
         # Forward collision: driving forward while body suffers deceleration impact or pitch climb
-        if v_wheel > 0.12 and (a_dynamic_x < -self.slip_accel_threshold or (a_dynamic_x < -0.15 and abs(w_imu_y) > 0.12)):
+        if v_wheel > 0.10 and (a_dynamic_x < -self.slip_accel_threshold or (a_dynamic_x < -0.10 and abs(w_imu_y) > 0.08)):
             raw_slip = True
             self.obstacle_blocked = True
             self.blocked_direction = 1
             reason = f"ForwardCollision (v={v_wheel:.2f}, a_dyn={a_dynamic_x:.2f})"
-        # Reverse collision: driving backward while body suffers forward deceleration impact
-        elif v_wheel < -0.12 and (a_dynamic_x > self.slip_accel_threshold or (a_dynamic_x > 0.15 and abs(w_imu_y) > 0.12)):
+        # Reverse collision: driving backward while body suffers severe forward deceleration impact
+        elif v_wheel < -0.15 and a_dynamic_x > 0.40:
             raw_slip = True
             self.obstacle_blocked = True
             self.blocked_direction = -1
@@ -156,16 +156,14 @@ class SlipCheckerCore:
 
         # Rule 3: Obstacle Stall (sustained pushing against rock or obstacle)
         if not raw_slip and self.obstacle_blocked:
-            if (self.blocked_direction > 0 and v_wheel > 0.12) or (self.blocked_direction < 0 and v_wheel < -0.12):
+            if (self.blocked_direction > 0 and v_wheel > 0.10) or (self.blocked_direction < 0 and v_wheel < -0.15):
                 raw_slip = True
                 reason = f"ObstacleStall (v={v_wheel:.2f}, dir={self.blocked_direction})"
 
-        # Rule 4: Stalled on Takeoff (spinning wheels from rest against rock or on frictionless ice)
+        # Rule 4: Stalled on Takeoff (spinning wheels from rest on frictionless ice)
         if not raw_slip and not self.obstacle_blocked and self.takeoff_start_time is not None:
-            if not self.takeoff_accel_seen and (current_time_sec - self.takeoff_start_time) >= 0.25:
+            if v_wheel > 0.15 and not self.takeoff_accel_seen and (current_time_sec - self.takeoff_start_time) >= 0.28:
                 raw_slip = True
-                self.obstacle_blocked = True
-                self.blocked_direction = 1 if v_wheel > 0 else -1
                 reason = f"StalledOnTakeoff (v={v_wheel:.2f}, a_dyn={a_dynamic_x:.2f})"
 
         if raw_slip:
@@ -198,11 +196,12 @@ class HeuristicSlipCheckerNode(Node):
         # ----------------------------------------------------------------------
         self.declare_parameter("slip_velocity_threshold", 0.20)
         self.declare_parameter("slip_angular_threshold", 0.35)
-        self.declare_parameter("slip_accel_threshold", 0.30)
+        self.declare_parameter("slip_accel_threshold", 0.18)
         self.declare_parameter("covariance_inflation_factor", 100.0)
         self.declare_parameter("nominal_linear_covariance", 0.02)
         self.declare_parameter("nominal_angular_covariance", 0.05)
         self.declare_parameter("slip_hold_time", 0.4)
+        self.declare_parameter("raw_odom_topic", "/wheel/odom_raw")
 
         # Retrieve parameter values
         self.slip_vel_threshold: float = (
@@ -226,6 +225,9 @@ class HeuristicSlipCheckerNode(Node):
         self.slip_hold_time: float = (
             self.get_parameter("slip_hold_time").get_parameter_value().double_value
         )
+        self.raw_odom_topic: str = (
+            self.get_parameter("raw_odom_topic").get_parameter_value().string_value
+        )
 
         # Core logic helper
         self.core = SlipCheckerCore(
@@ -243,6 +245,7 @@ class HeuristicSlipCheckerNode(Node):
         # ----------------------------------------------------------------------
         self.latest_imu: Optional[Imu] = None
         self.last_raw_odom_time: float = -100.0
+        self._last_processed_stamp: Optional[Tuple[int, int]] = None
         self.is_slipping: bool = False
 
         # ----------------------------------------------------------------------
@@ -251,18 +254,20 @@ class HeuristicSlipCheckerNode(Node):
         # Primary raw wheel odometry subscription (hardware / encoder_ticks_to_odom)
         self.sub_wheel_odom = self.create_subscription(
             Odometry,
-            "/wheel/odom_raw",
+            self.raw_odom_topic,
             self._wheel_odom_callback,
             10,
         )
 
         # Gazebo simulation fallback subscription (diff-drive plugin outputs /odom)
-        self.sub_sim_odom = self.create_subscription(
-            Odometry,
-            "/odom",
-            self._sim_odom_callback,
-            10,
-        )
+        self.sub_sim_odom = None
+        if self.raw_odom_topic != "/odom":
+            self.sub_sim_odom = self.create_subscription(
+                Odometry,
+                "/odom",
+                self._sim_odom_callback,
+                10,
+            )
 
         self.sub_imu = self.create_subscription(
             Imu,
@@ -304,6 +309,12 @@ class HeuristicSlipCheckerNode(Node):
         Evaluate wheel motion against IMU telemetry, dynamically scale covariance,
         and publish filtered odometry and slip flag.
         """
+        # Deduplicate if remappings result in multiple triggers for the exact same message
+        stamp = (msg.header.stamp.sec, msg.header.stamp.nanosec)
+        if stamp != (0, 0) and stamp == self._last_processed_stamp:
+            return
+        self._last_processed_stamp = stamp
+
         v_wheel: float = msg.twist.twist.linear.x
         w_wheel: float = msg.twist.twist.angular.z
 
@@ -344,6 +355,13 @@ class HeuristicSlipCheckerNode(Node):
         filtered_odom.twist = msg.twist
 
         multiplier: float = self.covariance_scale if slip_detected else 1.0
+
+        # Dynamic velocity suppression during confirmed obstacle stall:
+        # If wheels are spinning while chassis is blocked by an obstacle, true chassis velocity is 0.0.
+        # Clamping twist to 0.0 prevents EKF from integrating forward and penetrating the obstacle.
+        if slip_detected and self.core.obstacle_blocked:
+            filtered_odom.twist.twist.linear.x = 0.0
+            filtered_odom.twist.twist.linear.y = 0.0
 
         # Pose Covariance
         filtered_odom.pose.covariance[0] = 0.01 * multiplier
