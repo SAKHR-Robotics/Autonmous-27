@@ -596,18 +596,28 @@ graph TD
         <h2><i class="fa-solid fa-boxes-stacked"></i> 4.5. Component & Codebase Breakdown</h2>
         
         <div class="info-box">
-            <h4><i class="fa-solid fa-code"></i> Package Location: <code>Autonmous_Ws/Perception/terrain_geometry_improved/terrain_geometry</code></h4>
+            <h4><i class="fa-solid fa-code"></i> Workspace Organization (Under <code>Perception/</code>)</h4>
         </div>
 
+        <h3>1. <code>terrain_geometry</code> (3D Point Cloud & Costmaps)</h3>
         <ul>
             <li><strong><code>terrain_node.py</code>:</strong> Main ROS 2 executable node orchestrating parameters, subscriptions, execution stages, and publishing streams.</li>
             <li><strong><code>ground_removal.py</code>:</strong> Contains RANSAC and Patchwork++ ground extraction algorithms.</li>
-            <li><strong><code>voxel_filter.py</code>:</strong> Implements 3D spatial voxel grid downsampling.</li>
+            <li><strong><code>voxel_filter.py</code>:</strong> Implements 3D spatial voxel grid downsampling (5cm leaf size).</li>
             <li><strong><code>outlier_filter.py</code>:</strong> Implements Radius Outlier Removal (ROR).</li>
             <li><strong><code>clustering.py</code>:</strong> Implements DBSCAN Euclidean clustering and bounding box extraction.</li>
             <li><strong><code>occupancy_grid.py</code> & <code>costmap_inflation.py</code>:</strong> Converts 3D clusters to 2D occupancy cells and applies exponential cost inflation.</li>
             <li><strong><code>tf_transform.py</code>:</strong> Manages coordinate frame transformations between camera frames and <code>base_link</code>.</li>
             <li><strong><code>terrain_geometry_msgs</code>:</strong> Custom interface package defining <code>ObstacleFeature</code> and <code>ObstacleFeatureArray</code> ROS 2 messages.</li>
+        </ul>
+
+        <h3>2. <code>marker_detection</code> (ArUco Visual Tracking & SolvePnP)</h3>
+        <ul>
+            <li><strong><code>aruco_detector.py</code> & <code>detection_validator.py</code>:</strong> 2D marker corner extraction and geometric sanity gating.</li>
+            <li><strong><code>pose_estimator.py</code>:</strong> OpenCV SolvePnP 6-DOF translation/rotation estimation using camera intrinsics.</li>
+            <li><strong><code>depth_processor.py</code>:</strong> Robust median depth association and MAD noise rejection.</li>
+            <li><strong><code>tracker_manager.py</code> & <code>position_kalman.py</code>:</strong> Temporal tracking, Kalman filtering, and quaternion orientation smoothing.</li>
+            <li><strong><code>marker_detection_msgs</code>:</strong> Custom interface package defining <code>MarkerPose</code> and <code>MarkerPoseArray</code>.</li>
         </ul>
     </div>
 
@@ -659,23 +669,30 @@ graph TD
     <div id="testing-guide" class="glass-panel">
         <h2><i class="fa-solid fa-vial"></i> 7. Testing & RViz Validation Guide</h2>
 
-        <h3>Running Standalone Perception:</h3>
-        <pre><code># Source workspace and launch terrain geometry node
-source /opt/ros/humble/setup.bash
-source install/setup.bash
-ros2 launch terrain_geometry terrain.launch.py</code></pre>
+        <h3>1. Launching Modular Packages vs Centralized System:</h3>
+        <pre><code># Option A: Standalone Terrain Geometry + Modular RViz
+ros2 launch terrain_geometry terrain.launch.py
+ros2 launch terrain_geometry rviz.launch.py
 
-        <h3>Testing with Gazebo Rover Simulation:</h3>
+# Option B: Standalone Marker Detection + Modular RViz
+ros2 launch marker_detection marker_detection.launch.py
+ros2 launch marker_detection rviz.launch.py
+
+# Option C: Full Perception Subsystem + Centralized System RViz
+ros2 launch terrain_geometry perception_system.launch.py
+rviz2 -d Perception/rviz/perception_system_view.rviz</code></pre>
+
+        <h3>2. Testing with Gazebo Rover Simulation:</h3>
         <pre><code># Terminal 1: Launch Gazebo world and spawn rover
 ros2 launch my_robot_description gazebo.launch.py world:=world1.world
 
-# Terminal 2: Run Perception node
-ros2 launch terrain_geometry terrain.launch.py
+# Terminal 2: Run Full Perception System
+ros2 launch terrain_geometry perception_system.launch.py
 
 # Terminal 3: Teleoperate rover
 ros2 run teleop_twist_keyboard teleop_twist_keyboard</code></pre>
 
-        <h3>RViz Display Configuration Checklist:</h3>
+        <h3>3. RViz Display Configuration Checklist:</h3>
         <table>
             <thead>
                 <tr>
@@ -689,7 +706,7 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard</code></pre>
                 <tr>
                     <td><strong>Raw Camera RGB</strong></td>
                     <td>Image</td>
-                    <td><code>/camera/image_raw</code></td>
+                    <td><code>/camera/color/image_raw</code></td>
                     <td><strong>Best Effort</strong></td>
                 </tr>
                 <tr>
@@ -705,9 +722,21 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard</code></pre>
                     <td>Reliable</td>
                 </tr>
                 <tr>
-                    <td><strong>3D Bounding Boxes</strong></td>
+                    <td><strong>3D Obstacle Boxes</strong></td>
                     <td>MarkerArray</td>
                     <td><code>/terrain/obstacle_markers</code></td>
+                    <td>Reliable</td>
+                </tr>
+                <tr>
+                    <td><strong>Persistent Obstacles</strong></td>
+                    <td>Detection3DArray</td>
+                    <td><code>/perception/obstacles_only</code></td>
+                    <td>Reliable</td>
+                </tr>
+                <tr>
+                    <td><strong>ArUco Target Pose</strong></td>
+                    <td>PoseStamped / TF</td>
+                    <td><code>/perception/aruco_pose</code></td>
                     <td>Reliable</td>
                 </tr>
                 <tr>

@@ -162,7 +162,7 @@ Use these explicit checkpoints to verify each milestone before merging code:
   ros2 run rviz2 -d src/rover_slam/config/slam_visualization.rviz
   ```
 * **Expected Output:** Full TF tree (`map -> odom -> base_link -> camera_link`) is clean with 0 warnings. Robot trajectory renders smoothly at 100 Hz. Rocks appear correctly inflated on `/global_costmap/costmap`.
-* **Status:** `[ ] Pending`
+* **Status:** `[✓] Completed & Verified`
 
 ---
 

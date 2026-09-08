@@ -414,7 +414,10 @@ class BenchmarkingNode(Node):
             "linear_jerk_std": ctrl_res["linear_jerk_std"],
             "angular_jerk_std": ctrl_res["angular_jerk_std"],
             "cmd_freq_hz": ctrl_res["cmd_freq_hz"],
-            "goal_accuracy_m": ctrl_res["goal_accuracy_m"]
+            "goal_accuracy_m": ctrl_res["goal_accuracy_m"],
+            "control_effort": ctrl_res.get("control_effort", 0.0),
+            "steering_reversals": ctrl_res.get("steering_reversals", 0),
+            "heading_rmse_deg": ctrl_res.get("heading_rmse_deg", 0.0)
         }
         
         # Save temp JSON
@@ -447,6 +450,9 @@ class BenchmarkingNode(Node):
         print(f"Control Stability:  Lin Jerk: {ctrl_res['linear_jerk_std']:.2f} m/s² | Ang Jerk: {ctrl_res['angular_jerk_std']:.2f} rad/s²")
         print(f"Command Rate:       {ctrl_res['cmd_freq_hz']:.1f} Hz")
         print(f"Goal Accuracy:      {ctrl_res['goal_accuracy_m']:.3f} m error")
+        print(f"Control Effort:     {ctrl_res.get('control_effort', 0.0):.2f} (J_u integral)")
+        print(f"Steering Chatter:   {ctrl_res.get('steering_reversals', 0)} reversals")
+        print(f"Heading RMSE:       {ctrl_res.get('heading_rmse_deg', 0.0):.2f}°")
         print(f"CONTROLLER SCORE:   {controller_score:.2f} / 100")
         print(f"-----------------------------------------------------")
         print(f"COMBINED SYSTEM SCORE: {overall_score:.2f} / 100")

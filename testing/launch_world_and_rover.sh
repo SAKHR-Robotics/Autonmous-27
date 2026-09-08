@@ -15,12 +15,22 @@ set -e
 
 # Determine script and project directory paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORKSPACE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+if [ -d "$SCRIPT_DIR/../worlds" ]; then
+    WORKSPACE_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+    PROJECT_DIR="$WORKSPACE_ROOT"
+elif [ -d "$SCRIPT_DIR/../../src/Autonmous-27/worlds" ]; then
+    WORKSPACE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+    PROJECT_DIR="$WORKSPACE_ROOT/src/Autonmous-27"
+else
+    WORKSPACE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+    PROJECT_DIR="$WORKSPACE_ROOT"
+fi
 
 echo "========================================================================"
 echo "🚀 Launching Rover, Final World (Rocks & ArUco) & Teleop GUI"
 echo "========================================================================"
 echo "📁 Workspace root: $WORKSPACE_ROOT"
+echo "📁 Project dir:    $PROJECT_DIR"
 
 # ==============================================================================
 # Cleanup Function: Automatically terminates all Gazebo, ROS 2, and Teleop nodes
@@ -83,7 +93,7 @@ fi
 
 # Step 3: Configure Gazebo / Ignition model resource paths for both source and install locations
 echo "[3/4] Configuring Gazebo resource paths for rocks, ArUco, and Mars Yard models..."
-MODELS_DIR="$WORKSPACE_ROOT/src/Autonmous-27/worlds/models"
+MODELS_DIR="$PROJECT_DIR/worlds/models"
 INSTALL_MODELS_DIR="$WORKSPACE_ROOT/install/worlds/share/worlds/models"
 
 EXTRA_PATHS="$MODELS_DIR:$MODELS_DIR/rocks:$MODELS_DIR/aruco:$INSTALL_MODELS_DIR:$INSTALL_MODELS_DIR/rocks:$INSTALL_MODELS_DIR/aruco"
@@ -103,8 +113,8 @@ sleep 4
 
 # Launch Teleop GUI in Foreground
 echo "🎮 Starting Rover Teleop GUI..."
-if [ -f "$WORKSPACE_ROOT/src/Autonmous-27/Rover/my_robot_description/scripts/teleop_gui.py" ]; then
-    python3 "$WORKSPACE_ROOT/src/Autonmous-27/Rover/my_robot_description/scripts/teleop_gui.py"
+if [ -f "$PROJECT_DIR/Rover/my_robot_description/scripts/teleop_gui.py" ]; then
+    python3 "$PROJECT_DIR/Rover/my_robot_description/scripts/teleop_gui.py"
 else
     ros2 run my_robot_description teleop_gui.py
 fi

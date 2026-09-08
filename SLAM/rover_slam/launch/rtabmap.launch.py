@@ -34,9 +34,15 @@ def generate_launch_description():
         default_value='/camera/camera_info',
         description='Camera Info topic name'
     )
+    declare_delete_db_on_start = DeclareLaunchArgument(
+        'delete_db_on_start',
+        default_value='true',
+        description='Delete previous database on startup if true'
+    )
 
     return LaunchDescription([
         declare_use_sim_time,
+        declare_delete_db_on_start,
         declare_rgb_topic,
         declare_depth_topic,
         declare_camera_info_topic,
@@ -45,6 +51,7 @@ def generate_launch_description():
             executable='rtabmap',
             name='rtabmap',
             output='screen',
+            arguments=['-d'],
             parameters=[
                 rtabmap_config_path,
                 {'use_sim_time': use_sim_time}

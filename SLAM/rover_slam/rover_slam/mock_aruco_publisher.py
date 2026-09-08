@@ -16,6 +16,8 @@ class MockArucoPublisherNode(Node):
     def __init__(self):
         super().__init__('mock_aruco_publisher')
 
+        if not self.has_parameter('use_sim_time'):
+            self.declare_parameter('use_sim_time', True)
         self.declare_parameter('publish_rate', 10.0)  # Hz
         self.declare_parameter('target_frame', 'camera_link')
         self.declare_parameter('pos_x', 1.5)
@@ -37,7 +39,8 @@ class MockArucoPublisherNode(Node):
 
     def timer_callback(self):
         msg = PoseStamped()
-        msg.header.stamp = self.get_clock().now().to_msg()
+        # Use Time(0) so RViz immediately displays using latest available transform
+        msg.header.stamp = rclpy.time.Time().to_msg()
         msg.header.frame_id = self.target_frame
 
         msg.pose.position.x = self.pos_x

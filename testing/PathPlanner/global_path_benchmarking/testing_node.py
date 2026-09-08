@@ -13,9 +13,17 @@ from PIL import Image, ImageDraw
 
 import rclpy
 from rclpy.node import Node
+from rclpy.action import ActionClient
 from nav_msgs.msg import OccupancyGrid, Path
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
+from visualization_msgs.msg import Marker, MarkerArray
 from std_msgs.msg import String
+
+try:
+    from nav2_msgs.action import NavigateThroughPoses, NavigateToPose
+    NAV2_ACTIONS_AVAILABLE = True
+except ImportError:
+    NAV2_ACTIONS_AVAILABLE = False
 
 # Import custom report generator functions
 from global_path_benchmarking.report_generator import (
@@ -27,7 +35,8 @@ from global_path_benchmarking.report_generator import (
 # Helper function to kill old processes
 def clean_old_processes():
     print("[INFO] Cleaning up stale ROS 2 processes...")
-    targets = ["path_planning.launch.py", "planner_server", "controller_server", "bt_navigator", "benchmarking_node", "testing_node"]
+    current_pid = str(os.getpid())
+    targets = ["path_planning.launch.py", "planner_server", "controller_server", "bt_navigator", "benchmarking_node", "mock_rover_sim", "mock_perception", "amcl", "map_server"]
     for target in targets:
         try:
             subprocess.run(["pkill", "-f", "-9", target], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -321,15 +330,26 @@ class TestingNode(Node):
         # Publishers
         self.name_pub = self.create_publisher(String, "/test_name", 10)
         self.costmap_pub = self.create_publisher(OccupancyGrid, "/global_costmap/costmap", 10)
+        self.std_map_pub = self.create_publisher(OccupancyGrid, "/map", 10)
         self.trav_pub = self.create_publisher(OccupancyGrid, "/traversability_map", 10)
         self.start_pub = self.create_publisher(PoseStamped, "/start_pose", 10)
+        self.initialpose_pub = self.create_publisher(PoseWithCovarianceStamped, "/initialpose", 10)
         self.goal_pub = self.create_publisher(PoseStamped, "/goal_pose", 10)
-        
+        self.waypoint_marker_pub = self.create_publisher(MarkerArray, "/waypoints_markers", 10)
+
+        # Nav2 Action Clients
+        if NAV2_ACTIONS_AVAILABLE:
+            self._nav_through_client = ActionClient(self, NavigateThroughPoses, 'navigate_through_poses')
+            self._nav_to_pose_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
+        else:
+            self._nav_through_client = None
+            self._nav_to_pose_client = None
+
         # Subscriber to path to coordinate dynamic obstacles
         self.path_received = False
         self.path_sub = self.create_subscription(Path, "/plan", self.path_callback, 10)
         
-        self.get_logger().info("Testing Node Initialized.")
+        self.get_logger().info("Universal Testing Node Initialized.")
 
     def path_callback(self, msg):
         self.path_received = True
@@ -366,6 +386,7 @@ class TestingNode(Node):
         grid.data = cost_data
         
         self.costmap_pub.publish(grid)
+        self.std_map_pub.publish(grid)
         self.trav_pub.publish(grid)
         return grid, cost_arr
 
@@ -393,30 +414,82 @@ class TestingNode(Node):
         updated_grid.data = new_cost_arr.flatten().tolist()
         
         self.costmap_pub.publish(updated_grid)
+        self.std_map_pub.publish(updated_grid)
         return updated_grid, new_cost_arr
 
-    def publish_start_goal(self, start, goal):
+    def publish_start_goal(self, start, goal, waypoints=None):
         self.path_received = False
         
+        # Publish Start Pose & InitialPose for SLAM/EKF/Sim
         start_pose = PoseStamped()
         start_pose.header.frame_id = "map"
         start_pose.header.stamp = self.get_clock().now().to_msg()
-        start_pose.pose.position.x = start[0]
-        start_pose.pose.position.y = start[1]
+        start_pose.pose.position.x = float(start[0])
+        start_pose.pose.position.y = float(start[1])
         start_pose.pose.position.z = 0.0
         start_pose.pose.orientation.w = 1.0
         
-        goal_pose = PoseStamped()
-        goal_pose.header.frame_id = "map"
-        goal_pose.header.stamp = self.get_clock().now().to_msg()
-        goal_pose.pose.position.x = goal[0]
-        goal_pose.pose.position.y = goal[1]
-        goal_pose.pose.position.z = 0.0
-        goal_pose.pose.orientation.w = 1.0
+        init_pose = PoseWithCovarianceStamped()
+        init_pose.header = start_pose.header
+        init_pose.pose.pose = start_pose.pose
         
         self.start_pub.publish(start_pose)
-        time.sleep(0.1)
-        self.goal_pub.publish(goal_pose)
+        self.initialpose_pub.publish(init_pose)
+        
+        # Publish Waypoint Markers in RViz if provided
+        if waypoints:
+            markers = MarkerArray()
+            for idx, pt in enumerate(waypoints):
+                m = Marker()
+                m.header.stamp = self.get_clock().now().to_msg()
+                m.header.frame_id = "map"
+                m.ns = "waypoints"
+                m.id = idx
+                m.type = Marker.CYLINDER
+                m.action = Marker.ADD
+                m.pose.position.x = float(pt[0])
+                m.pose.position.y = float(pt[1])
+                m.pose.position.z = 0.3
+                m.scale.x = 0.3
+                m.scale.y = 0.3
+                m.scale.z = 0.6
+                m.color.r = 0.2
+                m.color.g = 0.8
+                m.color.b = 1.0
+                m.color.a = 0.8
+                markers.markers.append(m)
+            self.waypoint_marker_pub.publish(markers)
+
+        # Dispatch Goal via Nav2 Action (if available) or standard Topic
+        action_sent = False
+        if self._nav_through_client is not None and waypoints:
+            if self._nav_through_client.wait_for_server(timeout_sec=0.2):
+                goal_msg = NavigateThroughPoses.Goal()
+                poses = []
+                for pt in waypoints:
+                    p = PoseStamped()
+                    p.header.frame_id = "map"
+                    p.header.stamp = self.get_clock().now().to_msg()
+                    p.pose.position.x = float(pt[0])
+                    p.pose.position.y = float(pt[1])
+                    p.pose.orientation.w = 1.0
+                    poses.append(p)
+                goal_msg.poses = poses
+                self._nav_through_client.send_goal_async(goal_msg)
+                action_sent = True
+                self.get_logger().info(f"Dispatched {len(poses)} waypoints via /navigate_through_poses Action.")
+
+        if not action_sent:
+            time.sleep(0.1)
+            goal_pose = PoseStamped()
+            goal_pose.header.frame_id = "map"
+            goal_pose.header.stamp = self.get_clock().now().to_msg()
+            goal_pose.pose.position.x = float(goal[0])
+            goal_pose.pose.position.y = float(goal[1])
+            goal_pose.pose.position.z = 0.0
+            goal_pose.pose.orientation.w = 1.0
+            self.goal_pub.publish(goal_pose)
+            self.get_logger().info(f"Dispatched goal ({goal[0]:.2f}, {goal[1]:.2f}) via /goal_pose Topic.")
 
     def verify_scenarios(self):
         print("\n================ VERIFYING SCENARIOS ================")
@@ -470,9 +543,29 @@ class TestingNode(Node):
             except Exception:
                 pass
                 
-        # 1. Start real planner (erc_path_planner), benchmarking_node, and mock rover simulator
-        planner_cmd = ["ros2", "launch", "erc_path_planner", "path_planning.launch.py"]
-        planner_proc = subprocess.Popen(planner_cmd)
+        # 1. Start target planner (if not external), benchmarking_node, and mock rover simulator
+        target_pkg = "erc_path_planner"
+        target_launch = "path_planning.launch.py"
+        use_external = False
+        
+        if os.path.exists(bench_config_file):
+            try:
+                with open(bench_config_file, "r") as f:
+                    b_cfg = yaml.safe_load(f) or {}
+                    t_mod = b_cfg.get("target_module", {})
+                    use_external = t_mod.get("use_external_module", False)
+                    target_pkg = t_mod.get("target_package", target_pkg)
+                    target_launch = t_mod.get("target_launch", target_launch)
+            except Exception as e:
+                self.get_logger().warn(f"Could not parse target_module config: {e}")
+
+        if not use_external:
+            planner_cmd = ["ros2", "launch", target_pkg, target_launch]
+            planner_proc = subprocess.Popen(planner_cmd)
+        else:
+            self.get_logger().info("Target module configured as external: waiting for external node...")
+            planner_proc = None
+
         bench_proc = subprocess.Popen([
             "ros2", "run", "global_path_benchmarking", "benchmarking_node",
             "--ros-args",
@@ -500,8 +593,8 @@ class TestingNode(Node):
             grid, cost_arr = self.publish_map(s)
             time.sleep(1.0)
             
-            # 4. Trigger planning
-            self.publish_start_goal(s["start"], s["goal"])
+            # 4. Trigger planning (with waypoints support)
+            self.publish_start_goal(s["start"], s["goal"], s.get("waypoints", []))
             
             # Wait for path response (spin testing_node to handle topic callback)
             t0 = time.time()
@@ -520,7 +613,7 @@ class TestingNode(Node):
                 time.sleep(0.5)
                 
                 # Re-trigger planning
-                self.publish_start_goal(s["start"], s["goal"])
+                self.publish_start_goal(s["start"], s["goal"], s.get("waypoints", []))
                 
                 # Wait for replan path
                 t0 = time.time()
@@ -536,18 +629,15 @@ class TestingNode(Node):
             # 6. Terminate subprocesses
             self.get_logger().info(f"Scenario test completed. Terminating planner, evaluator, and mock nodes...")
             for proc in [planner_proc, bench_proc, mock_rover_proc]:
-                try:
-                    proc.terminate()
-                except Exception:
-                    pass
-            
-            for proc in [planner_proc, bench_proc, mock_rover_proc]:
-                try:
-                    proc.wait(timeout=3.0)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                except Exception:
-                    pass
+                if proc is not None:
+                    try:
+                        proc.terminate()
+                        proc.wait(timeout=2.0)
+                    except Exception:
+                        try:
+                            proc.kill()
+                        except Exception:
+                            pass
                 
             # Brief cooldown to free topics/resources
             time.sleep(1.0)

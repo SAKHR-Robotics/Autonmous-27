@@ -13,5 +13,8 @@ rtabmap:
     RGBD/OptimizeFromGraphEnd: "false"
     Grid/FromDepth: "true"
     Grid/MaxObstacleHeight: "2.0"
+    Grid/MaxGroundHeight: "0.1"
     Grid/RayTracing: "true"
     Optimizer/Strategy: "1"       # GTSAM Graph Optimizer
+    Reg/Force3DoF: "true"         # Force 3-DOF SLAM (x, y, yaw) for ground rover (prevents pitch/roll tilt)
+    Optimizer/Slam2D: "true"      # Optimize graph in 2D plane

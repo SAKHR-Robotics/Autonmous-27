@@ -1,10 +1,11 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
 
 def generate_launch_description():
     pkg_share = get_package_share_directory('rover_slam')
@@ -12,6 +13,10 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time')
     autostart = LaunchConfiguration('autostart')
     launch_camera = LaunchConfiguration('launch_camera')
+    launch_static_tf = LaunchConfiguration('launch_static_tf')
+    launch_costmap_stub = LaunchConfiguration('launch_costmap_stub')
+    launch_aruco_stub = LaunchConfiguration('launch_aruco_stub')
+    launch_rviz = LaunchConfiguration('launch_rviz')
     rgb_topic = LaunchConfiguration('rgb_topic')
     depth_topic = LaunchConfiguration('depth_topic')
     camera_info_topic = LaunchConfiguration('camera_info_topic')
@@ -31,6 +36,26 @@ def generate_launch_description():
         'launch_camera',
         default_value='false',
         description='Whether to launch the physical RealSense camera driver (set true for physical robot, false for simulation/rosbag)'
+    )
+    declare_launch_static_tf = DeclareLaunchArgument(
+        'launch_static_tf',
+        default_value='true',
+        description='Whether to publish static transforms (set false when robot_state_publisher is active)'
+    )
+    declare_launch_costmap_stub = DeclareLaunchArgument(
+        'launch_costmap_stub',
+        default_value='false',
+        description='Whether to run costmap_test_stub node to simulate obstacle points for costmap verification'
+    )
+    declare_launch_aruco_stub = DeclareLaunchArgument(
+        'launch_aruco_stub',
+        default_value='true',
+        description='Whether to run mock_aruco_publisher to simulate ArUco landmark detection'
+    )
+    declare_launch_rviz = DeclareLaunchArgument(
+        'launch_rviz',
+        default_value='false',
+        description='Whether to launch RViz2 visualization dashboard'
     )
     declare_rgb_topic = DeclareLaunchArgument(
         'rgb_topic',
@@ -54,7 +79,8 @@ def generate_launch_description():
     )
 
     static_tf_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(os.path.join(pkg_share, 'launch', 'static_transforms.launch.py'))
+        PythonLaunchDescriptionSource(os.path.join(pkg_share, 'launch', 'static_transforms.launch.py')),
+        condition=IfCondition(launch_static_tf)
     )
     ekf_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(pkg_share, 'launch', 'ekf.launch.py')),
@@ -85,11 +111,41 @@ def generate_launch_description():
             'standalone': 'false'
         }.items()
     )
+    costmap_stub_node = Node(
+        package='rover_slam',
+        executable='costmap_test_stub',
+        name='costmap_test_stub',
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time}],
+        condition=IfCondition(launch_costmap_stub)
+    )
+    aruco_stub_node = Node(
+        package='rover_slam',
+        executable='mock_aruco_publisher',
+        name='mock_aruco_publisher',
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time}],
+        condition=IfCondition(launch_aruco_stub)
+    )
+    rviz_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(pkg_share, 'launch', 'rviz.launch.py')),
+        launch_arguments={'use_sim_time': use_sim_time}.items(),
+        condition=IfCondition(launch_rviz)
+    )
+
+    delayed_costmap_actions = TimerAction(
+        period=3.0,
+        actions=[costmap_launch, costmap_stub_node]
+    )
 
     return LaunchDescription([
         declare_use_sim_time,
         declare_autostart,
         declare_launch_camera,
+        declare_launch_static_tf,
+        declare_launch_costmap_stub,
+        declare_launch_aruco_stub,
+        declare_launch_rviz,
         declare_rgb_topic,
         declare_depth_topic,
         declare_camera_info_topic,
@@ -98,5 +154,7 @@ def generate_launch_description():
         ekf_launch,
         vision_launch,
         rtabmap_launch,
-        costmap_launch
+        delayed_costmap_actions,
+        aruco_stub_node,
+        rviz_launch
     ])

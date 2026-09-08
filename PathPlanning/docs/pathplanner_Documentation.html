@@ -605,9 +605,73 @@ ros2 launch erc_path_planner rviz.launch.py
 
 # Terminal 3: Run Lightweight Mock Base (Odometry & TF simulator)</code></pre>
 
+        <!-- 6. DYNAMIC OBSTACLE AVOIDANCE & REPLANNING ORCHESTRATION -->
+        <h2 class="section-header"><i class="fa-solid fa-route"></i> 6. Dynamic Obstacle Avoidance & Replanning Flow</h2>
+        <p style="color: var(--text-muted); margin-bottom: 1.5rem;">
+            Detailed architectural breakdown of how the <strong>Behavior Tree Navigator</strong>, <strong>MPPI Local Controller</strong>, and <strong>Smac Hybrid A* Global Planner</strong> coordinate when new obstacles (rocks, craters, dynamic hazards) appear on the competition terrain.
+        </p>
+
+        <div style="background: var(--bg-card-elevated); padding: 1.5rem; border-radius: 12px; border: 1px solid var(--border-ui); margin-bottom: 2rem;">
+            <div class="mermaid">
+            flowchart TD
+                BT["<b>Behavior Tree Navigator</b><br/>(Master Orchestrator)"]
+                GP["<b>Global Planner</b><br/>(Smac Hybrid A*)<br/><i>Plans macro route on Global Costmap</i>"]
+                LP["<b>Local Controller</b><br/>(MPPI Controller)<br/><i>Samples 2,000 rollouts @ 20Hz</i>"]
+                OBS["<b>Perception / RealSense</b><br/><i>Detects dynamic obstacle</i>"]
+                LC["<b>Costmaps (Local & Global)</b><br/><i>Marks obstacle area as LETHAL</i>"]
+                
+                OBS -->|"/terrain/obstacle_features"| LC
+                LC -->|Live Obstacle Layer| GP
+                LC -->|Rolling Window (10x10m)| LP
+                
+                BT -->|"ComputePathToPose"| GP
+                GP -->|"/plan (Global Highway)"| BT
+                BT -->|"FollowPath (/plan)"| LP
+                
+                LP -->|"20Hz Evaluation"| CHECK{"Can MPPI swerve<br/>safely around rock?"}
+                CHECK -->|"YES"| CMD["<b>Output /cmd_vel</b><br/>(Swerve & rejoin global path)"]
+                CHECK -->|"NO (Trapped / Blocked)"| FAIL["<b>Return FAILURE</b><br/>(NO_VALID_TRAJECTORY)"]
+                
+                FAIL -->|"Trigger Emergency Replanning"| BT
+                BT -->|"Compute New Detour Route"| GP
+                
+                GP -->|"If All Routes Blocked"| REC["<b>Recovery Behaviors</b><br/>1. Clear Dynamic Costmap<br/>2. BackUp 0.8m from Hazard<br/>3. Spin 360° to Scan<br/>4. Retry Planning"]
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem;">
+            <div style="background: var(--bg-card-elevated); padding: 1.5rem; border-radius: 12px; border-left: 4px solid var(--accent-cyan);">
+                <h4 style="color: var(--accent-cyan); margin-bottom: 0.5rem;"><i class="fa-solid fa-bolt"></i> 1. High-Frequency Local Swerving (20 Hz)</h4>
+                <p style="font-size: 0.92rem; color: var(--text-muted);">
+                    When the RealSense camera detects a localized rock, the <code>local_costmap</code> marks it. MPPI evaluates 2,000 trajectory rollouts per cycle. <code>ConstraintCritic</code> prunes colliding curves while <code>PathAlignCritic</code> selects a collision-free path that swerves around the rock and steers smoothly back onto <code>/plan</code> without stopping.
+                </p>
+            </div>
+
+            <div style="background: var(--bg-card-elevated); padding: 1.5rem; border-radius: 12px; border-left: 4px solid var(--accent-amber);">
+                <h4 style="color: var(--accent-amber); margin-bottom: 0.5rem;"><i class="fa-solid fa-triangle-exclamation"></i> 2. Local Controller Failure (Passage Blocked)</h4>
+                <p style="font-size: 0.92rem; color: var(--text-muted);">
+                    If a boulder completely blocks a narrow passage or crater rim, all 2,000 MPPI rollouts result in collision. MPPI halts the rover (0 m/s) to prevent a crash and reports <code>NO_VALID_TRAJECTORY</code> back to the Behavior Tree. MPPI does not communicate with the global planner directly.
+                </p>
+            </div>
+
+            <div style="background: var(--bg-card-elevated); padding: 1.5rem; border-radius: 12px; border-left: 4px solid var(--accent-green);">
+                <h4 style="color: var(--accent-green); margin-bottom: 0.5rem;"><i class="fa-solid fa-map-location-dot"></i> 3. Global Detour Generation</h4>
+                <p style="font-size: 0.92rem; color: var(--text-muted);">
+                    The Behavior Tree catches MPPI's failure signal and triggers the <strong>Smac Hybrid A* Global Planner</strong>. Because the global costmap includes an <code>obstacle_layer</code>, the planner recognizes the blockage and computes a brand new macro route (e.g. detour around the entire hill/canyon) and feeds it to MPPI.
+                </p>
+            </div>
+
+            <div style="background: var(--bg-card-elevated); padding: 1.5rem; border-radius: 12px; border-left: 4px solid var(--accent-purple);">
+                <h4 style="color: var(--accent-purple); margin-bottom: 0.5rem;"><i class="fa-solid fa-shield-halved"></i> 4. Nav2 Recovery Fallbacks</h4>
+                <p style="font-size: 0.92rem; color: var(--text-muted);">
+                    If the rover is boxed in and even the Global Planner fails: the BT executes recovery plugins sequentially: (1) <strong>Costmap Clear</strong> to flush sensor ghosts, (2) <strong>BackUp</strong> to reverse 0.8m out of the bottleneck, and (3) <strong>Spin</strong> to refresh 360° terrain visibility before retrying.
+                </p>
+            </div>
+        </div>
+
         <!-- FOOTER -->
         <footer>
-            <p>European Rover Challenge (ERC 2026) | Autonomous Navigation Subsystem | Document Version 1.1.0</p>
+            <p>European Rover Challenge (ERC 2026) | Autonomous Navigation Subsystem | Document Version 1.2.0</p>
         </footer>
 
     </div>
