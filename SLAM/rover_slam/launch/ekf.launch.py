@@ -19,8 +19,8 @@ def generate_launch_description():
     )
     declare_odom_topic = DeclareLaunchArgument(
         'odom_topic',
-        default_value='/odom',
-        description='Raw odometry topic (e.g. /odom for Gazebo or /wheel/odom_raw for physical robot)'
+        default_value='/wheel/odom_raw',
+        description='Raw odometry topic (e.g. /wheel/odom_raw for robot/testing or /odom for Gazebo)'
     )
 
     return LaunchDescription([
@@ -43,7 +43,7 @@ def generate_launch_description():
             parameters=[{'use_sim_time': use_sim_time}],
             remappings=[('/wheel/odom_raw', odom_topic)]
         ),
-        # Local EKF Node
+        # Local EKF Node (Subscribes to /wheel/odom_filtered from heuristic_slip_checker)
         Node(
             package='robot_localization',
             executable='ekf_node',
@@ -52,9 +52,6 @@ def generate_launch_description():
             parameters=[
                 ekf_config_path,
                 {'use_sim_time': use_sim_time}
-            ],
-            remappings=[
-                ('/wheel/odom_raw', odom_topic)
             ]
         )
     ])

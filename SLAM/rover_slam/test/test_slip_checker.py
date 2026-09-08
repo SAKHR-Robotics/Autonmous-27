@@ -349,6 +349,23 @@ def test_turn_blocked_by_obstacle():
     assert ang_cov == pytest.approx(5.0)
 
 
+def test_ekf_configuration_uses_filtered_odometry():
+    """Verify that EKF configuration consumes /wheel/odom_filtered (SLAM Fix 2 - bypass bug resolved)."""
+    import os
+    import yaml
 
+    config_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "config",
+        "ekf.yaml",
+    )
+    assert os.path.exists(config_path), f"ekf.yaml not found at {config_path}"
 
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
 
+    ekf_params = config["ekf_filter_node"]["ros__parameters"]
+    assert "odom0" in ekf_params
+    assert ekf_params["odom0"] == "/wheel/odom_filtered", (
+        f"Expected odom0 to be '/wheel/odom_filtered', but got '{ekf_params['odom0']}'"
+    )
