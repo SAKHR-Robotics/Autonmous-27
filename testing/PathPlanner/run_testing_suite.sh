@@ -12,7 +12,7 @@ set -e
 
 # Project Paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
 echo "========================================================================"
 echo "🧭 PATH PLANNER & MPPI CONTROLLER MASTER TESTING SUITE"
@@ -39,8 +39,29 @@ echo ""
 echo "------------------------------------------------------------------------"
 echo "📦 [1/3] Building packages (terrain_geometry_msgs, erc_path_planner, global_path_benchmarking)..."
 echo "------------------------------------------------------------------------"
+# Clean any stale ROS 2 background processes
+echo "[INFO] Cleaning up any stale ROS 2 processes..."
+pkill -f -9 rviz2 2>/dev/null || true
+pkill -f -9 navigation_launch 2>/dev/null || true
+pkill -f -9 path_planning 2>/dev/null || true
+pkill -f -9 planner_server 2>/dev/null || true
+pkill -f -9 controller_server 2>/dev/null || true
+pkill -f -9 bt_navigator 2>/dev/null || true
+pkill -f -9 smoother_server 2>/dev/null || true
+pkill -f -9 waypoint_follower 2>/dev/null || true
+pkill -f -9 velocity_smoother 2>/dev/null || true
+pkill -f -9 map_server 2>/dev/null || true
+pkill -f -9 mock_rover_sim 2>/dev/null || true
+pkill -f -9 mock_perception 2>/dev/null || true
+pkill -f -9 costmap_bridge 2>/dev/null || true
+sleep 0.5
+
+if [ -d "$PROJECT_ROOT/src/install" ]; then
+    rm -rf "$PROJECT_ROOT/src/install" "$PROJECT_ROOT/src/build"
+fi
 cd "$PROJECT_ROOT"
 colcon build --packages-select terrain_geometry_msgs erc_path_planner global_path_benchmarking
+
 
 # Step 3: Source Workspace Install
 echo "------------------------------------------------------------------------"
@@ -58,6 +79,8 @@ if [ "$1" == "--headless" ] || [ "$1" == "-h" ] || [ "$1" == "--batch" ] || [ "$
     MODE="2"
 elif [ "$1" == "--verify" ] || [ "$1" == "-v" ]; then
     MODE="5"
+elif [ "$1" == "--external" ] || [ "$1" == "-e" ]; then
+    MODE="6"
 elif [ -n "$1" ]; then
     MODE="4"
     CLI_SCENARIO="$1"
@@ -68,7 +91,8 @@ else
     echo "  3) 📊 Visual Automated Batch Benchmark (Watch all 9 maps evaluated live in RViz)"
     echo "  4) 🎯 Single Scenario Benchmark (Headless or with RViz)"
     echo "  5) 🗺️  Verify Scenario Reference Maps & Paths (Generate PNG plots)"
-    read -rp "Enter choice [1-5] (default: 1): " MODE
+    echo "  6) 🔌 Universal External Module Test (Listen for any external planner/controller)"
+    read -rp "Enter choice [1-6] (default: 1): " MODE
     MODE=${MODE:-1}
 fi
 
@@ -105,7 +129,7 @@ case "$MODE" in
         USE_MOCK_ROVER=${USE_MOCK_ROVER:-Y}
         [[ "$USE_MOCK_ROVER" =~ ^[Yy]$ ]] && MOCK_ROVER_ARG="use_mock_rover:=true" || MOCK_ROVER_ARG="use_mock_rover:=false"
 
-        read -rp "Enable Mock Perception Obstacles (/terrain/obstacle_features)? [Y/n]: " USE_MOCK_PERCEPTION
+        read -rp "Enable Mock Perception Obstacles (PointCloud2 + Scan + Features)? [Y/n]: " USE_MOCK_PERCEPTION
         USE_MOCK_PERCEPTION=${USE_MOCK_PERCEPTION:-Y}
         [[ "$USE_MOCK_PERCEPTION" =~ ^[Yy]$ ]] && MOCK_PERCEPTION_ARG="use_mock_perception:=true" || MOCK_PERCEPTION_ARG="use_mock_perception:=false"
 
@@ -118,9 +142,38 @@ case "$MODE" in
         echo "🚀 Launching Live Test: Scenario = $SELECTED_SCENARIO"
         echo "========================================================================"
         ros2 launch global_path_benchmarking live_test.launch.py \
+            scenario_id:="$SELECTED_SCENARIO" \
+            use_external_module:=false \
             $MOCK_ROVER_ARG \
             $MOCK_PERCEPTION_ARG \
             $RVIZ_ARG
+        ;;
+
+    6)
+        echo ""
+        echo "=== 🔌 Universal External Module Testing Harness ==="
+        select_scenario
+
+        read -rp "Command velocity topic to monitor (default: /cmd_vel): " CMD_VEL_TOPIC
+        CMD_VEL_TOPIC=${CMD_VEL_TOPIC:-/cmd_vel}
+
+        read -rp "Control mode ([1] cmd_vel / trajectory follower  [2] motor_rpm / motor driver): " CTRL_MODE_SEL
+        CTRL_MODE_SEL=${CTRL_MODE_SEL:-1}
+        [[ "$CTRL_MODE_SEL" == "2" ]] && CTRL_MODE="motor_rpm" || CTRL_MODE="cmd_vel"
+
+        echo ""
+        echo "========================================================================"
+        echo "🚀 Launching Universal Test Harness for Scenario = $SELECTED_SCENARIO"
+        echo "   Listening for external planner / controller on $CMD_VEL_TOPIC (Mode: $CTRL_MODE)..."
+        echo "========================================================================"
+        ros2 launch global_path_benchmarking live_test.launch.py \
+            scenario_id:="$SELECTED_SCENARIO" \
+            use_external_module:=true \
+            cmd_vel_topic:="$CMD_VEL_TOPIC" \
+            control_mode:="$CTRL_MODE" \
+            use_mock_rover:=true \
+            use_mock_perception:=true \
+            use_rviz:=true
         ;;
 
     2)

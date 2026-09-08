@@ -1,5 +1,8 @@
 #include <memory>
 #include <functional>
+#include <vector>
+#include <cmath>
+#include <algorithm>
 
 #include "rclcpp/rclcpp.hpp"
 
@@ -41,72 +44,98 @@ public:
 
 private:
 
+  struct Point3D {
+    float x;
+    float y;
+    float z;
+  };
+
   void obstacle_callback(
     const terrain_geometry_msgs::msg::ObstacleFeatureArray::SharedPtr msg)
   {
-    const std::size_t number_of_obstacles =
-      msg->obstacles.size();
+    std::vector<Point3D> sampled_points;
+    const float step = 0.05f; // 5 cm resolution matching costmap
+
+    for (const auto & obstacle : msg->obstacles)
+    {
+      float min_x = std::min(static_cast<float>(obstacle.min_point.x), static_cast<float>(obstacle.max_point.x));
+      float max_x = std::max(static_cast<float>(obstacle.min_point.x), static_cast<float>(obstacle.max_point.x));
+      float min_y = std::min(static_cast<float>(obstacle.min_point.y), static_cast<float>(obstacle.max_point.y));
+      float max_y = std::max(static_cast<float>(obstacle.min_point.y), static_cast<float>(obstacle.max_point.y));
+
+      // If bounding box is degenerate, derive from width/depth or sensible defaults
+      if (std::abs(max_x - min_x) < 0.01f || std::abs(max_y - min_y) < 0.01f)
+      {
+        float rx = (obstacle.depth > 0.05f) ? (obstacle.depth / 2.0f) : 0.35f;
+        float ry = (obstacle.width > 0.05f) ? (obstacle.width / 2.0f) : 0.35f;
+        min_x = static_cast<float>(obstacle.centroid.x) - rx;
+        max_x = static_cast<float>(obstacle.centroid.x) + rx;
+        min_y = static_cast<float>(obstacle.centroid.y) - ry;
+        max_y = static_cast<float>(obstacle.centroid.y) + ry;
+      }
+
+      const float cz = (std::abs(obstacle.centroid.z) > 0.01) ? static_cast<float>(obstacle.centroid.z) : 0.2f;
+
+      // Sample a 2D grid covering the entire footprint of the obstacle
+      for (float x = min_x; x <= max_x; x += step)
+      {
+        for (float y = min_y; y <= max_y; y += step)
+        {
+          sampled_points.push_back({x, y, cz});
+        }
+      }
+
+      // Also explicitly include centroid at base and elevated levels
+      sampled_points.push_back({
+        static_cast<float>(obstacle.centroid.x),
+        static_cast<float>(obstacle.centroid.y),
+        cz
+      });
+      sampled_points.push_back({
+        static_cast<float>(obstacle.centroid.x),
+        static_cast<float>(obstacle.centroid.y),
+        cz + 0.1f
+      });
+    }
+
+    if (sampled_points.empty())
+    {
+      return;
+    }
 
     // Create PointCloud2
     sensor_msgs::msg::PointCloud2 pointcloud;
-
-    // Keep same frame as obstacle message
     pointcloud.header = msg->header;
-
-    // One row
     pointcloud.height = 1;
+    pointcloud.width = static_cast<uint32_t>(sampled_points.size());
 
-    // Number of points = number of obstacles
-    pointcloud.width =
-      static_cast<uint32_t>(number_of_obstacles);
-
-    // Define XYZ fields
     sensor_msgs::PointCloud2Modifier modifier(pointcloud);
+    modifier.setPointCloud2FieldsByString(1, "xyz");
+    modifier.resize(sampled_points.size());
 
-    modifier.setPointCloud2FieldsByString(
-      1,
-      "xyz");
+    sensor_msgs::PointCloud2Iterator<float> iter_x(pointcloud, "x");
+    sensor_msgs::PointCloud2Iterator<float> iter_y(pointcloud, "y");
+    sensor_msgs::PointCloud2Iterator<float> iter_z(pointcloud, "z");
 
-    // Allocate memory
-    modifier.resize(number_of_obstacles);
-
-    // Iterators
-    sensor_msgs::PointCloud2Iterator<float> iter_x(
-      pointcloud,
-      "x");
-
-    sensor_msgs::PointCloud2Iterator<float> iter_y(
-      pointcloud,
-      "y");
-
-    sensor_msgs::PointCloud2Iterator<float> iter_z(
-      pointcloud,
-      "z");
-
-    // Convert each obstacle centroid to a point
-    for (const auto & obstacle : msg->obstacles)
+    for (const auto & pt : sampled_points)
     {
-      *iter_x = static_cast<float>(
-        obstacle.centroid.x);
-
-      *iter_y = static_cast<float>(
-        obstacle.centroid.y);
-
-      *iter_z = static_cast<float>(
-        obstacle.centroid.z);
-
+      *iter_x = pt.x;
+      *iter_y = pt.y;
+      *iter_z = pt.z;
       ++iter_x;
       ++iter_y;
       ++iter_z;
     }
 
-    // Publish
     pointcloud_publisher_->publish(pointcloud);
 
-    RCLCPP_INFO(
+    RCLCPP_INFO_THROTTLE(
       this->get_logger(),
-      "Published PointCloud2 with %zu obstacle points.",
-      number_of_obstacles);
+      *this->get_clock(),
+      5000,
+      "Published PointCloud2 with %zu sampled obstacle footprint points across %zu obstacles.",
+      sampled_points.size(),
+      msg->obstacles.size());
   }
 
 

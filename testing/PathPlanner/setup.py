@@ -30,6 +30,7 @@ setup(
             'testing_node = global_path_benchmarking.testing_node:main',
             'mock_rover_sim = mock.mock_rover_sim:main',
             'mock_perception = mock.mock_perception:main',
+            'drop_stone = scripts.drop_stone:main',
         ],
     },
 )
