@@ -38,13 +38,16 @@ def generate_launch_description() -> LaunchDescription:
         }.items())
 
     marker_tf = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(os.path.join(share, "launch", "marker_tf.launch.py")))
+        PythonLaunchDescriptionSource(os.path.join(share, "launch", "marker_tf.launch.py")),
+        launch_arguments={"params_file": os.path.join(share, "config", "marker_tf.yaml")}.items())
 
     marker_mapping = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(os.path.join(share, "launch", "marker_mapping.launch.py")))
+        PythonLaunchDescriptionSource(os.path.join(share, "launch", "marker_mapping.launch.py")),
+        launch_arguments={"params_file": os.path.join(share, "config", "marker_mapping.yaml")}.items())
 
     marker_action_interface = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(os.path.join(share, "launch", "marker_action_interface.launch.py")))
+        PythonLaunchDescriptionSource(os.path.join(share, "launch", "marker_action_interface.launch.py")),
+        launch_arguments={"params_file": os.path.join(share, "config", "marker_action_interface.yaml")}.items())
 
     return LaunchDescription([
         rgb_topic_arg, depth_topic_arg, camera_info_topic_arg,

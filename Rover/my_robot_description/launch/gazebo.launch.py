@@ -155,32 +155,47 @@ def launch_setup(context, *args, **kwargs):
         output='screen'
     )
     
-    # Bridge between Ignition Gazebo and ROS 2
+    # Bridge between Gazebo and ROS 2
+    ros_distro = os.environ.get('ROS_DISTRO', 'humble')
+    msg_prefix = 'gz.msgs' if ros_distro == 'jazzy' else 'ignition.msgs'
+
     bridge = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
         arguments=[
-            '/cmd_vel@geometry_msgs/msg/Twist@gz.msgs.Twist',
-            '/odom@nav_msgs/msg/Odometry@gz.msgs.Odometry',
-            '/imu/data@sensor_msgs/msg/Imu@gz.msgs.IMU',
-            f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/image@sensor_msgs/msg/Image[gz.msgs.Image',
-            f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
-            f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/depth_image@sensor_msgs/msg/Image[gz.msgs.Image',
-            f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked',
+            f'/cmd_vel@geometry_msgs/msg/Twist@{msg_prefix}.Twist',
+            f'/odom@nav_msgs/msg/Odometry@{msg_prefix}.Odometry',
+            f'/imu/data@sensor_msgs/msg/Imu@{msg_prefix}.IMU',
+            f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/camera_info@sensor_msgs/msg/CameraInfo[{msg_prefix}.CameraInfo',
+            f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/points@sensor_msgs/msg/PointCloud2[{msg_prefix}.PointCloudPacked',
         ],
         remappings=[
-            (f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/image', '/camera/image_raw'),
             (f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/camera_info', '/camera/camera_info'),
-            (f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/depth_image', '/camera/depth/image_raw'),
             (f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/points', '/camera/depth/color/points'),
         ],
         output='screen'
     )
+
+    image_bridge = Node(
+        package='ros_gz_image',
+        executable='image_bridge',
+        arguments=[
+            f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/image',
+            f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/depth_image',
+        ],
+        remappings=[
+            (f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/image', '/camera/image_raw'),
+            (f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/depth_image', '/camera/depth/image_raw'),
+        ],
+        output='screen'
+    )
+
     return [
         gazebo,
         robot_state_publisher_node,
         spawn_entity,
-        bridge
+        bridge,
+        image_bridge
     ]
 
 

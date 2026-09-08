@@ -100,7 +100,12 @@ class MarkerDetectionNode(Node):
             "polygonalApproxAccuracyRate", "minCornerDistanceRate", "minDistanceToBorder",
             "perspectiveRemovePixelPerCell", "perspectiveRemoveIgnoredMarginPerCell",
             "maxErroneousBitsInBorderRate", "errorCorrectionRate")}
-        allowed_ids_param = self.get_parameter("allowed_marker_ids").value
+        self.detector = ArucoDetector(self.get_parameter("aruco_dictionary").value, detector_values)
+        allowed_ids_param = None
+        try:
+            allowed_ids_param = self.get_parameter("allowed_marker_ids").value
+        except Exception:
+            pass
         allowed_ids = list(allowed_ids_param) if allowed_ids_param is not None else []
         self.validator = DetectionValidator(
             allowed_ids,
@@ -286,11 +291,11 @@ class MarkerDetectionNode(Node):
                 <= p("track_timeout_seconds").value):
             raise ValueError(
                 "Require 0 < degraded_after_seconds <= lost_timeout_seconds <= track_timeout_seconds.")
-        if not 0.0 < p("orientation_alpha").value <= 1.0:
-            raise ValueError("orientation_alpha must be in (0, 1].")
-        if len(p("per_marker_size_ids").value) != len(p("per_marker_size_values").value):
+        per_marker_ids = list(p("per_marker_size_ids").value or [])
+        per_marker_vals = list(p("per_marker_size_values").value or [])
+        if len(per_marker_ids) != len(per_marker_vals):
             raise ValueError("per_marker_size_ids and per_marker_size_values must be the same length.")
-        if p("use_per_marker_sizes").value and any(v <= 0 for v in p("per_marker_size_values").value):
+        if p("use_per_marker_sizes").value and any(v <= 0 for v in per_marker_vals):
             raise ValueError("All per_marker_size_values must be positive.")
 
     def _build_pose_estimator_kwargs(self) -> dict[str, Any]:
@@ -856,7 +861,8 @@ def main(args: list[str] | None = None) -> None:
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":

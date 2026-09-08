@@ -20,7 +20,7 @@ install(PROGRAMS marker_detection/marker_tf_broadcaster.py
 install(PROGRAMS marker_detection/marker_action_interface_node.py
   DESTINATION lib/${PROJECT_NAME}
   RENAME marker_action_interface_node)
-install(DIRECTORY config launch DESTINATION share/${PROJECT_NAME})
+install(DIRECTORY config launch rviz DESTINATION share/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
