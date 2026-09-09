@@ -911,87 +911,92 @@
 
         <!-- Part 4: Dynamic Obstacles & Avoidance -->
         <div class="glass-panel" id="part4">
-            <h2><i class="fa-solid fa-triangle-exclamation"></i> Part 4: Dynamic Obstacle Injection & Avoidance</h2>
+            <h2><i class="fa-solid fa-triangle-exclamation"></i> Part 4: Dynamic Obstacle Injection & Live Replanning</h2>
             <p>
-                <strong>Yes, the tester can insert dynamic obstacles during active navigation!</strong> It supports both
-                automated pre-scheduled hazard pop-ups and live interactive obstacle injection to test how the rover
-                reacts and swerves mid-run.
+                <strong>Yes, the tester can insert dynamic obstacles during active navigation!</strong> It supports automated
+                pre-scheduled hazard pop-ups, interactive single-key rock drops right onto the rover's active path via the <code>drop_stone</code> CLI, and mouse clicks directly in RViz2.
             </p>
 
             <div class="flow-grid">
                 <!-- How to Inject -->
                 <div class="flow-card">
                     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
-                        <div class="step-icon icon-purple"><i class="fa-solid fa-hand-pointer"></i></div>
+                        <div class="step-icon icon-purple"><i class="fa-solid fa-cube"></i></div>
                         <div>
-                            <h4 style="color: #ffffff; margin: 0;">1. How to Insert Obstacles</h4>
-                            <span style="font-size: 0.8rem; color: var(--text-muted);">Two Injection Methods</span>
+                            <h4 style="color: #ffffff; margin: 0;">1. The <code>drop_stone</code> CLI Tool</h4>
+                            <span style="font-size: 0.8rem; color: var(--text-muted);">Real-Time Path Infiltration</span>
                         </div>
                     </div>
                     <p style="font-size: 0.9rem; margin-bottom: 8px;">
-                        <strong>A. Scheduled via Scenario YAML:</strong><br>
-                        In <code>config/scenarios.yaml</code>, specify dynamic obstacles with a trigger time (seconds
-                        into the run):
+                        <strong>A. Auto-Drop Directly on Active Path:</strong><br>
+                        Inspects live rover odometry &amp; global path (<code>/plan</code>), automatically finding a waypoint <strong>2.0m ahead</strong> on the route and dropping a rock right in front of the moving rover:
                     </p>
                     <div class="code-container" style="padding: 8px 10px; font-size: 0.82rem; margin: 6px 0;">
-                        <code>dynamic_obstacles:<br>&nbsp;&nbsp;- trigger_time: 0.5<br>&nbsp;&nbsp;&nbsp;&nbsp;x: 1.0, y: 2.5, radius: 0.4</code>
+                        <code>./src/Autonmous-27/testing/PathPlanner/scripts/drop_stone.py</code>
+                        <button class="copy-btn" onclick="navigator.clipboard.writeText('./src/Autonmous-27/testing/PathPlanner/scripts/drop_stone.py'); this.innerText='Copied!'; setTimeout(()=>this.innerText='Copy', 2000);"><i class="fa-regular fa-copy"></i></button>
                     </div>
                     <p style="font-size: 0.9rem; margin: 8px 0 6px 0;">
-                        <strong>B. Live On-the-Fly Injection:</strong><br>
-                        Spawn an obstacle mid-motion via ROS 2 topic:
+                        <strong>B. Interactive Loop Mode (Press [Enter]):</strong><br>
+                        Keeps prompt open &mdash; every press of <kbd style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px;">Enter</kbd> drops a fresh rock in front of the rover:
+                    </p>
+                    <div class="code-container" style="padding: 8px 10px; font-size: 0.82rem; margin: 6px 0;">
+                        <code>./src/Autonmous-27/testing/PathPlanner/scripts/drop_stone.py -i</code>
+                        <button class="copy-btn" onclick="navigator.clipboard.writeText('./src/Autonmous-27/testing/PathPlanner/scripts/drop_stone.py -i'); this.innerText='Copied!'; setTimeout(()=>this.innerText='Copy', 2000);"><i class="fa-regular fa-copy"></i></button>
+                    </div>
+                    <p style="font-size: 0.9rem; margin: 8px 0 6px 0;">
+                        <strong>C. Custom Distance / Coordinates:</strong>
                     </p>
                     <div class="code-container" style="padding: 8px 10px; font-size: 0.8rem; margin: 6px 0;">
-                        <code>ros2 topic pub --once /mock_perception/spawn_obstacle geometry_msgs/msg/Point "{x: 1.5, y: 2.0, z: 0.2}"</code>
+                        <code>./src/Autonmous-27/testing/PathPlanner/scripts/drop_stone.py -d 3.5<br># Or specific coordinates:<br>./src/Autonmous-27/testing/PathPlanner/scripts/drop_stone.py 1.5 2.0</code>
                     </div>
                 </div>
 
-                <!-- How It Avoids -->
+                <!-- RViz & YAML Methods -->
                 <div class="flow-card">
                     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
-                        <div class="step-icon icon-teal"><i class="fa-solid fa-shield-virus"></i></div>
+                        <div class="step-icon icon-sky"><i class="fa-solid fa-computer-mouse"></i></div>
                         <div>
-                            <h4 style="color: #ffffff; margin: 0;">2. How the Rover Avoids Them</h4>
-                            <span style="font-size: 0.8rem; color: var(--text-muted);">Two-Tier Safety
-                                Architecture</span>
+                            <h4 style="color: #ffffff; margin: 0;">2. RViz Click &amp; Scenario YAML</h4>
+                            <span style="font-size: 0.8rem; color: var(--text-muted);">Visual &amp; Automated Methods</span>
                         </div>
                     </div>
-                    <p style="font-size: 0.9rem; margin-bottom: 10px;">
-                        <strong>Tier 1: Local MPPI Controller Swerving:</strong><br>
-                        The local costmap (10m &times; 10m rolling window) updates at 20 Hz. MPPI evaluates 2,000
-                        trajectory rollouts. Its <code>ObstaclesCritic</code> heavily penalizes candidate paths touching
-                        the obstacle, steering the rover smoothly around the rock without stopping.
+                    <p style="font-size: 0.9rem; margin-bottom: 8px;">
+                        <strong>A. Interactive Mouse Clicking in RViz2:</strong><br>
+                        Select the <strong>Publish Point</strong> tool (<i class="fa-solid fa-location-crosshairs"></i>) from RViz's top toolbar and click anywhere on the ground. A boulder instantly spawns at that point!
                     </p>
-                    <p style="font-size: 0.9rem; margin-bottom: 0;">
-                        <strong>Tier 2: Global Smac Hybrid A* Detour:</strong><br>
-                        If the obstacle completely blocks a narrow canyon corridor (e.g.
-                        <code>canyon_gate_blocked</code>), the BT navigator triggers Smac Hybrid A* to calculate a brand
-                        new global detour highway using Reeds-Shepp kinematics.
+                    <p style="font-size: 0.9rem; margin: 10px 0 6px 0;">
+                        <strong>B. Scheduled via Scenario YAML:</strong><br>
+                        In <code>config/scenarios.yaml</code>, schedule hazards to pop up at specific mission timestamps:
                     </p>
+                    <div class="code-container" style="padding: 8px 10px; font-size: 0.82rem; margin: 6px 0;">
+                        <code>dynamic_obstacles:<br>&nbsp;&nbsp;- trigger_time: 2.0<br>&nbsp;&nbsp;&nbsp;&nbsp;x: 1.0, y: 2.5, radius: 0.4</code>
+                    </div>
+                    <p style="font-size: 0.9rem; margin: 10px 0 6px 0;">
+                        <strong>C. Standard ROS 2 CLI:</strong>
+                    </p>
+                    <div class="code-container" style="padding: 8px 10px; font-size: 0.8rem; margin: 6px 0;">
+                        <code>ros2 run global_path_benchmarking drop_stone</code>
+                    </div>
                 </div>
 
-                <!-- How You Know -->
+                <!-- How It Avoids & Safety -->
                 <div class="flow-card">
                     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
-                        <div class="step-icon icon-emerald"><i class="fa-solid fa-chart-pie"></i></div>
+                        <div class="step-icon icon-teal"><i class="fa-solid fa-shield-halved"></i></div>
                         <div>
-                            <h4 style="color: #ffffff; margin: 0;">3. How You Know It Avoided Them</h4>
-                            <span style="font-size: 0.8rem; color: var(--text-muted);">Visual & Quantitative
-                                Telemetry</span>
+                            <h4 style="color: #ffffff; margin: 0;">3. Costmap &amp; Avoidance Engine</h4>
+                            <span style="font-size: 0.8rem; color: var(--text-muted);">Pipeline Architecture</span>
                         </div>
                     </div>
-                    <ul class="feature-list" style="margin: 0;">
-                        <li><i class="fa-solid fa-eye" style="color: var(--accent-emerald);"></i> <strong>Live in
-                                RViz2:</strong> Watch the cyan MPPI cloud flex and bend around the newly appeared red
-                            rock marker.</li>
-                        <li><i class="fa-solid fa-map-location-dot" style="color: var(--accent-emerald);"></i>
-                            <strong>Trajectory Map (PNG):</strong> The output plot draws the original path vs. the
-                            <strong>Cyan Detour Path</strong> around the orange obstacle.</li>
-                        <li><i class="fa-solid fa-calculator" style="color: var(--accent-emerald);"></i>
-                            <strong>Replanning Score:</strong> Verified at <span class="target-val">100 / 100</span>
-                            with detour time recorded.</li>
-                        <li><i class="fa-solid fa-ruler-combined" style="color: var(--accent-emerald);"></i>
-                            <strong>Safety Clearance:</strong> Proves the rover kept <span class="target-val">&ge;
-                                0.35m</span> margin with <span class="target-val">0</span> collisions.</li>
+                    <p style="font-size: 0.88rem; margin-bottom: 8px;">
+                        <strong>Pipeline Flow:</strong><br>
+                        <code>drop_stone</code> &rarr; <code>/terrain/obstacle_features</code> &rarr; <code>costmap_bridge_node</code> (5cm sampled footprint) &rarr; <code>/bridge/pointcloud</code> &rarr; <code>Costmap2D</code>
+                    </p>
+                    <ul class="feature-list" style="margin: 0; font-size: 0.86rem;">
+                        <li><i class="fa-solid fa-circle-check" style="color: var(--accent-teal);"></i> <strong>Lethal Cost Marking:</strong> Inscribed obstacle footprint with <span class="target-val">0.85m</span> inflation safety radius.</li>
+                        <li><i class="fa-solid fa-arrows-split-up-and-left" style="color: var(--accent-emerald);"></i> <strong>Online Replanning:</strong> Smac Hybrid A* replans within <span class="target-val">&le; 1.0s</span> using Reeds-Shepp kinematics.</li>
+                        <li><i class="fa-solid fa-wind" style="color: var(--accent-sky);"></i> <strong>MPPI Trajectory Swerving:</strong> Evaluates 2,000 rollouts at 20 Hz, smoothly steering around the rock.</li>
+                        <li><i class="fa-solid fa-border-all" style="color: var(--accent-amber);"></i> <strong>30m &times; 30m Arena Boundary:</strong> Perimeter walls prevent the rover from ever falling out of bounds.</li>
                     </ul>
                 </div>
             </div>
