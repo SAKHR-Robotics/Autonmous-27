@@ -1,0 +1,1179 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Path Planner & Control Tester Guide | ERC 2026</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg-color: #070a13;
+            --bg-gradient: radial-gradient(circle at 50% 0%, #151b36 0%, #070a13 70%);
+            --panel-bg: rgba(15, 23, 42, 0.75);
+            --panel-border: rgba(255, 255, 255, 0.08);
+            --panel-hover-border: rgba(99, 102, 241, 0.45);
+            --primary: #6366f1;
+            --primary-light: #818cf8;
+            --accent-teal: #14b8a6;
+            --accent-emerald: #10b981;
+            --accent-amber: #f59e0b;
+            --accent-rose: #f43f5e;
+            --accent-sky: #0ea5e9;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --code-bg: rgba(0, 0, 0, 0.6);
+            --card-radius: 18px;
+            --transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-color);
+            background-image: var(--bg-gradient);
+            background-attachment: fixed;
+            color: var(--text-main);
+            padding: 40px 20px;
+            line-height: 1.65;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        /* Glass Panel */
+        .glass-panel {
+            background: var(--panel-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--card-radius);
+            padding: 36px 40px;
+            box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.6);
+            margin-bottom: 32px;
+            position: relative;
+            overflow: hidden;
+            transition: var(--transition);
+        }
+
+        .glass-panel::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.6), transparent);
+        }
+
+        /* Typography */
+        h1,
+        h2,
+        h3,
+        h4 {
+            font-family: 'Outfit', sans-serif;
+            letter-spacing: -0.02em;
+        }
+
+        .header-section {
+            text-align: center;
+            padding: 45px 20px 35px 20px;
+        }
+
+        .badge-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 16px;
+            border-radius: 9999px;
+            background: rgba(99, 102, 241, 0.15);
+            border: 1px solid rgba(99, 102, 241, 0.35);
+            color: var(--primary-light);
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-bottom: 18px;
+        }
+
+        h1 {
+            font-size: 2.75rem;
+            font-weight: 800;
+            margin-bottom: 14px;
+            background: linear-gradient(135deg, #ffffff 30%, #a5b4fc 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            line-height: 1.2;
+        }
+
+        .header-subtitle {
+            font-size: 1.12rem;
+            color: var(--text-muted);
+            max-width: 760px;
+            margin: 0 auto 24px auto;
+        }
+
+        /* Quick Navigation Bar */
+        .quick-nav {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .nav-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 8px 16px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--panel-border);
+            color: #cbd5e1;
+            font-size: 0.85rem;
+            font-weight: 500;
+            text-decoration: none;
+            transition: var(--transition);
+        }
+
+        .nav-btn:hover {
+            background: rgba(99, 102, 241, 0.2);
+            border-color: var(--primary-light);
+            color: #ffffff;
+            transform: translateY(-2px);
+        }
+
+        h2 {
+            font-size: 1.85rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: #ffffff;
+        }
+
+        h2 i {
+            color: var(--primary-light);
+            font-size: 1.6rem;
+        }
+
+        h3 {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #ffffff;
+        }
+
+        p {
+            color: #cbd5e1;
+            font-size: 1rem;
+            margin-bottom: 16px;
+        }
+
+        /* Options Table */
+        .table-wrapper {
+            overflow-x: auto;
+            border-radius: 12px;
+            border: 1px solid var(--panel-border);
+            margin: 20px 0;
+            background: rgba(10, 15, 30, 0.5);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.95rem;
+        }
+
+        th {
+            background: rgba(30, 41, 59, 0.7);
+            color: #ffffff;
+            font-weight: 600;
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--panel-border);
+            font-family: 'Outfit', sans-serif;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 0.05em;
+        }
+
+        td {
+            padding: 14px 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            color: #cbd5e1;
+            vertical-align: top;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover td {
+            background: rgba(99, 102, 241, 0.05);
+        }
+
+        .opt-num {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+            color: var(--accent-teal);
+            font-size: 1.05rem;
+        }
+
+        .opt-name {
+            font-weight: 600;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+        }
+
+        /* Step Cards */
+        .step-cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+            gap: 20px;
+            margin: 24px 0;
+        }
+
+        .step-card {
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid var(--panel-border);
+            border-radius: 14px;
+            padding: 24px;
+            transition: var(--transition);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .step-card:hover {
+            border-color: var(--panel-hover-border);
+            transform: translateY(-3px);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+        }
+
+        .step-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        .step-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+        }
+
+        .icon-blue {
+            background: rgba(14, 165, 233, 0.15);
+            color: var(--accent-sky);
+            border: 1px solid rgba(14, 165, 233, 0.3);
+        }
+
+        .icon-purple {
+            background: rgba(99, 102, 241, 0.15);
+            color: var(--primary-light);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+        }
+
+        .icon-teal {
+            background: rgba(20, 184, 166, 0.15);
+            color: var(--accent-teal);
+            border: 1px solid rgba(20, 184, 166, 0.3);
+        }
+
+        .icon-amber {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--accent-amber);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        .icon-rose {
+            background: rgba(244, 63, 94, 0.15);
+            color: var(--accent-rose);
+            border: 1px solid rgba(244, 63, 94, 0.3);
+        }
+
+        .icon-emerald {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--accent-emerald);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .step-card ol {
+            margin-left: 20px;
+            color: #cbd5e1;
+            font-size: 0.95rem;
+        }
+
+        .step-card li {
+            margin-bottom: 8px;
+        }
+
+        /* Mode Comparison Cards */
+        .mode-comparison-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 22px;
+            margin: 24px 0;
+        }
+
+        .mode-card {
+            background: rgba(15, 23, 42, 0.55);
+            border: 1px solid var(--panel-border);
+            border-radius: 16px;
+            padding: 26px;
+            position: relative;
+            transition: var(--transition);
+        }
+
+        .mode-card:hover {
+            border-color: var(--panel-hover-border);
+            transform: translateY(-3px);
+            box-shadow: 0 12px 30px -5px rgba(0, 0, 0, 0.5);
+        }
+
+        .mode-card.head-mode {
+            border-top: 3px solid var(--accent-sky);
+        }
+
+        .mode-card.headless-mode {
+            border-top: 3px solid var(--accent-amber);
+        }
+
+        .tag-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 12px;
+        }
+
+        .tag-sky {
+            background: rgba(14, 165, 233, 0.15);
+            color: var(--accent-sky);
+        }
+
+        .tag-amber {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--accent-amber);
+        }
+
+        .tag-emerald {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--accent-emerald);
+        }
+
+        .tag-rose {
+            background: rgba(244, 63, 94, 0.15);
+            color: var(--accent-rose);
+        }
+
+        .tag-purple {
+            background: rgba(99, 102, 241, 0.15);
+            color: var(--primary-light);
+        }
+
+        .feature-list {
+            list-style: none;
+            margin: 16px 0;
+        }
+
+        .feature-list li {
+            font-size: 0.92rem;
+            color: #cbd5e1;
+            margin-bottom: 9px;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        .feature-list li i {
+            margin-top: 4px;
+            font-size: 0.85rem;
+        }
+
+        /* Flow & Feature Cards */
+        .flow-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .flow-card {
+            background: rgba(10, 16, 32, 0.65);
+            border: 1px solid var(--panel-border);
+            border-radius: 14px;
+            padding: 22px;
+            transition: var(--transition);
+        }
+
+        .flow-card:hover {
+            border-color: var(--panel-hover-border);
+            transform: translateY(-2px);
+        }
+
+        /* Report Artifacts Grid */
+        .artifact-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+            gap: 16px;
+            margin: 20px 0;
+        }
+
+        .artifact-card {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--panel-border);
+            border-radius: 14px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            transition: var(--transition);
+        }
+
+        .artifact-card:hover {
+            border-color: var(--panel-hover-border);
+            transform: translateY(-2px);
+        }
+
+        .artifact-icon {
+            font-size: 2rem;
+            margin-bottom: 4px;
+        }
+
+        /* Directory Tree Box */
+        .tree-box {
+            background: rgba(5, 8, 18, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            padding: 16px 20px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.88rem;
+            color: #cbd5e1;
+            line-height: 1.6;
+            margin: 16px 0;
+            overflow-x: auto;
+        }
+
+        /* 4 Green Lights */
+        .lights-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+            gap: 18px;
+            margin: 24px 0;
+        }
+
+        .light-card {
+            background: rgba(15, 23, 42, 0.55);
+            border: 1px solid var(--panel-border);
+            border-radius: 14px;
+            padding: 22px;
+            border-top: 3px solid var(--accent-emerald);
+            transition: var(--transition);
+        }
+
+        .light-card:hover {
+            transform: translateY(-3px);
+            border-color: rgba(16, 185, 129, 0.4);
+            box-shadow: 0 10px 25px -5px rgba(16, 185, 129, 0.15);
+        }
+
+        .light-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--accent-emerald);
+            margin-bottom: 12px;
+        }
+
+        .light-card h4 {
+            color: #ffffff;
+            font-size: 1.15rem;
+            margin-bottom: 10px;
+        }
+
+        .light-card p {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin-bottom: 0;
+        }
+
+        .target-val {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+            color: #ffffff;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        /* Code Blocks */
+        .code-container {
+            background: var(--code-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 10px;
+            padding: 14px 18px;
+            margin: 12px 0 16px 0;
+            position: relative;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            color: #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            overflow-x: auto;
+        }
+
+        .code-container code {
+            color: #a5b4fc;
+        }
+
+        .copy-btn {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: #cbd5e1;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-family: 'Inter', sans-serif;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+
+        .copy-btn:hover {
+            background: rgba(99, 102, 241, 0.25);
+            color: #ffffff;
+            border-color: var(--primary);
+        }
+
+        /* Score Callout Box */
+        .score-box {
+            background: rgba(10, 16, 32, 0.8);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            border-radius: 12px;
+            padding: 18px 22px;
+            margin: 18px 0;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.92rem;
+            line-height: 1.7;
+        }
+
+        .score-pass {
+            color: var(--accent-emerald);
+            font-weight: 700;
+        }
+
+        .score-num {
+            color: #38bdf8;
+            font-weight: 600;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            padding: 24px 0 10px 0;
+        }
+
+        @media (max-width: 768px) {
+            .glass-panel {
+                padding: 24px 20px;
+            }
+
+            h1 {
+                font-size: 2.1rem;
+            }
+
+            .step-cards-grid,
+            .mode-comparison-grid,
+            .flow-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+
+        <!-- Header -->
+        <div class="header-section">
+            <div class="badge-pill">
+                <i class="fa-solid fa-satellite"></i> ERC 2026 Autonomous Subsystem
+            </div>
+            <h1>Path Planner & Control Tester Guide</h1>
+            <p class="header-subtitle">
+                A complete operational reference for the black-box benchmarking suite: dynamic obstacle avoidance, head
+                & headless modes, per-map reporting, and non-overwriting historical archives.
+            </p>
+
+            <!-- Quick Navigation -->
+            <div class="quick-nav">
+                <a href="#part1" class="nav-btn"><i class="fa-solid fa-compass"></i> Options</a>
+                <a href="#part2" class="nav-btn"><i class="fa-solid fa-list-check"></i> Step-by-Step</a>
+                <a href="#part3" class="nav-btn"><i class="fa-solid fa-desktop"></i> Head vs. Headless</a>
+                <a href="#part4" class="nav-btn"><i class="fa-solid fa-triangle-exclamation"></i> Dynamic Obstacles</a>
+                <a href="#part5" class="nav-btn"><i class="fa-solid fa-file-waveform"></i> Reports & Archives</a>
+                <a href="#part6" class="nav-btn"><i class="fa-solid fa-circle-check"></i> 4 Green Lights</a>
+            </div>
+        </div>
+
+        <!-- Part 1: Options -->
+        <div class="glass-panel" id="part1">
+            <h2><i class="fa-solid fa-compass"></i> Part 1: The 6 Options Explained Simply</h2>
+            <p>
+                When you execute the master test runner, you can choose from 6 testing modes tailored for different
+                verification stages:
+            </p>
+
+            <div class="code-container">
+                <code>./testing/PathPlanner/run_testing_suite.sh</code>
+                <button class="copy-btn"
+                    onclick="navigator.clipboard.writeText('./testing/PathPlanner/run_testing_suite.sh'); this.innerText='Copied!'; setTimeout(()=>this.innerText='Copy', 2000);"><i
+                        class="fa-regular fa-copy"></i> Copy</button>
+            </div>
+
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 50px;">#</th>
+                            <th>Option Name</th>
+                            <th>Execution Mode</th>
+                            <th>What It Does</th>
+                            <th>When to Use It</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="opt-num">1</td>
+                            <td class="opt-name"><i class="fa-solid fa-gamepad" style="color: #38bdf8;"></i> Live
+                                Interactive Test</td>
+                            <td><span class="tag-pill tag-sky"><i class="fa-solid fa-eye"></i> Head (RViz2)</span></td>
+                            <td>Launches <code>erc_path_planner</code>, mock kinematics (50 Hz), mock perception, and
+                                opens RViz2 for a selected map.</td>
+                            <td>When you want to <strong>watch the rover drive live</strong>, see it swerve around rocks
+                                in real time, or click <em>2D Goal Pose</em> manually.</td>
+                        </tr>
+                        <tr>
+                            <td class="opt-num">2</td>
+                            <td class="opt-name"><i class="fa-solid fa-bolt" style="color: #fbbf24;"></i> Headless Batch
+                                Benchmark</td>
+                            <td><span class="tag-pill tag-amber"><i class="fa-solid fa-terminal"></i> Headless
+                                    (CLI)</span></td>
+                            <td>Runs all <strong>9 Mars Yard maps</strong> sequentially in the background at maximum
+                                speed with zero graphics overhead.</td>
+                            <td>When you want a fast, automated <strong>Pass/Fail report</strong> across every terrain
+                                scenario with HTML & PDF dashboards.</td>
+                        </tr>
+                        <tr>
+                            <td class="opt-num">3</td>
+                            <td class="opt-name"><i class="fa-solid fa-chart-line" style="color: #a855f7;"></i> Visual
+                                Batch Benchmark</td>
+                            <td><span class="tag-pill tag-sky"><i class="fa-solid fa-eye"></i> Head (RViz2)</span></td>
+                            <td>Runs all 9 benchmark maps automatically in sequence while keeping RViz2 open so you can
+                                observe transitions visually.</td>
+                            <td>When you want to visually verify that the rover clears canyons, labyrinths, and craters
+                                across all scenarios without getting trapped.</td>
+                        </tr>
+                        <tr>
+                            <td class="opt-num">4</td>
+                            <td class="opt-name"><i class="fa-solid fa-bullseye" style="color: #f43f5e;"></i> Single
+                                Scenario Benchmark</td>
+                            <td><span class="tag-pill tag-purple">Configurable</span></td>
+                            <td>Runs and scores just <strong>one specific map</strong> you choose (e.g.
+                                <code>canyon_gate_passage</code>), in head or headless mode.</td>
+                            <td>When tuning a specific controller parameter (turning radius, MPPI rollout weight) on one
+                                difficult obstacle layout.</td>
+                        </tr>
+                        <tr>
+                            <td class="opt-num">5</td>
+                            <td class="opt-name"><i class="fa-solid fa-map" style="color: #34d399;"></i> Verify Maps &
+                                Paths</td>
+                            <td><span class="tag-pill tag-emerald">Instant</span></td>
+                            <td>Generates 2D reference PNG map plots and reference waypoints into the
+                                <code>reports/</code> folder.</td>
+                            <td>Sanity check to confirm all 9 scenario maps, start/goal poses, and intermediate
+                                waypoints are drawn accurately.</td>
+                        </tr>
+                        <tr>
+                            <td class="opt-num">6</td>
+                            <td class="opt-name"><i class="fa-solid fa-plug" style="color: #818cf8;"></i> External
+                                Module Test</td>
+                            <td><span class="tag-pill tag-purple">Universal</span></td>
+                            <td>Starts physics simulation, mock perception, and RViz, but <strong>does not launch any
+                                    planner</strong>. It listens for your external node.</td>
+                            <td>When you write a <strong>new custom algorithm or motor driver</strong> in another
+                                terminal and want the tester to evaluate it.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Part 2: Step-by-Step Testing -->
+        <div class="glass-panel" id="part2">
+            <h2><i class="fa-solid fa-list-check"></i> Part 2: How to Test the Main Model Step-by-Step</h2>
+            <p>
+                Choose one of the following methods depending on whether you want visual inspection or automated
+                numerical scoring:
+            </p>
+
+            <div class="step-cards-grid">
+                <!-- Method 1 -->
+                <div class="step-card">
+                    <div>
+                        <div class="step-header">
+                            <div class="step-icon icon-blue"><i class="fa-solid fa-desktop"></i></div>
+                            <div>
+                                <h3>Method 1: Visual Live Test</h3>
+                                <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">Interactive Head
+                                    Mode</p>
+                            </div>
+                        </div>
+                        <ol>
+                            <li>Run <code>./testing/PathPlanner/run_testing_suite.sh</code></li>
+                            <li>Type <strong><code>1</code></strong> and press Enter.</li>
+                            <li>Select a scenario (e.g. press Enter for <code>scattered_rocks_detour</code>).</li>
+                            <li>Press Enter to accept defaults (<code>Y</code>).</li>
+                            <li><strong>RViz2 pops up:</strong> Watch the green path, cyan MPPI rollouts, and the 3D
+                                rover driving through terrain.</li>
+                        </ol>
+                    </div>
+                </div>
+
+                <!-- Method 2 -->
+                <div class="step-card">
+                    <div>
+                        <div class="step-header">
+                            <div class="step-icon icon-amber"><i class="fa-solid fa-bolt"></i></div>
+                            <div>
+                                <h3>Method 2: Headless Scorecard</h3>
+                                <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">Fast Headless CI/CD
+                                </p>
+                            </div>
+                        </div>
+                        <ol>
+                            <li>Run the batch benchmark shortcut:
+                                <div class="code-container" style="padding: 8px 12px; margin: 8px 0;">
+                                    <code>./testing/PathPlanner/run_testing_suite.sh --headless</code>
+                                </div>
+                            </li>
+                            <li>Wait ~45 seconds as all 9 scenarios are evaluated.</li>
+                            <li>Open the generated HTML dashboard in your browser:
+                                <div class="code-container" style="padding: 8px 12px; margin: 8px 0;">
+                                    <code>google-chrome testing/PathPlanner/reports/numerical_report.html</code>
+                                </div>
+                            </li>
+                        </ol>
+                    </div>
+                </div>
+
+                <!-- Method 3 -->
+                <div class="step-card">
+                    <div>
+                        <div class="step-header">
+                            <div class="step-icon icon-teal"><i class="fa-solid fa-cube"></i></div>
+                            <div>
+                                <h3>Method 3: External Custom Node</h3>
+                                <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">Black-Box Evaluation
+                                </p>
+                            </div>
+                        </div>
+                        <ol>
+                            <li>Start the universal test harness:
+                                <div class="code-container" style="padding: 8px 12px; margin: 8px 0;">
+                                    <code>./testing/PathPlanner/run_testing_suite.sh --external</code>
+                                </div>
+                            </li>
+                            <li>In your own terminal, launch your custom planner node.</li>
+                            <li>Your node listens to <code>/map</code> and publishes to <code>/cmd_vel</code>. The
+                                tester tracks and scores all metrics!</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Part 3: Head Mode vs Headless Mode -->
+        <div class="glass-panel" id="part3">
+            <h2><i class="fa-solid fa-desktop"></i> Part 3: Head Mode vs. Headless Mode</h2>
+            <p>
+                The tester natively supports both <strong>Head Mode (GUI Visualization)</strong> and <strong>Headless
+                    Mode (Background Automation)</strong> to accommodate both developer inspection and CI/CD pipelines.
+            </p>
+
+            <div class="mode-comparison-grid">
+                <!-- Head Mode Card -->
+                <div class="mode-card head-mode">
+                    <span class="tag-pill tag-sky"><i class="fa-solid fa-eye"></i> GUI / RViz2 Active</span>
+                    <h3>🖥️ Head Mode</h3>
+                    <p style="font-size: 0.92rem; color: var(--text-muted); margin-bottom: 12px;">
+                        Interactive visualization with live 3D rendering of the rover and sensor clouds.
+                    </p>
+                    <ul class="feature-list">
+                        <li><i class="fa-solid fa-check" style="color: var(--accent-sky);"></i> <strong>Live 3D Rover
+                                Body:</strong> Watch <code>base_link</code> steer and follow Reeds-Shepp curves.</li>
+                        <li><i class="fa-solid fa-check" style="color: var(--accent-sky);"></i> <strong>MPPI Trajectory
+                                Fan:</strong> Inspect the cyan cloud of 2,000 candidate rollouts adapting at 20 Hz.</li>
+                        <li><i class="fa-solid fa-check" style="color: var(--accent-sky);"></i> <strong>Dynamic 3D
+                                Obstacles:</strong> Pop-up rocks render as red/orange 3D markers in RViz.</li>
+                        <li><i class="fa-solid fa-check" style="color: var(--accent-sky);"></i> <strong>Interactive Goal
+                                Setting:</strong> Click <em>2D Goal Pose</em> anytime to test arbitrary waypoints.</li>
+                    </ul>
+                    <div style="margin-top: 16px;">
+                        <span
+                            style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); font-weight: 600;">Launch
+                            Commands:</span>
+                        <div class="code-container" style="padding: 8px 12px; margin: 6px 0;">
+                            <code>./testing/PathPlanner/run_testing_suite.sh (Select 1 or 3)</code>
+                        </div>
+                        <div class="code-container" style="padding: 8px 12px; margin: 6px 0;">
+                            <code>ros2 launch global_path_benchmarking live_test.launch.py use_rviz:=true</code>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Headless Mode Card -->
+                <div class="mode-card headless-mode">
+                    <span class="tag-pill tag-amber"><i class="fa-solid fa-bolt"></i> Zero GUI / Fast CI</span>
+                    <h3>⚡ Headless Mode</h3>
+                    <p style="font-size: 0.92rem; color: var(--text-muted); margin-bottom: 12px;">
+                        Pure background execution designed for fast batch testing and continuous integration.
+                    </p>
+                    <ul class="feature-list">
+                        <li><i class="fa-solid fa-check" style="color: var(--accent-amber);"></i> <strong>Maximum
+                                Speed:</strong> Evaluates all 9 Mars Yard scenarios in ~45 seconds.</li>
+                        <li><i class="fa-solid fa-check" style="color: var(--accent-amber);"></i> <strong>Zero Graphics
+                                Overhead:</strong> Runs on headless servers, Docker, and GitHub Actions without X11.
+                        </li>
+                        <li><i class="fa-solid fa-check" style="color: var(--accent-amber);"></i> <strong>Complete Data
+                                Capture:</strong> Records all 13 planning and control telemetry metrics.</li>
+                        <li><i class="fa-solid fa-check" style="color: var(--accent-amber);"></i> <strong>Automated
+                                Export:</strong> Compiles HTML dashboards, PDF reports, and CSV tables upon completion.
+                        </li>
+                    </ul>
+                    <div style="margin-top: 16px;">
+                        <span
+                            style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); font-weight: 600;">Launch
+                            Commands:</span>
+                        <div class="code-container" style="padding: 8px 12px; margin: 6px 0;">
+                            <code>./testing/PathPlanner/run_testing_suite.sh --headless</code>
+                        </div>
+                        <div class="code-container" style="padding: 8px 12px; margin: 6px 0;">
+                            <code>ros2 launch global_path_benchmarking benchmark.launch.py use_rviz:=false</code>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Part 4: Dynamic Obstacles & Avoidance -->
+        <div class="glass-panel" id="part4">
+            <h2><i class="fa-solid fa-triangle-exclamation"></i> Part 4: Dynamic Obstacle Injection & Avoidance</h2>
+            <p>
+                <strong>Yes, the tester can insert dynamic obstacles during active navigation!</strong> It supports both
+                automated pre-scheduled hazard pop-ups and live interactive obstacle injection to test how the rover
+                reacts and swerves mid-run.
+            </p>
+
+            <div class="flow-grid">
+                <!-- How to Inject -->
+                <div class="flow-card">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+                        <div class="step-icon icon-purple"><i class="fa-solid fa-hand-pointer"></i></div>
+                        <div>
+                            <h4 style="color: #ffffff; margin: 0;">1. How to Insert Obstacles</h4>
+                            <span style="font-size: 0.8rem; color: var(--text-muted);">Two Injection Methods</span>
+                        </div>
+                    </div>
+                    <p style="font-size: 0.9rem; margin-bottom: 8px;">
+                        <strong>A. Scheduled via Scenario YAML:</strong><br>
+                        In <code>config/scenarios.yaml</code>, specify dynamic obstacles with a trigger time (seconds
+                        into the run):
+                    </p>
+                    <div class="code-container" style="padding: 8px 10px; font-size: 0.82rem; margin: 6px 0;">
+                        <code>dynamic_obstacles:<br>&nbsp;&nbsp;- trigger_time: 0.5<br>&nbsp;&nbsp;&nbsp;&nbsp;x: 1.0, y: 2.5, radius: 0.4</code>
+                    </div>
+                    <p style="font-size: 0.9rem; margin: 8px 0 6px 0;">
+                        <strong>B. Live On-the-Fly Injection:</strong><br>
+                        Spawn an obstacle mid-motion via ROS 2 topic:
+                    </p>
+                    <div class="code-container" style="padding: 8px 10px; font-size: 0.8rem; margin: 6px 0;">
+                        <code>ros2 topic pub --once /mock_perception/spawn_obstacle geometry_msgs/msg/Point "{x: 1.5, y: 2.0, z: 0.2}"</code>
+                    </div>
+                </div>
+
+                <!-- How It Avoids -->
+                <div class="flow-card">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+                        <div class="step-icon icon-teal"><i class="fa-solid fa-shield-virus"></i></div>
+                        <div>
+                            <h4 style="color: #ffffff; margin: 0;">2. How the Rover Avoids Them</h4>
+                            <span style="font-size: 0.8rem; color: var(--text-muted);">Two-Tier Safety
+                                Architecture</span>
+                        </div>
+                    </div>
+                    <p style="font-size: 0.9rem; margin-bottom: 10px;">
+                        <strong>Tier 1: Local MPPI Controller Swerving:</strong><br>
+                        The local costmap (10m &times; 10m rolling window) updates at 20 Hz. MPPI evaluates 2,000
+                        trajectory rollouts. Its <code>ObstaclesCritic</code> heavily penalizes candidate paths touching
+                        the obstacle, steering the rover smoothly around the rock without stopping.
+                    </p>
+                    <p style="font-size: 0.9rem; margin-bottom: 0;">
+                        <strong>Tier 2: Global Smac Hybrid A* Detour:</strong><br>
+                        If the obstacle completely blocks a narrow canyon corridor (e.g.
+                        <code>canyon_gate_blocked</code>), the BT navigator triggers Smac Hybrid A* to calculate a brand
+                        new global detour highway using Reeds-Shepp kinematics.
+                    </p>
+                </div>
+
+                <!-- How You Know -->
+                <div class="flow-card">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+                        <div class="step-icon icon-emerald"><i class="fa-solid fa-chart-pie"></i></div>
+                        <div>
+                            <h4 style="color: #ffffff; margin: 0;">3. How You Know It Avoided Them</h4>
+                            <span style="font-size: 0.8rem; color: var(--text-muted);">Visual & Quantitative
+                                Telemetry</span>
+                        </div>
+                    </div>
+                    <ul class="feature-list" style="margin: 0;">
+                        <li><i class="fa-solid fa-eye" style="color: var(--accent-emerald);"></i> <strong>Live in
+                                RViz2:</strong> Watch the cyan MPPI cloud flex and bend around the newly appeared red
+                            rock marker.</li>
+                        <li><i class="fa-solid fa-map-location-dot" style="color: var(--accent-emerald);"></i>
+                            <strong>Trajectory Map (PNG):</strong> The output plot draws the original path vs. the
+                            <strong>Cyan Detour Path</strong> around the orange obstacle.</li>
+                        <li><i class="fa-solid fa-calculator" style="color: var(--accent-emerald);"></i>
+                            <strong>Replanning Score:</strong> Verified at <span class="target-val">100 / 100</span>
+                            with detour time recorded.</li>
+                        <li><i class="fa-solid fa-ruler-combined" style="color: var(--accent-emerald);"></i>
+                            <strong>Safety Clearance:</strong> Proves the rover kept <span class="target-val">&ge;
+                                0.35m</span> margin with <span class="target-val">0</span> collisions.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Part 5: Reports & Non-Overwriting Archives -->
+        <div class="glass-panel" id="part5">
+            <h2><i class="fa-solid fa-file-waveform"></i> Part 5: Per-Map Reports & Non-Overwriting Archives</h2>
+            <p>
+                After each scenario finishes, the tester compiles a comprehensive suite of numerical and visual reports.
+                It also supports <strong>isolated, timestamped run folders</strong> so new runs never overwrite previous
+                benchmark history.
+            </p>
+
+            <h3 style="margin-top: 24px;"><i class="fa-solid fa-folder-tree"
+                    style="color: var(--accent-teal); font-size: 1.1rem;"></i> Artifacts Generated for Each Map</h3>
+            <div class="artifact-grid">
+                <!-- HTML Dashboard -->
+                <div class="artifact-card">
+                    <div class="artifact-icon" style="color: #38bdf8;"><i class="fa-brands fa-html5"></i></div>
+                    <h4 style="color: #ffffff; font-size: 1.05rem;">Interactive HTML</h4>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">
+                        Interactive web dashboard featuring KPI scorecards, radar charts, and comparative metric tables.
+                    </p>
+                    <code style="font-size: 0.75rem; color: var(--primary-light);">reports/*.html</code>
+                </div>
+
+                <!-- PDF Report -->
+                <div class="artifact-card">
+                    <div class="artifact-icon" style="color: #f43f5e;"><i class="fa-solid fa-file-pdf"></i></div>
+                    <h4 style="color: #ffffff; font-size: 1.05rem;">Printable PDF</h4>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">
+                        Publication-grade formal report with tables, metric formulas, and test outcome verdicts.
+                    </p>
+                    <code style="font-size: 0.75rem; color: var(--primary-light);">reports/*.pdf</code>
+                </div>
+
+                <!-- PNG Plots -->
+                <div class="artifact-card">
+                    <div class="artifact-icon" style="color: #34d399;"><i class="fa-solid fa-image"></i></div>
+                    <h4 style="color: #ffffff; font-size: 1.05rem;">Trajectory PNGs</h4>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">
+                        Spatial 2D map overlay with planned paths, detour curves, obstacles, and rover footprint
+                        clearance.
+                    </p>
+                    <code style="font-size: 0.75rem; color: var(--primary-light);">result_scenario_*.png</code>
+                </div>
+
+                <!-- CSV / JSON -->
+                <div class="artifact-card">
+                    <div class="artifact-icon" style="color: #fbbf24;"><i class="fa-solid fa-file-csv"></i></div>
+                    <h4 style="color: #ffffff; font-size: 1.05rem;">Raw Telemetry</h4>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">
+                        Raw numerical logs of all 13 planning and control indicators for MATLAB / Python post-analysis.
+                    </p>
+                    <code style="font-size: 0.75rem; color: var(--primary-light);">results.csv / .json</code>
+                </div>
+            </div>
+
+            <h3 style="margin-top: 28px;"><i class="fa-solid fa-clock-rotate-left"
+                    style="color: var(--accent-amber); font-size: 1.1rem;"></i> Preventing Overwrites: Isolated
+                Historical Archives</h3>
+            <p>
+                To maintain an unblemished historical record of your regression testing, benchmark runs are organized
+                into <strong>isolated, timestamped session folders</strong>:
+            </p>
+
+            <div class="tree-box">
+                testing/PathPlanner/reports/
+                ├── <span style="color: #38bdf8;">run_20260907_143000/</span> <span style="color: var(--text-muted);">#
+                    Baseline benchmark session</span>
+                │ ├── <span style="color: #34d399;">result_scenario_canyon_gate.png</span>
+                │ ├── <span style="color: #38bdf8;">numerical_report.html</span>
+                │ ├── <span style="color: #f43f5e;">numerical_report.pdf</span>
+                │ └── <span style="color: #fbbf24;">results.csv</span>
+                ├── <span style="color: #38bdf8;">run_20260907_161500/</span> <span style="color: var(--text-muted);">#
+                    Controller tuning session</span>
+                │ ├── <span style="color: #34d399;">result_scenario_canyon_gate.png</span>
+                │ ├── <span style="color: #38bdf8;">numerical_report.html</span>
+                │ ├── <span style="color: #f43f5e;">numerical_report.pdf</span>
+                │ └── <span style="color: #fbbf24;">results.csv</span>
+                └── <span style="color: #a5b4fc;">latest/</span> <span style="color: var(--text-muted);"># Symlink
+                    pointing to most recent run</span>
+            </div>
+
+            <p style="font-size: 0.92rem;">
+                <strong>Key Tip:</strong> In the launcher menu, when prompted:
+                <code>Clean stale test reports before running? [Y/n]</code>, type <strong><code>n</code></strong> to
+                preserve previous session folders, or pass <code>clean:=false</code> in your launch commands.
+            </p>
+        </div>
+
+        <!-- Part 6: 4 Green Lights -->
+        <div class="glass-panel" id="part6">
+            <h2><i class="fa-solid fa-circle-check" style="color: var(--accent-emerald);"></i> Part 6: How to Know Your
+                Model "Works Well"</h2>
+            <p>
+                You know your autonomous navigation and motion control stack is working properly when you observe these
+                <strong>4 Green Lights</strong>:
+            </p>
+
+            <div class="lights-grid">
+                <!-- Light 1 -->
+                <div class="light-card">
+                    <div class="light-badge"><i class="fa-solid fa-check-double"></i> Criterion 1</div>
+                    <h4>The Pass Verdict</h4>
+                    <p>
+                        At the end of each test, check the summary box in the terminal:
+                    </p>
+                    <div class="score-box" style="margin: 10px 0; padding: 10px 14px; font-size: 0.8rem;">
+                        PLANNER SCORE: <span class="score-num">92.5 / 100</span><br>
+                        CONTROLLER SCORE: <span class="score-num">90.1 / 100</span><br>
+                        SYSTEM SCORE: <span class="score-num">91.3 / 100</span><br>
+                        OUTCOME: <span class="score-pass">PASS</span> (&ge; 85)
+                    </div>
+                    <p>
+                        A score <span class="target-val">&ge; 85.0</span> confirms the system is competition-ready.
+                    </p>
+                </div>
+
+                <!-- Light 2 -->
+                <div class="light-card">
+                    <div class="light-badge"><i class="fa-solid fa-shield-halved"></i> Criterion 2</div>
+                    <h4>Zero Collisions</h4>
+                    <p>
+                        Verify the collision count:
+                    </p>
+                    <div
+                        style="background: rgba(0,0,0,0.4); padding: 10px; border-radius: 8px; margin: 10px 0; font-family: 'JetBrains Mono'; font-size: 0.85rem;">
+                        Blocked Cells: <span class="score-pass">0</span><br>
+                        Safety Margin: <span class="score-num">&ge; 0.35 m</span>
+                    </div>
+                    <p>
+                        <strong>Blocked Cells must be 0</strong>. This proves the rover never grazed a rock, crater
+                        wall, or canyon cliff.
+                    </p>
+                </div>
+
+                <!-- Light 3 -->
+                <div class="light-card">
+                    <div class="light-badge"><i class="fa-solid fa-wave-square"></i> Criterion 3</div>
+                    <h4>Smooth Driving & Energy</h4>
+                    <p>
+                        Look at the 3 key motion control indicators:
+                    </p>
+                    <div
+                        style="background: rgba(0,0,0,0.4); padding: 10px; border-radius: 8px; margin: 10px 0; font-family: 'JetBrains Mono'; font-size: 0.8rem; line-height: 1.6;">
+                        Mean CTE: <span class="score-num">&le; 0.10 m</span><br>
+                        Chatter: <span class="score-num">&le; 5 reversals</span><br>
+                        Control Effort: <span class="score-num">low Ju</span>
+                    </div>
+                    <p>
+                        Means the rover drove tightly along the route without oscillating, hunting, or draining
+                        excessive battery.
+                    </p>
+                </div>
+
+                <!-- Light 4 -->
+                <div class="light-card">
+                    <div class="light-badge"><i class="fa-solid fa-eye"></i> Criterion 4</div>
+                    <h4>Visual Confirmation</h4>
+                    <p>
+                        What to verify in RViz2:
+                    </p>
+                    <ul style="font-size: 0.82rem; color: #cbd5e1; margin-left: 16px; margin-top: 8px;">
+                        <li><strong>Green Path (<code>/plan</code>):</strong> Curves smoothly (min radius <span
+                                class="target-val">&ge; 0.8m</span>) rather than making sharp right angles.</li>
+                        <li><strong>Cyan Cloud (<code>/local_plan</code>):</strong> MPPI trajectories fan out and swerve
+                            around newly detected pop-up rocks.</li>
+                        <li><strong>3D Rover:</strong> Reaches destination pins cleanly without spinning or stalling.
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p>ERC 2026 Autonomous Rover Navigation &bull; Standalone Black-Box Testing & Benchmarking Suite</p>
+        </div>
+
+    </div>
+</body>
+
+</html>

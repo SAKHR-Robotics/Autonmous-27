@@ -1,0 +1,15 @@
+marker_action_interface:
+  ros__parameters:
+    tracked_pose_topic: "/marker_poses"
+    targets_topic: "/marker_detection/targets"
+    # Must match the actual rover base frame name in your URDF/TF tree.
+    base_link_frame: "base_link"
+    tf_cache_seconds: 10.0
+    tf_lookup_timeout_seconds: 0.05
+
+    # --- Part 6: usable_for_action gate ---
+    # Both thresholds are applied on top of the *existing* tracking/quality
+    # system (stable == CONFIRMED, and the existing disqualifying quality
+    # flags); these are the only two new tunables this interface adds.
+    min_action_confidence: 0.6
+    max_action_covariance_trace_m2: 0.01

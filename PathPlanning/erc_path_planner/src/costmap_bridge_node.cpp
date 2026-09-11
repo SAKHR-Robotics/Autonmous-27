@@ -96,6 +96,11 @@ private:
       }
     }
 
+    if (sampled_points.empty())
+    {
+      return;
+    }
+
     // تجهيز رسالة PointCloud2
     sensor_msgs::msg::PointCloud2 pointcloud;
 
@@ -122,7 +127,6 @@ private:
       *iter_x = pt.x;
       *iter_y = pt.y;
       *iter_z = pt.z;
-
       ++iter_x;
       ++iter_y;
       ++iter_z;
@@ -131,10 +135,12 @@ private:
     // نشر السحابة النقطية على التوبيك
     pointcloud_publisher_->publish(pointcloud);
 
-    RCLCPP_INFO(
+    RCLCPP_INFO_THROTTLE(
       this->get_logger(),
-      "Published PointCloud2 with %u points covering %zu obstacles.",
-      pointcloud.width,
+      *this->get_clock(),
+      5000,
+      "Published PointCloud2 with %zu points covering %zu obstacles.",
+      sampled_points.size(),
       msg->obstacles.size());
   }
 
