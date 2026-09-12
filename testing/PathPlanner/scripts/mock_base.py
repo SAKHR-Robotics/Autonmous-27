@@ -2,14 +2,14 @@
 """
 Mock Base Node - TF & Odometry Simulator for Path Planning (Stable)
 Simulates robot kinematics, publishes transforms (map -> odom -> base_link),
-and broadcasts odometry (/odom, /odometry/filtered) based on Nav2 velocity commands.
+broadcasts odometry, and supports both Twist and TwistStamped velocity commands.
 """
 
 import math
 import time
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import TwistStamped, TransformStamped, PoseWithCovarianceStamped
+from geometry_msgs.msg import Twist, TwistStamped, TransformStamped, PoseWithCovarianceStamped
 from nav_msgs.msg import Odometry
 from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster
 
@@ -24,12 +24,12 @@ class MockBase(Node):
         self.wz = 0.0
         self.last_cmd_time = time.time()
 
-        # 1. Subscriptions for cmd_vel (direct MPPI output and standard fallback)
-        self.sub = self.create_subscription(
-            TwistStamped, '/cmd_vel_nav', self.cb, 10
+        # 1. Subscriptions for cmd_vel (Unstamped Twist for motor driver, Stamped for fallback)
+        self.sub_twist = self.create_subscription(
+            Twist, '/cmd_vel', self.cb_twist, 10
         )
-        self.sub_fallback = self.create_subscription(
-            TwistStamped, '/cmd_vel', self.cb, 10
+        self.sub_stamped = self.create_subscription(
+            TwistStamped, '/cmd_vel_nav', self.cb_stamped, 10
         )
 
         # 2. Support for RViz "2D Pose Estimate"
@@ -50,7 +50,7 @@ class MockBase(Node):
 
         self.last_t = time.time()
         self.timer = self.create_timer(0.05, self.update)
-        self.get_logger().info('🚀 Mock Base (Stable TF & Odometry) is running and ready for Nav2 goals!')
+        self.get_logger().info('🚀 Mock Base (Stable TF, Odometry & Twist) is running and ready for Nav2 goals!')
 
     def publish_static_map_odom(self):
         st = TransformStamped()
@@ -61,7 +61,6 @@ class MockBase(Node):
         self.sbr.sendTransform(st)
 
     def initial_pose_cb(self, msg: PoseWithCovarianceStamped):
-        """Allows resetting robot position from RViz 2D Pose Estimate"""
         self.x = msg.pose.pose.position.x
         self.y = msg.pose.pose.position.y
         q_z = msg.pose.pose.orientation.z
@@ -71,7 +70,12 @@ class MockBase(Node):
         self.wz = 0.0
         self.get_logger().info(f'📍 Reset position to ({self.x:.2f}, {self.y:.2f}, yaw={self.yaw:.2f} rad)')
 
-    def cb(self, msg: TwistStamped):
+    def cb_twist(self, msg: Twist):
+        self.vx = msg.linear.x
+        self.wz = msg.angular.z
+        self.last_cmd_time = time.time()
+
+    def cb_stamped(self, msg: TwistStamped):
         self.vx = msg.twist.linear.x
         self.wz = msg.twist.angular.z
         self.last_cmd_time = time.time()

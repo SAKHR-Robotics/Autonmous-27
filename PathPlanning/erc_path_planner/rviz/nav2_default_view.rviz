@@ -6,7 +6,7 @@ Panels:
       Expanded:
         - /Global Map1/Topic1
       Splitter Ratio: 0.5
-    Tree Height: 289
+    Tree Height: 143
   - Class: rviz_common/Views
     Expanded:
       - /Current View1
@@ -197,7 +197,7 @@ Visualization Manager:
       Channel Name: intensity
       Class: rviz_default_plugins/PointCloud2
       Color: 255; 0; 0
-      Color Transformer: ""
+      Color Transformer: Intensity
       Decay Time: 0
       Enabled: true
       Invert Rainbow: false
@@ -206,7 +206,7 @@ Visualization Manager:
       Min Color: 0; 0; 0
       Min Intensity: 0
       Name: Perception Obstacles
-      Position Transformer: ""
+      Position Transformer: XYZ
       Selectable: true
       Size (Pixels): 3
       Size (m): 0.10000000149011612
@@ -273,14 +273,14 @@ Visualization Manager:
 Window Geometry:
   Displays:
     collapsed: false
-  Height: 1011
+  Height: 699
   Hide Left Dock: false
   Hide Right Dock: false
-  QMainWindow State: 000000ff00000000fd0000000100000000000001c900000395fc0200000003fb000000100044006900730070006c006100790073010000003f000001a7000000cc00fffffffb0000000a0056006900650077007301000001ec00000115000000a900fffffffb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000307000000cd0000005d00ffffff0000056f0000039500000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd0000000100000000000001c90000025dfc0200000003fb000000100044006900730070006c006100790073010000003f00000115000000cc00fffffffb0000000a00560069006500770073010000015a000000b6000000a900fffffffb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000216000000860000005d00ffffff000003450000025d00000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   Tool Properties:
     collapsed: false
   Views:
     collapsed: false
-  Width: 1854
+  Width: 1300
   X: 66
   Y: 32
