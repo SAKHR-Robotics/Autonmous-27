@@ -14,6 +14,7 @@ def generate_launch_description():
     autostart = LaunchConfiguration('autostart')
     launch_camera = LaunchConfiguration('launch_camera')
     launch_static_tf = LaunchConfiguration('launch_static_tf')
+    standalone_tf = LaunchConfiguration('standalone_tf')
     launch_costmap_stub = LaunchConfiguration('launch_costmap_stub')
     launch_aruco_stub = LaunchConfiguration('launch_aruco_stub')
     launch_rviz = LaunchConfiguration('launch_rviz')
@@ -40,7 +41,12 @@ def generate_launch_description():
     declare_launch_static_tf = DeclareLaunchArgument(
         'launch_static_tf',
         default_value='true',
-        description='Whether to publish static transforms (set false when robot_state_publisher is active)'
+        description='Whether to include static_transforms.launch.py'
+    )
+    declare_standalone_tf = DeclareLaunchArgument(
+        'standalone_tf',
+        default_value='false',
+        description='If true, publish base_link sensor TFs in static_transforms (set true only if robot_state_publisher is NOT active)'
     )
     declare_launch_costmap_stub = DeclareLaunchArgument(
         'launch_costmap_stub',
@@ -80,6 +86,9 @@ def generate_launch_description():
 
     static_tf_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(pkg_share, 'launch', 'static_transforms.launch.py')),
+        launch_arguments={
+            'standalone': standalone_tf
+        }.items(),
         condition=IfCondition(launch_static_tf)
     )
     ekf_launch = IncludeLaunchDescription(
@@ -143,6 +152,7 @@ def generate_launch_description():
         declare_autostart,
         declare_launch_camera,
         declare_launch_static_tf,
+        declare_standalone_tf,
         declare_launch_costmap_stub,
         declare_launch_aruco_stub,
         declare_launch_rviz,
@@ -158,3 +168,4 @@ def generate_launch_description():
         aruco_stub_node,
         rviz_launch
     ])
+

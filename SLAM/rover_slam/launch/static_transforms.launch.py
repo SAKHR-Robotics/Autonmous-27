@@ -1,10 +1,31 @@
 import os
 from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 def generate_launch_description():
+    standalone = LaunchConfiguration('standalone')
+    publish_optical_tf = LaunchConfiguration('publish_optical_tf')
+
+    declare_standalone = DeclareLaunchArgument(
+        'standalone',
+        default_value='false',
+        description='If true, publish base_link->camera_link and base_link->imu_link transforms (use only when robot_state_publisher is NOT running)'
+    )
+
+    declare_publish_optical_tf = DeclareLaunchArgument(
+        'publish_optical_tf',
+        default_value='true',
+        description='If true, publish camera_link->camera_depth_optical_frame transform for optical sensor alignment'
+    )
+
     return LaunchDescription([
-        # base_link -> camera_link (Camera mounted 0.2m forward, 0.3m high on rover chassis)
+        declare_standalone,
+        declare_publish_optical_tf,
+
+        # base_link -> camera_link (Only published when standalone=true to avoid colliding with robot_state_publisher)
         Node(
             package='tf2_ros',
             executable='static_transform_publisher',
@@ -14,10 +35,11 @@ def generate_launch_description():
                 '--roll', '0.0', '--pitch', '0.0', '--yaw', '0.0',
                 '--frame-id', 'base_link',
                 '--child-frame-id', 'camera_link'
-            ]
+            ],
+            condition=IfCondition(standalone)
         ),
 
-        # base_link -> imu_link (BNO055 IMU mounted at chassis center, 0.1m high)
+        # base_link -> imu_link (Only published when standalone=true to avoid colliding with robot_state_publisher)
         Node(
             package='tf2_ros',
             executable='static_transform_publisher',
@@ -27,7 +49,8 @@ def generate_launch_description():
                 '--roll', '0.0', '--pitch', '0.0', '--yaw', '0.0',
                 '--frame-id', 'base_link',
                 '--child-frame-id', 'imu_link'
-            ]
+            ],
+            condition=IfCondition(standalone)
         ),
 
         # camera_link -> camera_depth_optical_frame (ROS REP-103 standard Optical Frame rotation)
@@ -40,7 +63,9 @@ def generate_launch_description():
                 '--roll', '-1.57079632679', '--pitch', '0.0', '--yaw', '-1.57079632679',
                 '--frame-id', 'camera_link',
                 '--child-frame-id', 'camera_depth_optical_frame'
-            ]
+            ],
+            condition=IfCondition(publish_optical_tf)
         )
     ])
+
 
