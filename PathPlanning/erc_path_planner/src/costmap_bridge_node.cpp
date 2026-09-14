@@ -17,7 +17,7 @@ public:
   CostmapBridgeNode()
   : Node("costmap_bridge_node")
   {
-    // Subscriber
+    // Subscriber: listens to obstacle features coming from Perception
     obstacle_subscriber_ =
       this->create_subscription<terrain_geometry_msgs::msg::ObstacleFeatureArray>(
         "/terrain/obstacle_features",
@@ -27,7 +27,7 @@ public:
           this,
           std::placeholders::_1));
 
-    // Publisher
+    // Publisher: publishes 3D pointcloud to Costmap
     pointcloud_publisher_ =
       this->create_publisher<sensor_msgs::msg::PointCloud2>(
         "/bridge/pointcloud",
@@ -50,8 +50,8 @@ private:
     const terrain_geometry_msgs::msg::ObstacleFeatureArray::SharedPtr msg)
   {
     std::vector<Point3D> sampled_points;
-    const double resolution = 0.05;
-    const double epsilon = 1e-4;
+    const double resolution = 0.05;  // 5cm step matching costmap resolution
+    const double epsilon = 1e-4;     // Ensures max_point boundary inclusion
 
     for (const auto & obstacle : msg->obstacles)
     {
@@ -62,6 +62,7 @@ private:
       double min_z = std::min(obstacle.min_point.z, obstacle.max_point.z);
       double max_z = std::max(obstacle.min_point.z, obstacle.max_point.z);
 
+      // Fallback: If min/max bounds are not set, derive them from centroid and dimensions
       if (std::abs(max_x - min_x) < 1e-5 && obstacle.depth > 0.0f)
       {
         min_x = obstacle.centroid.x - obstacle.depth / 2.0;
@@ -78,6 +79,7 @@ private:
         max_z = obstacle.centroid.z + obstacle.height / 2.0;
       }
 
+      // Sample 3D points throughout the full 3D bounding envelope
       for (double x = min_x; x <= max_x + epsilon; x += resolution)
       {
         for (double y = min_y; y <= max_y + epsilon; y += resolution)
@@ -94,21 +96,29 @@ private:
       }
     }
 
-    sensor_msgs::msg::PointCloud2 pointcloud;
+    if (sampled_points.empty())
+    {
+      return;
+    }
 
+    // Construct PointCloud2 message
+    sensor_msgs::msg::PointCloud2 pointcloud;
     pointcloud.header = msg->header;
     if (pointcloud.header.stamp.sec == 0 && pointcloud.header.stamp.nanosec == 0) {
       pointcloud.header.stamp = this->now();
     }
 
+    // Unorganized pointcloud (1 row)
     pointcloud.height = 1;
     pointcloud.width = static_cast<uint32_t>(sampled_points.size());
     pointcloud.is_dense = true;
 
+    // Define XYZ fields
     sensor_msgs::PointCloud2Modifier modifier(pointcloud);
     modifier.setPointCloud2FieldsByString(1, "xyz");
     modifier.resize(sampled_points.size());
 
+    // Fill pointcloud data using iterators
     sensor_msgs::PointCloud2Iterator<float> iter_x(pointcloud, "x");
     sensor_msgs::PointCloud2Iterator<float> iter_y(pointcloud, "y");
     sensor_msgs::PointCloud2Iterator<float> iter_z(pointcloud, "z");
@@ -118,18 +128,20 @@ private:
       *iter_x = pt.x;
       *iter_y = pt.y;
       *iter_z = pt.z;
-
       ++iter_x;
       ++iter_y;
       ++iter_z;
     }
 
+    // Publish pointcloud
     pointcloud_publisher_->publish(pointcloud);
 
-    RCLCPP_INFO(
+    RCLCPP_INFO_THROTTLE(
       this->get_logger(),
-      "Published PointCloud2 with %u points covering %zu obstacles.",
-      pointcloud.width,
+      *this->get_clock(),
+      5000,
+      "Published PointCloud2 with %zu points covering %zu obstacles.",
+      sampled_points.size(),
       msg->obstacles.size());
   }
 
