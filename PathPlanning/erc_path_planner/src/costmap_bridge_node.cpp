@@ -17,7 +17,7 @@ public:
   CostmapBridgeNode()
   : Node("costmap_bridge_node")
   {
-    // Subscriber: listens to obstacle features coming from Perception
+    // Subscriber: يستمع لخصائص العوائق القادمة من Perception
     obstacle_subscriber_ =
       this->create_subscription<terrain_geometry_msgs::msg::ObstacleFeatureArray>(
         "/terrain/obstacle_features",
@@ -27,7 +27,7 @@ public:
           this,
           std::placeholders::_1));
 
-    // Publisher: publishes 3D pointcloud to Costmap
+    // Publisher: ينشر السحابة النقطية للـ Costmap
     pointcloud_publisher_ =
       this->create_publisher<sensor_msgs::msg::PointCloud2>(
         "/bridge/pointcloud",
@@ -50,8 +50,8 @@ private:
     const terrain_geometry_msgs::msg::ObstacleFeatureArray::SharedPtr msg)
   {
     std::vector<Point3D> sampled_points;
-    const double resolution = 0.05;  // 5cm step matching costmap resolution
-    const double epsilon = 1e-4;     // Ensures max_point boundary inclusion
+    const double resolution = 0.05;  // دقة الخطوة 5cm مطابقة للـ costmap resolution
+    const double epsilon = 1e-4;     // لضمان شمول الحد الأقصى max_point بدقة الفاصلة العائمة
 
     for (const auto & obstacle : msg->obstacles)
     {
@@ -62,7 +62,7 @@ private:
       double min_z = std::min(obstacle.min_point.z, obstacle.max_point.z);
       double max_z = std::max(obstacle.min_point.z, obstacle.max_point.z);
 
-      // Fallback: If min/max bounds are not set, derive them from centroid and dimensions
+      // حماية إضافية (Fallback): إذا لم تكن min/max محددة واستخدمت الأبعاد بدلاً منها
       if (std::abs(max_x - min_x) < 1e-5 && obstacle.depth > 0.0f)
       {
         min_x = obstacle.centroid.x - obstacle.depth / 2.0;
@@ -79,7 +79,7 @@ private:
         max_z = obstacle.centroid.z + obstacle.height / 2.0;
       }
 
-      // Sample 3D points throughout the full 3D bounding envelope
+      // أخذ عينات نقطية عبر كامل الصندوق المحيط ثلاثي الأبعاد (Full 3D Bounding Envelope)
       for (double x = min_x; x <= max_x + epsilon; x += resolution)
       {
         for (double y = min_y; y <= max_y + epsilon; y += resolution)
@@ -101,24 +101,26 @@ private:
       return;
     }
 
-    // Construct PointCloud2 message
+    // تجهيز رسالة PointCloud2
     sensor_msgs::msg::PointCloud2 pointcloud;
+
+    // الحفاظ على نفس الـ frame_id والـ timestamp للرسالة القادمة
     pointcloud.header = msg->header;
     if (pointcloud.header.stamp.sec == 0 && pointcloud.header.stamp.nanosec == 0) {
       pointcloud.header.stamp = this->now();
     }
 
-    // Unorganized pointcloud (1 row)
+    // سحابة نقطية غير مرتبة (1 row)
     pointcloud.height = 1;
     pointcloud.width = static_cast<uint32_t>(sampled_points.size());
     pointcloud.is_dense = true;
 
-    // Define XYZ fields
+    // تحديد حقول XYZ وحجم الذاكرة
     sensor_msgs::PointCloud2Modifier modifier(pointcloud);
     modifier.setPointCloud2FieldsByString(1, "xyz");
     modifier.resize(sampled_points.size());
 
-    // Fill pointcloud data using iterators
+    // Iterators لتعبئة النقاط
     sensor_msgs::PointCloud2Iterator<float> iter_x(pointcloud, "x");
     sensor_msgs::PointCloud2Iterator<float> iter_y(pointcloud, "y");
     sensor_msgs::PointCloud2Iterator<float> iter_z(pointcloud, "z");
@@ -133,7 +135,7 @@ private:
       ++iter_z;
     }
 
-    // Publish pointcloud
+    // نشر السحابة النقطية على التوبيك
     pointcloud_publisher_->publish(pointcloud);
 
     RCLCPP_INFO_THROTTLE(
