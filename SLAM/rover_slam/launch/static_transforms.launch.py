@@ -65,6 +65,34 @@ def generate_launch_description():
                 '--child-frame-id', 'camera_depth_optical_frame'
             ],
             condition=IfCondition(publish_optical_tf)
+        ),
+
+        # camera_link -> camera_color_optical_frame (ROS REP-103 standard Optical Frame rotation for RGB camera)
+        Node(
+            package='tf2_ros',
+            executable='static_transform_publisher',
+            name='static_tf_camera_to_color_optical',
+            arguments=[
+                '--x', '0.0', '--y', '0.0', '--z', '0.0',
+                '--roll', '-1.57079632679', '--pitch', '0.0', '--yaw', '-1.57079632679',
+                '--frame-id', 'camera_link',
+                '--child-frame-id', 'camera_color_optical_frame'
+            ],
+            condition=IfCondition(publish_optical_tf)
+        ),
+
+        # camera_depth_optical_frame -> my_robot/camera_link/camera (Bridge Gazebo sensor frame to REP-103 optical frame)
+        Node(
+            package='tf2_ros',
+            executable='static_transform_publisher',
+            name='static_tf_camera_optical_to_gz',
+            arguments=[
+                '--x', '0.0', '--y', '0.0', '--z', '0.0',
+                '--roll', '0.0', '--pitch', '0.0', '--yaw', '0.0',
+                '--frame-id', 'camera_depth_optical_frame',
+                '--child-frame-id', 'my_robot/camera_link/camera'
+            ],
+            condition=IfCondition(publish_optical_tf)
         )
     ])
 

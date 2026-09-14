@@ -54,6 +54,8 @@ def test_static_transforms_launch_description_structure():
     assert 'static_tf_base_to_camera' in node_names
     assert 'static_tf_base_to_imu' in node_names
     assert 'static_tf_camera_to_optical' in node_names
+    assert 'static_tf_camera_to_color_optical' in node_names
+    assert 'static_tf_camera_optical_to_gz' in node_names
 
     # Check conditions
     for node in nodes:
@@ -75,6 +77,8 @@ def test_static_transforms_conditions_evaluation():
     assert not nodes['static_tf_base_to_camera'].condition.evaluate(ctx_integrated)
     assert not nodes['static_tf_base_to_imu'].condition.evaluate(ctx_integrated)
     assert nodes['static_tf_camera_to_optical'].condition.evaluate(ctx_integrated)
+    assert nodes['static_tf_camera_to_color_optical'].condition.evaluate(ctx_integrated)
+    assert nodes['static_tf_camera_optical_to_gz'].condition.evaluate(ctx_integrated)
 
     # Context 2: Standalone mode (isolated sensor testing, no robot_state_publisher)
     ctx_standalone = LaunchContext()
@@ -84,3 +88,5 @@ def test_static_transforms_conditions_evaluation():
     assert nodes['static_tf_base_to_camera'].condition.evaluate(ctx_standalone)
     assert nodes['static_tf_base_to_imu'].condition.evaluate(ctx_standalone)
     assert nodes['static_tf_camera_to_optical'].condition.evaluate(ctx_standalone)
+    assert nodes['static_tf_camera_to_color_optical'].condition.evaluate(ctx_standalone)
+    assert nodes['static_tf_camera_optical_to_gz'].condition.evaluate(ctx_standalone)
