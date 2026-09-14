@@ -46,6 +46,9 @@ def launch_setup(context, *args, **kwargs):
         ]
     )
     
+    # The world name is marsyard as defined in world1.world
+    world_name = "marsyard"
+    
     # Spawn Robot Entity (Default height z:=1.5 to land gently)
     spawn_entity = Node(
         package='ros_gz_sim',
