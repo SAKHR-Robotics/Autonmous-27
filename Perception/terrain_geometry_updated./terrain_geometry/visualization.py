@@ -1,0 +1,339 @@
+#!/usr/bin/env python3
+"""
+visualization.py
+
+RViz2 MarkerArray construction for the terrain_geometry package's
+Obstacle Feature Extraction stage.
+
+This module has a single responsibility: turn a list of
+`ObstacleFeature` objects into a `visualization_msgs/MarkerArray`
+containing, for every obstacle:
+    - a cube Marker sized/positioned from its bounding box, and
+    - a text Marker displaying its obstacle ID.
+
+If an obstacle's `ObstacleFeature` carries populated OBB fields
+(`obb_center`, `obb_extents`, `obb_quaternion` -- only present when the
+extractor's optional PCA-based OBB computation is enabled), the cube
+marker is drawn as that tighter, rotation-aware box instead of the
+axis-aligned one; otherwise it falls back to the AABB, exactly as
+before. This keeps the default visual output unchanged unless OBB
+computation is explicitly turned on upstream.
+
+No feature-extraction math and no ROS subscription/publisher wiring
+lives here -- see `obstacle_features.py` and `terrain_node.py`.
+"""
+
+from __future__ import annotations
+
+from std_msgs.msg import Header
+from geometry_msgs.msg import Point, Pose, Quaternion, Vector3
+from visualization_msgs.msg import Marker, MarkerArray
+
+from terrain_geometry.obstacle_features import ObstacleFeature
+
+try:  # pragma: no cover - typing only, avoids a hard import cycle at runtime
+    from terrain_geometry.rock_landmarks import RockLandmark
+except ImportError:  # pragma: no cover
+    RockLandmark = object  # type: ignore[assignment,misc]
+
+
+# Cube color per classification label (Part 33: "must make it immediately
+# obvious whether the algorithm thinks a slope is terrain or an
+# obstacle"). Falls back to the original cyan for any unrecognized/unset
+# label so pre-classification callers see unchanged behavior.
+_CLASSIFICATION_COLORS: dict[str, tuple] = {
+    "ROCK": (0.9, 0.25, 0.1, 0.65),      # red-orange
+    "OBSTACLE": (0.95, 0.85, 0.1, 0.6),  # yellow
+    "STEP": (0.6, 0.2, 0.9, 0.6),        # purple
+    "UNKNOWN": (0.5, 0.5, 0.5, 0.5),     # gray
+    "TERRAIN": (0.2, 0.8, 0.2, 0.35),    # green, translucent (rarely shown --
+                                          # TERRAIN clusters are normally
+                                          # filtered out upstream, but kept
+                                          # here so a debug caller can still
+                                          # visualize them distinctly).
+}
+_DEFAULT_CUBE_COLOR = (0.1, 0.7, 1.0, 0.5)
+
+
+class ObstacleMarkerBuilder:
+    """Builds a MarkerArray of cube + text markers for detected obstacles.
+
+    Each obstacle contributes exactly two markers, sharing the same
+    numeric `id` base so both remain uniquely identifiable:
+        - namespace "obstacle_cubes", id = obstacle.id
+        - namespace "obstacle_labels", id = obstacle.id
+    Using distinct namespaces (rather than distinct numeric ID ranges)
+    is the standard RViz2-safe way to keep two logically different
+    marker types from colliding, since Marker uniqueness is scoped to
+    (namespace, id) pairs, not id alone.
+    """
+
+    CUBE_NAMESPACE = "obstacle_cubes"
+    LABEL_NAMESPACE = "obstacle_labels"
+
+    # RGBA color for the cube markers (semi-transparent cyan).
+    CUBE_COLOR = (0.1, 0.7, 1.0, 0.5)
+    # RGBA color for the text labels (solid white).
+    LABEL_COLOR = (1.0, 1.0, 1.0, 1.0)
+
+    LABEL_TEXT_HEIGHT = 0.15  # meters
+    # How far above the box's top face to float the text label so it
+    # doesn't visually overlap the cube itself.
+    LABEL_Z_OFFSET = 0.10  # meters
+
+    # A small epsilon floor avoids a degenerate zero-thickness cube for
+    # perfectly planar clusters (e.g. a flat wall segment).
+    MIN_CUBE_DIMENSION = 0.01  # meters
+
+    def build_marker_array(
+        self, obstacles: list[ObstacleFeature], header: Header
+    ) -> MarkerArray:
+        """Build the full MarkerArray for the given obstacles.
+
+        Args:
+            obstacles: List of extracted obstacle features for this
+                frame (may be empty).
+            header: ROS header (frame_id + stamp) to reuse for every
+                marker, so all markers align with the source cloud.
+
+        Returns:
+            A `visualization_msgs/MarkerArray`. When `obstacles` is
+            empty, this still contains a single DELETEALL marker so
+            stale markers from a previous frame are cleared in RViz2
+            rather than left behind.
+        """
+        marker_array = MarkerArray()
+
+        # Clear all previously published markers first. Without this,
+        # if the obstacle count drops between frames (e.g. an obstacle
+        # leaves the field of view), its old marker would remain
+        # displayed forever, since Marker IDs are not automatically
+        # garbage-collected by RViz2.
+        marker_array.markers.append(self._build_delete_all_marker(header))
+
+        for obstacle in obstacles:
+            marker_array.markers.append(self._build_cube_marker(obstacle, header))
+            marker_array.markers.append(self._build_text_marker(obstacle, header))
+
+        return marker_array
+
+    def _build_delete_all_marker(self, header: Header) -> Marker:
+        """Build a marker that deletes every previously published marker."""
+        marker = Marker()
+        marker.header = header
+        marker.ns = "cleanup"
+        marker.id = 999999
+        marker.action = Marker.DELETEALL
+        return marker
+
+    def _build_cube_marker(self, obstacle: ObstacleFeature, header: Header) -> Marker:
+        """Build a cube Marker representing one obstacle's bounding box.
+
+        Uses the PCA-based OBB (tighter, rotation-aware) when present
+        on `obstacle`; otherwise falls back to the axis-aligned box
+        (identity orientation), exactly matching the previous behavior.
+        """
+        marker = Marker()
+        marker.header = header
+        marker.ns = self.CUBE_NAMESPACE
+        marker.id = obstacle.id
+        marker.type = Marker.CUBE
+        marker.action = Marker.ADD
+
+        has_obb = (
+            obstacle.obb_center is not None
+            and obstacle.obb_extents is not None
+            and obstacle.obb_quaternion is not None
+        )
+
+        pose = Pose()
+        if has_obb:
+            pose.position = Point(
+                x=float(obstacle.obb_center[0]),
+                y=float(obstacle.obb_center[1]),
+                z=float(obstacle.obb_center[2]),
+            )
+            qx, qy, qz, qw = obstacle.obb_quaternion
+            pose.orientation = Quaternion(
+                x=float(qx), y=float(qy), z=float(qz), w=float(qw)
+            )
+            marker.scale = Vector3(
+                x=max(float(obstacle.obb_extents[0]), self.MIN_CUBE_DIMENSION),
+                y=max(float(obstacle.obb_extents[1]), self.MIN_CUBE_DIMENSION),
+                z=max(float(obstacle.obb_extents[2]), self.MIN_CUBE_DIMENSION),
+            )
+        else:
+            pose.position = Point(
+                x=float(obstacle.centroid[0]),
+                y=float(obstacle.centroid[1]),
+                z=float(obstacle.centroid[2]),
+            )
+            pose.orientation.w = 1.0  # Axis-aligned: identity rotation.
+            # AABB extents map directly to cube scale (depth=X, width=Y,
+            # height=Z), matching the ObstacleFeature dimension
+            # convention.
+            marker.scale = Vector3(
+                x=max(obstacle.depth, self.MIN_CUBE_DIMENSION),
+                y=max(obstacle.width, self.MIN_CUBE_DIMENSION),
+                z=max(obstacle.height, self.MIN_CUBE_DIMENSION),
+            )
+        marker.pose = pose
+
+        classification = getattr(obstacle, "classification", None)
+        r, g, b, a = _CLASSIFICATION_COLORS.get(classification, _DEFAULT_CUBE_COLOR)
+        marker.color.r = r
+        marker.color.g = g
+        marker.color.b = b
+        marker.color.a = a
+
+        # Persist until explicitly replaced/deleted next frame rather
+        # than auto-expiring, since publish rate can vary with sensor
+        # frame rate.
+        marker.lifetime.sec = 0
+        marker.lifetime.nanosec = 0
+        marker.frame_locked = False
+
+        return marker
+
+    def _build_text_marker(self, obstacle: ObstacleFeature, header: Header) -> Marker:
+        """Build a text Marker displaying the obstacle's ID above its box."""
+        marker = Marker()
+        marker.header = header
+        marker.ns = self.LABEL_NAMESPACE
+        marker.id = obstacle.id
+        marker.type = Marker.TEXT_VIEW_FACING
+        marker.action = Marker.ADD
+
+        # Float the label above whichever box is being rendered: the
+        # OBB's own top (center.z + half its z-extent) when present,
+        # otherwise the AABB's top face -- so the label never buries
+        # itself inside a rotated box.
+        if obstacle.obb_center is not None and obstacle.obb_extents is not None:
+            top_z = float(obstacle.obb_center[2]) + float(obstacle.obb_extents[2]) / 2.0
+            label_x = float(obstacle.obb_center[0])
+            label_y = float(obstacle.obb_center[1])
+        else:
+            top_z = float(obstacle.max_point[2])
+            label_x = float(obstacle.centroid[0])
+            label_y = float(obstacle.centroid[1])
+
+        pose = Pose()
+        pose.position = Point(
+            x=label_x,
+            y=label_y,
+            z=top_z + self.LABEL_Z_OFFSET,
+        )
+        pose.orientation.w = 1.0
+        marker.pose = pose
+
+        marker.scale.z = self.LABEL_TEXT_HEIGHT  # Only scale.z is used for text height.
+
+        r, g, b, a = self.LABEL_COLOR
+        marker.color.r = r
+        marker.color.g = g
+        marker.color.b = b
+        marker.color.a = a
+
+        # Prefer the persistent world-frame identity (Part 33: "each
+        # persistent rock should display rock_7 near its location")
+        # once the landmark database has assigned one; fall back to the
+        # frame-local ID before that happens.
+        persistent_id = getattr(obstacle, "persistent_id", None)
+        classification = getattr(obstacle, "classification", None)
+        label = persistent_id if persistent_id else f"ID {obstacle.id}"
+        if classification and classification not in ("UNKNOWN",):
+            label = f"{label} ({classification})"
+        marker.text = label
+
+        marker.lifetime.sec = 0
+        marker.lifetime.nanosec = 0
+        marker.frame_locked = False
+
+        return marker
+
+    # ------------------------------------------------------------------ #
+    # Persistent landmark markers (Part 33) -- separate namespace/topic
+    # from the per-frame obstacle markers above, since a landmark can be
+    # in the database (and worth showing, dimmed, in RViz2) even when it
+    # is not part of this frame's live obstacle list.
+    # ------------------------------------------------------------------ #
+
+    LANDMARK_NAMESPACE = "rock_landmarks"
+    LANDMARK_LABEL_NAMESPACE = "rock_landmark_labels"
+    VISIBLE_COLOR = (0.9, 0.25, 0.1, 0.8)     # currently seen -- solid red-orange
+    REMEMBERED_COLOR = (0.6, 0.6, 0.6, 0.35)  # known but not currently visible -- dim gray
+
+    def build_landmark_marker_array(
+        self, landmarks: list, header: Header
+    ) -> MarkerArray:
+        """Build a MarkerArray for the persistent rock landmark database.
+
+        Args:
+            landmarks: List of `RockLandmark` (map/world frame).
+            header: Header whose `frame_id` MUST be the landmark
+                database's stable frame (e.g. "map"), not base_link --
+                the caller (terrain_node.py) is responsible for that.
+
+        Returns:
+            A sphere + text marker per landmark, colored/opacity-coded
+            by `currently_visible` (Part 33: "differentiate currently
+            visible / known but not currently visible").
+        """
+        marker_array = MarkerArray()
+        marker_array.markers.append(self._build_delete_all_marker(header))
+
+        for idx, lm in enumerate(landmarks):
+            marker_array.markers.append(self._build_landmark_sphere(lm, header, idx))
+            marker_array.markers.append(self._build_landmark_label(lm, header, idx))
+
+        return marker_array
+
+    def _build_landmark_sphere(self, lm, header: Header, idx: int) -> Marker:
+        marker = Marker()
+        marker.header = header
+        marker.ns = self.LANDMARK_NAMESPACE
+        marker.id = idx
+        marker.type = Marker.SPHERE
+        marker.action = Marker.ADD
+
+        pos = lm.position_map
+        marker.pose.position = Point(x=float(pos[0]), y=float(pos[1]), z=float(pos[2]))
+        marker.pose.orientation.w = 1.0
+
+        width, depth, height = lm.dimensions
+        marker.scale = Vector3(
+            x=max(float(depth), self.MIN_CUBE_DIMENSION),
+            y=max(float(width), self.MIN_CUBE_DIMENSION),
+            z=max(float(height), self.MIN_CUBE_DIMENSION),
+        )
+
+        r, g, b, a = self.VISIBLE_COLOR if lm.currently_visible else self.REMEMBERED_COLOR
+        marker.color.r, marker.color.g, marker.color.b, marker.color.a = r, g, b, a
+        marker.lifetime.sec = 0
+        marker.lifetime.nanosec = 0
+        return marker
+
+    def _build_landmark_label(self, lm, header: Header, idx: int) -> Marker:
+        marker = Marker()
+        marker.header = header
+        marker.ns = self.LANDMARK_LABEL_NAMESPACE
+        marker.id = idx
+        marker.type = Marker.TEXT_VIEW_FACING
+        marker.action = Marker.ADD
+
+        pos = lm.position_map
+        _, _, height = lm.dimensions
+        marker.pose.position = Point(
+            x=float(pos[0]), y=float(pos[1]), z=float(pos[2]) + float(height) / 2.0 + self.LABEL_Z_OFFSET
+        )
+        marker.pose.orientation.w = 1.0
+        marker.scale.z = self.LABEL_TEXT_HEIGHT
+
+        r, g, b, a = self.LABEL_COLOR
+        marker.color.r, marker.color.g, marker.color.b, marker.color.a = r, g, b, a
+
+        visibility = "" if lm.currently_visible else " (remembered)"
+        marker.text = f"{lm.persistent_id}{visibility}"
+        marker.lifetime.sec = 0
+        marker.lifetime.nanosec = 0
+        return marker

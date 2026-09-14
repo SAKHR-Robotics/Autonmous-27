@@ -1,0 +1,66 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>terrain_geometry</name>
+  <version>0.1.0</version>
+  <description>
+    Unified single-node terrain/obstacle perception pipeline for the
+    Intel RealSense D435 on ROS 2 Jazzy (Ubuntu 24.04): TF transform,
+    ground removal (Patchwork++ or vectorized fallback), voxel
+    downsampling, cKDTree radius outlier removal, KD-tree DBSCAN
+    clustering, obstacle feature extraction + RViz2 markers, occupancy
+    grid rasterization, and distance-transform costmap inflation.
+  </description>
+  <maintainer email="maintainer@example.com">maintainer</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <!-- Core ROS 2 dependencies used across terrain_node.py + helpers -->
+  <depend>rclpy</depend>
+  <depend>sensor_msgs</depend>
+  <depend>sensor_msgs_py</depend>
+  <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>visualization_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>tf2_ros</depend>
+  <depend>rcl_interfaces</depend>
+
+  <!-- Custom message package (ObstacleFeature, ObstacleFeatureArray) -->
+  <depend>terrain_geometry_msgs</depend>
+
+  <!--
+    NumPy, scikit-learn, and scipy are Python (pip) dependencies for
+    the ament_python build; also declared in setup.py's install_requires.
+    scipy additionally has an apt/rosdep key for convenience:
+  -->
+  <depend>python3-scipy</depend>
+  <depend>python3-numpy</depend>
+
+  <!--
+    scikit-learn (Step 5 DBSCAN) has no first-party rosdep key on all
+    platforms; install via pip if rosdep resolution fails:
+        pip3 install scikit-learn>=1.2.0
+  -->
+
+  <!--
+    Optional soft dependency for the full Patchwork++ ground-removal
+    backend (Step 2). If not installed, ground_removal.py automatically
+    falls back to a pure-NumPy vectorized concentric slope/height
+    threshold - no build-time dependency is declared for it here.
+        pip3 install pypatchworkpp
+  -->
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
