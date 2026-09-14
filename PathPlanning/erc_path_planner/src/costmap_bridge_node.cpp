@@ -106,9 +106,6 @@ private:
 
     // الحفاظ على نفس الـ frame_id والـ timestamp للرسالة القادمة
     pointcloud.header = msg->header;
-    if (pointcloud.header.stamp.sec == 0 && pointcloud.header.stamp.nanosec == 0) {
-      pointcloud.header.stamp = this->now();
-    }
 
     // سحابة نقطية غير مرتبة (1 row)
     pointcloud.height = 1;
