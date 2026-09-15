@@ -32,7 +32,35 @@ def launch_setup(context, *args, **kwargs):
     
     # Process the xacro file to generate URDF
     robot_description_config = xacro.process_file(xacro_file)
-    robot_description = {'robot_description': robot_description_config.toxml()}
+    robot_description_xml = robot_description_config.toxml()
+
+    # Apply ROS REP-103 standard camera optical frames and rotation (Task: SLAM Fix 4)
+    # Optical convention: +Z forward, +X right, +Y down (rpy="-1.57079632679 0 -1.57079632679")
+    optical_rep103_frames = """
+  <!-- Standard ROS REP-103 Optical Frames (Task: SLAM Fix 4) -->
+  <link name="camera_depth_optical_frame"/>
+  <joint name="camera_depth_optical_joint" type="fixed">
+    <parent link="camera_link"/>
+    <child link="camera_depth_optical_frame"/>
+    <origin xyz="0 0 0" rpy="-1.57079632679 0 -1.57079632679"/>
+  </joint>
+  <link name="camera_color_optical_frame"/>
+  <joint name="camera_color_optical_joint" type="fixed">
+    <parent link="camera_link"/>
+    <child link="camera_color_optical_frame"/>
+    <origin xyz="0 0 0" rpy="-1.57079632679 0 -1.57079632679"/>
+  </joint>
+"""
+    robot_description_xml = re.sub(
+        r'(<joint name="camera_optical_joint"[^>]*>.*?<origin\s+[^>]*?)rpy="[^"]*"',
+        r'\1rpy="-1.57079632679 0 -1.57079632679"',
+        robot_description_xml,
+        flags=re.DOTALL
+    )
+    if '<link name="camera_depth_optical_frame"' not in robot_description_xml:
+        robot_description_xml = robot_description_xml.replace('</robot>', optical_rep103_frames + '\n</robot>')
+
+    robot_description = {'robot_description': robot_description_xml}
     
     # Robot State Publisher Node
     robot_state_publisher_node = Node(
@@ -55,7 +83,7 @@ def launch_setup(context, *args, **kwargs):
         executable='create',
         arguments=[
             '-name', 'my_robot',
-            '-string', robot_description_config.toxml(),
+            '-string', robot_description_xml,
             '-world', world_name,
             '-x', '0.0',
             '-y', '0.0',
