@@ -120,9 +120,55 @@ graph LR
 
 ---
 
-## 🛠️ Setup & Compilation
+## 🐳 Docker Setup & Workflow (Recommended)
 
-To build the workspace without keeping the output build artifacts in your Git repository, compile from the repository root directory:
+A pre-configured Docker environment is provided inside the [`docker/`](docker/) directory containing ROS 2 Jazzy, Nav2, RTAB-Map, Robot Localization, Gazebo (ros_gz), OpenCV, and full GUI forwarding for RViz2 and Gazebo.
+
+### 1. Prerequisites (Host Machine)
+Ensure Docker and Docker Compose are installed on your Linux host:
+```bash
+sudo apt update && sudo apt install -y docker.io docker-compose-v2
+sudo usermod -aG docker $USER
+# (Re-login or restart terminal after adding user to docker group)
+```
+
+*(Optional: For hardware-accelerated 3D graphics on NVIDIA GPUs, install `sudo apt install -y nvidia-container-toolkit`)*
+
+### 2. Build the Docker Image
+From the repository root, navigate to the `docker/` folder and build:
+```bash
+cd docker
+docker compose build
+```
+
+### 3. Run the Container
+Navigate to the `docker/` folder and start the container:
+```bash
+cd docker
+./run_docker.sh
+```
+
+To open additional terminals inside the same running container:
+```bash
+cd docker
+./enter_docker.sh
+```
+
+### 4. Build & Source Workspace inside the Container
+Once inside the container (`root@host:/workspace#`):
+```bash
+colcon build --symlink-install
+source install/setup.bash
+```
+
+> [!TIP]
+> Your host workspace is bind-mounted to `/workspace`. Any code changes saved on your host machine in VS Code or any editor update immediately inside the container in real time without needing to rebuild the Docker image!
+
+---
+
+## 🛠️ Native Host Setup & Compilation (Alternative)
+
+To build the workspace directly on your host machine without Docker:
 
 ```bash
 # Sourcing standard ROS 2 (Jazzy / Humble)

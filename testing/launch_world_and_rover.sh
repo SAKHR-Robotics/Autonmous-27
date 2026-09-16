@@ -81,22 +81,37 @@ else
 fi
 
 # Step 2: Source local workspace build
-if [ -f "$WORKSPACE_ROOT/install/setup.bash" ]; then
-    echo "[2/4] Sourcing workspace install overlay ($WORKSPACE_ROOT/install/setup.bash)..."
-    source "$WORKSPACE_ROOT/install/setup.bash"
+INSTALL_SETUP=""
+if [ -f "/root/ros_build/install/setup.bash" ]; then
+    INSTALL_SETUP="/root/ros_build/install/setup.bash"
+elif [ -f "$WORKSPACE_ROOT/install/setup.bash" ]; then
+    INSTALL_SETUP="$WORKSPACE_ROOT/install/setup.bash"
+fi
+
+if [ -n "$INSTALL_SETUP" ]; then
+    echo "[2/4] Sourcing workspace install overlay ($INSTALL_SETUP)..."
+    source "$INSTALL_SETUP"
 else
     echo "[2/4] Workspace install/setup.bash not found. Building workspace first..."
     cd "$WORKSPACE_ROOT"
     colcon build --symlink-install
-    source "$WORKSPACE_ROOT/install/setup.bash"
+    if [ -f "/root/ros_build/install/setup.bash" ]; then
+        INSTALL_SETUP="/root/ros_build/install/setup.bash"
+    elif [ -f "$WORKSPACE_ROOT/install/setup.bash" ]; then
+        INSTALL_SETUP="$WORKSPACE_ROOT/install/setup.bash"
+    fi
+    if [ -n "$INSTALL_SETUP" ]; then
+        source "$INSTALL_SETUP"
+    fi
 fi
 
 # Step 3: Configure Gazebo / Ignition model resource paths for both source and install locations
 echo "[3/4] Configuring Gazebo resource paths for rocks, ArUco, and Mars Yard models..."
 MODELS_DIR="$PROJECT_DIR/worlds/models"
-INSTALL_MODELS_DIR="$WORKSPACE_ROOT/install/worlds/share/worlds/models"
+INSTALL_DIR="${INSTALL_SETUP%/*}"
+INSTALL_MODELS_DIR="$INSTALL_DIR/worlds/share/worlds/models"
 
-EXTRA_PATHS="$MODELS_DIR:$MODELS_DIR/rocks:$MODELS_DIR/aruco:$INSTALL_MODELS_DIR:$INSTALL_MODELS_DIR/rocks:$INSTALL_MODELS_DIR/aruco"
+EXTRA_PATHS="$MODELS_DIR:$MODELS_DIR/rocks:$MODELS_DIR/aruco:$INSTALL_MODELS_DIR:$INSTALL_MODELS_DIR/rocks:$INSTALL_MODELS_DIR/aruco:/root/ros_build/install/worlds/share/worlds/models:$WORKSPACE_ROOT/install/worlds/share/worlds/models"
 
 export GZ_SIM_RESOURCE_PATH="$EXTRA_PATHS:${GZ_SIM_RESOURCE_PATH:-}"
 export IGN_GAZEBO_RESOURCE_PATH="$EXTRA_PATHS:${IGN_GAZEBO_RESOURCE_PATH:-}"

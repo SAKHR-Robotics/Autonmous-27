@@ -1,0 +1,25 @@
+services:
+  autonomous_rover:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: autonomous27:jazzy
+    container_name: autonomous27_container
+    network_mode: host
+    ipc: host
+    privileged: true
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - ROS_DOMAIN_ID=0
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all,utility,graphics,compute,display
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /dev/dri:/dev/dri:rw
+      - ..:/workspace:rw
+      - ./.bash_aliases:/root/.bash_aliases:ro
+    stdin_open: true
+    tty: true
+    command: bash

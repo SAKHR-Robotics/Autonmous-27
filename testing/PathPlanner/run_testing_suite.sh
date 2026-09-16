@@ -66,8 +66,11 @@ colcon build --packages-select terrain_geometry_msgs erc_path_planner global_pat
 # Step 3: Source Workspace Install
 echo "------------------------------------------------------------------------"
 echo "🔄 [2/3] Sourcing workspace overlay..."
-echo "------------------------------------------------------------------------"
-source "$PROJECT_ROOT/install/setup.bash"
+if [ -f "/root/ros_build/install/setup.bash" ]; then
+    source "/root/ros_build/install/setup.bash"
+elif [ -f "$PROJECT_ROOT/install/setup.bash" ]; then
+    source "$PROJECT_ROOT/install/setup.bash"
+fi
 
 # Step 4: Interactive Configuration Menu
 echo "------------------------------------------------------------------------"
