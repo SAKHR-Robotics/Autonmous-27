@@ -87,7 +87,7 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument("inflate_unknown_cells", default_value="false"),
 
         # Debug
-        DeclareLaunchArgument("publish_debug_topics", default_value="false"),
+        DeclareLaunchArgument("publish_debug_topics", default_value="true"),
 
         # Performance profiling
         DeclareLaunchArgument("enable_performance_profiling", default_value="false"),

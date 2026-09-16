@@ -1,0 +1,172 @@
+I am developing the Perception Module for a mobile robot (similar to the BARN Challenge). My responsibility is NOT the camera driver or hardware integration. My module starts when sensor data is already being published on ROS 2 topics.
+
+Environment:
+- Ubuntu 22.04
+- ROS 2 Humble
+- Python (rclpy)
+- Intel RealSense D435i
+- Recorded dataset instead of a live camera
+
+Dataset:
+I have the following RealSense recorded bag files:
+- d435i_walk_around.bag
+- d435i_walking.bag
+
+The bag contains:
+- RGB Image
+- Depth Image
+- Left Infrared Image
+- Right Infrared Image
+- IMU
+- Camera Intrinsics
+- Camera Extrinsics
+
+I want to develop and test my perception node entirely using these bag files. Later, I should be able to connect a real D435i camera without changing the perception code.
+
+====================================================
+
+Task:
+
+Generate a complete ROS 2 Python package that subscribes to the RealSense topics and produces:
+
+1. Depth Map visualization
+2. 3D Point Cloud generation
+3. RViz2 visualization
+4. Processed outputs ready for future obstacle detection
+
+====================================================
+
+Requirements:
+
+Use:
+
+- rclpy
+- cv_bridge
+- sensor_msgs
+- sensor_msgs_py
+- image_geometry if needed
+- OpenCV
+- NumPy
+- Open3D or PCL (prefer Open3D)
+
+The node must subscribe to:
+
+/camera/color/image_raw
+/camera/depth/image_rect_raw
+/camera/color/camera_info
+/camera/depth/camera_info
+/camera/infra1/image_rect_raw
+/camera/infra2/image_rect_raw
+/camera/imu
+/camera/extrinsics/depth_to_color
+
+====================================================
+
+The node should:
+
+1. Receive synchronized RGB and Depth frames.
+
+2. Convert ROS Image messages into OpenCV images.
+
+3. Display the RGB image.
+
+4. Convert the depth image into a colored depth map for visualization.
+
+5. Extract camera intrinsic parameters from CameraInfo.
+
+6. Generate a dense 3D point cloud from the depth image using the camera intrinsics.
+
+7. If RGB is available, create a colored point cloud.
+
+8. Visualize the point cloud using Open3D.
+
+9. Publish the generated point cloud as sensor_msgs/PointCloud2.
+
+10. Keep the code modular so later I can easily add:
+   - Ground plane removal
+   - Voxel filtering
+   - Statistical outlier removal
+   - Obstacle segmentation
+   - Free-space detection
+
+====================================================
+
+Project structure should be:
+
+perception_module/
+
+    package.xml
+
+    setup.py
+
+    setup.cfg
+
+    launch/
+
+        perception.launch.py
+
+    perception_module/
+
+        __init__.py
+
+        perception_node.py
+
+        point_cloud.py
+
+        depth_processing.py
+
+        camera_utils.py
+
+        visualization.py
+
+====================================================
+
+I want the AI to provide:
+
+1. Complete folder structure.
+
+2. Full source code for every file.
+
+3. All import statements.
+
+4. Required ROS dependencies.
+
+5. setup.py
+
+6. package.xml
+
+7. launch file.
+
+8. Commands to build the package.
+
+9. Commands to source the workspace.
+
+10. Commands to play the bag file.
+
+11. Commands to run the node.
+
+12. Commands to visualize everything in RViz2.
+
+13. A detailed explanation of every major function.
+
+14. The mathematical explanation of how each pixel (u,v,depth) is converted into a 3D point (X,Y,Z).
+
+15. Explain where camera intrinsics are used.
+
+16. Explain how PointCloud2 is constructed.
+
+17. Explain how the exact same code will work later with a real Intel RealSense D435i camera without modification.
+
+====================================================
+
+Coding requirements:
+
+- Production-quality code.
+- Proper object-oriented design.
+- Extensive comments.
+- Error handling.
+- Logging using ROS2 logger.
+- Type hints.
+- Modular functions.
+- Efficient NumPy implementation (avoid pixel-by-pixel loops where possible).
+- Follow ROS2 Python best practices.
