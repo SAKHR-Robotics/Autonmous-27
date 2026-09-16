@@ -229,11 +229,7 @@ class OccupancyGridGenerator:
     # ------------------------------------------------------------------ #
 
     def generate(
-        self,
-        obstacles: Sequence[object],
-        header: Header,
-        uncertain_obstacles: Optional[Sequence[object]] = None,
-        mark_known_region_free: bool = True,
+        self, obstacles: Sequence[object], header: Header
     ) -> Tuple[OccupancyGrid, GenerationStats]:
         """
         Generate a complete OccupancyGrid message from a list of obstacles.
@@ -246,23 +242,6 @@ class OccupancyGridGenerator:
             header: The std_msgs/Header from the incoming ObstacleArray.
                 Its stamp is preserved; frame_id is forced to
                 `self.frame_id`.
-            uncertain_obstacles: Optional sequence of obstacle-shaped
-                objects (same duck-typed interface as `obstacles`)
-                whose footprints are stamped UNKNOWN (-1) rather than
-                either FREE or OCCUPIED (Part 9/21's `UNKNOWN`
-                classification, and Part 21's negative-obstacle/
-                missing-terrain regions). Stamped BEFORE `obstacles`,
-                so a cell that is both "uncertain" and "confirmed
-                obstacle" ends up correctly OCCUPIED, never masked by
-                an uncertain stamp.
-            mark_known_region_free: Part 3 safety gate. If False, the
-                actively-sensed region is NEVER stamped FREE this call
-                regardless of `use_unknown_space` -- the whole grid
-                (other than any obstacle/uncertain footprints passed
-                in) stays UNKNOWN. Callers set this to
-                `PerceptionHealth.should_report_free` so a
-                DEGRADED/INVALID frame can never silently assert
-                "known free" (Part 3's core safety requirement).
 
         Returns:
             (OccupancyGrid message, GenerationStats)
@@ -273,14 +252,7 @@ class OccupancyGridGenerator:
         # Reset the pre-allocated buffer in place instead of allocating a
         # new array every callback.
         grid = self._grid
-        if not mark_known_region_free:
-            # Part 3: perception is not trusted enough this frame to
-            # assert anything is free. The grid starts (and, absent any
-            # obstacle footprints below, stays) entirely UNKNOWN --
-            # regardless of `use_unknown_space`, which only controls
-            # the *normal*, healthy-frame behavior.
-            grid.fill(self.UNKNOWN)
-        elif self.use_unknown_space:
+        if self.use_unknown_space:
             # Grid starts entirely UNKNOWN: "no detected obstacle" no
             # longer silently means "free" everywhere -- only the
             # actively-sensed region (known_region, typically the ROI
@@ -294,15 +266,6 @@ class OccupancyGridGenerator:
             # occupied" rather than UNKNOWN, since this grid represents
             # actively-sensed nearby space, not an unexplored global map.
             grid.fill(self.FREE)
-
-        for uncertain in (uncertain_obstacles or []):
-            try:
-                row_min, row_max, col_min, col_max = self._rasterize_obstacle(uncertain)
-            except (ValueError, AttributeError, TypeError):
-                continue
-            if row_min is None:
-                continue
-            grid[row_min : row_max + 1, col_min : col_max + 1] = self.UNKNOWN
 
         for obstacle in obstacles:
             try:
@@ -412,16 +375,8 @@ class OccupancyGridGenerator:
                 )
             obs_depth = self.resolution
 
-        # BUG FIX (Part 2): the rover convention is X=forward/back,
-        # Y=left/right, so the footprint's X-extent must come from
-        # `depth` (the obstacle's X/longitudinal extent) and its
-        # Y-extent from `width` (the obstacle's Y/lateral extent) --
-        # NOT the reverse. This previously rasterized every obstacle
-        # rotated 90 degrees: an elongated obstacle lying across the
-        # rover's path (long in X, narrow in Y) was drawn as long in Y
-        # and narrow in X instead. See test_occupancy_grid_footprint.py.
-        x_min, x_max = cx - obs_depth / 2.0, cx + obs_depth / 2.0
-        y_min, y_max = cy - obs_width / 2.0, cy + obs_width / 2.0
+        x_min, x_max = cx - obs_width / 2.0, cx + obs_width / 2.0
+        y_min, y_max = cy - obs_depth / 2.0, cy + obs_depth / 2.0
 
         row_min, col_min = self.world_to_grid(x_min, y_min)
         row_max, col_max = self.world_to_grid(x_max, y_max)

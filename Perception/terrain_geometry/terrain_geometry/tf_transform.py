@@ -224,20 +224,10 @@ class CloudFrameTransformer:
                 f"'{source_frame}' and '{target_frame}'): {exc}"
             )
         except ExtrapolationException as exc:
-            # If exact timestamp extrapolation fails (e.g. camera cloud is slightly
-            # ahead of lower-rate SLAM TFs), fall back to the latest available transform (Time()).
-            try:
-                return self.buffer.lookup_transform(
-                    target_frame,
-                    source_frame,
-                    Time(),
-                    timeout=self.timeout,
-                )
-            except Exception:
-                self._logger.warning(
-                    f"TF lookup failed (extrapolation into the "
-                    f"future/past): {exc}"
-                )
+            self._logger.warning(
+                f"TF lookup failed (extrapolation into the "
+                f"future/past): {exc}"
+            )
         except Exception as exc:  # noqa: BLE001 - defensive catch-all
             self._logger.error(
                 f"Unexpected error during TF lookup: {exc}"
@@ -324,43 +314,6 @@ class CloudFrameTransformer:
             dtype = _fields_to_dtype(cloud.fields, cloud.point_step)
             self._dtype_cache[key] = dtype
         return dtype
-
-    def get_dynamic_matrix(
-        self,
-        target_frame: str,
-        source_frame: str,
-        stamp: Time,
-    ) -> np.ndarray | None:
-        """Looks up a 4x4 transform WITHOUT the static-transform cache.
-
-        `get_matrix`/`transform_points` cache the very first successful
-        lookup for a given (source, target) pair forever -- correct
-        for the rigid sensor->base_link mount this class was designed
-        for, but wrong for a frame pair that moves every frame (e.g.
-        `base_link` -> `map`/`odom`, needed for Part 12/16's persistent
-        world-frame rock storage and ego-motion compensation). This
-        method always performs a fresh `lookup_transform` and never
-        touches `self.transform_matrix`, so it is safe to call
-        alongside the cached sensor transform on the same
-        `CloudFrameTransformer` instance.
-
-        Args:
-            target_frame: Frame to transform into (e.g. "map").
-            source_frame: Frame the data is currently in (e.g.
-                "base_link").
-            stamp: Timestamp to look up the transform at.
-
-        Returns:
-            A 4x4 NumPy homogeneous transform matrix, or None if the
-            transform is not available right now (caller should treat
-            this the same as any other "skip this frame's map-frame
-            work" condition -- see rock_landmarks wiring in
-            terrain_node.py).
-        """
-        transform = self.lookup_transform(target_frame, source_frame, stamp)
-        if transform is None:
-            return None
-        return self._transform_to_matrix(transform)
 
     def get_matrix(
         self,

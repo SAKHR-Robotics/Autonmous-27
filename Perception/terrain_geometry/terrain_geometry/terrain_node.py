@@ -71,9 +71,7 @@ from rclpy.qos import qos_profile_sensor_data, QoSProfile, QoSReliabilityPolicy,
 from rclpy.time import Time
 from rcl_interfaces.msg import SetParametersResult
 
-import json
-
-from std_msgs.msg import Header, String
+from std_msgs.msg import Header
 from sensor_msgs.msg import PointCloud2
 from geometry_msgs.msg import Point
 from visualization_msgs.msg import MarkerArray
@@ -102,21 +100,6 @@ from terrain_geometry.occupancy_grid import OccupancyGridGenerator
 from terrain_geometry.costmap_inflation import CostmapInflator
 from terrain_geometry.performance_profiling import PipelineProfiler
 from terrain_geometry.obstacle_tracking import ObstacleTracker, ObstacleTrackerConfigError
-
-# --- Terrain/rock perception upgrade (Parts 1-38) ----------------------
-from terrain_geometry.terrain_model import LocalTerrainModel, TerrainModelConfigError
-from terrain_geometry.terrain_classification import (
-    ClassificationConfig,
-    TerrainClassification,
-    classify_cluster,
-)
-from terrain_geometry.confidence import compute_confidence
-from terrain_geometry.perception_health import PerceptionHealthMonitor, PerceptionState
-from terrain_geometry.rock_landmarks import (
-    RockLandmarkDatabase,
-    RockLandmarkConfigError,
-    RockObservation,
-)
 
 
 def _feature_to_msg(feature: ObstacleFeature) -> ObstacleFeatureMsg:
@@ -242,50 +225,6 @@ class TerrainGeometryNode(Node):
                 max_missed_frames=self._tracking_max_missed_frames,
                 position_smoothing=self._tracking_position_smoothing,
             )
-
-        # --- Local terrain model + classification (Parts 4-9) ----------
-        self._terrain_model: LocalTerrainModel | None = None
-        self._classification_config: ClassificationConfig | None = None
-        if self._enable_terrain_classification:
-            self._terrain_model = LocalTerrainModel(
-                patch_size=self._terrain_patch_size,
-                min_points=self._terrain_fit_min_points,
-                max_residual=self._terrain_fit_max_residual,
-            )
-            self._classification_config = ClassificationConfig(
-                max_terrain_residual=self._max_terrain_residual,
-                terrain_explained_fraction=self._terrain_explained_fraction,
-                min_terrain_coverage_fraction=self._min_terrain_coverage_fraction,
-                min_rock_height=self._min_rock_height,
-                min_rock_points=self._min_rock_points,
-                min_rock_width=self._min_rock_width,
-                min_rock_depth=self._min_rock_depth,
-                max_rock_footprint=self._max_rock_footprint,
-                step_min_width=self._step_min_width,
-                step_max_roughness=self._step_max_roughness,
-            )
-            self._classification_config.validate()
-
-        # --- Persistent rock landmark database (Parts 10-19) -----------
-        self._rock_db: RockLandmarkDatabase | None = None
-        if self._enable_rock_landmarks:
-            self._rock_db = RockLandmarkDatabase(
-                association_distance_gate=self._rock_association_distance,
-                dimension_similarity_tolerance=self._rock_dimension_similarity_tolerance,
-                position_smoothing=self._rock_position_smoothing,
-                landmark_timeout_sec=self._landmark_timeout_sec,
-                min_confidence_to_create=self._confidence_threshold,
-            )
-
-        # --- Perception health / failure semantics (Part 3) ------------
-        self._perception_monitor = PerceptionHealthMonitor(
-            max_cloud_age_sec=self._max_cloud_age_sec,
-            min_valid_points=self._min_valid_points_health,
-            min_ground_points=self._min_ground_points_health,
-            max_processing_latency_sec=self._max_processing_latency_sec,
-            degraded_may_report_free=self._degraded_may_report_free,
-        )
-        self._last_frame_latency_sec: float | None = None
         # The "known/sensed" region for UNKNOWN-space semantics is the
         # same box the ROI filter already crops to (it IS the region we
         # actually looked at this frame). If ROI filtering is disabled,
@@ -371,27 +310,6 @@ class TerrainGeometryNode(Node):
         )
         self._marker_pub = self.create_publisher(
             MarkerArray, "/terrain/obstacle_markers", reliable_qos
-        )
-
-        # --- New outputs (Parts 3, 32, 33) ------------------------------
-        # Perception health (Part 3): plain std_msgs/String rather than a
-        # new custom message type, since `terrain_geometry_msgs` is an
-        # external package not owned by this upgrade -- see the final
-        # report for a recommended future migration to a proper
-        # PerceptionHealth.msg.
-        self._health_pub = self.create_publisher(
-            String, "/terrain/perception_health", reliable_qos
-        )
-        # Structured persistent rock landmark output (Part 32), JSON over
-        # std_msgs/String for the same reason -- avoids depending on a
-        # message package this task was not given permission to edit,
-        # while still giving the planning/manipulation team one clean
-        # topic to parse instead of RViz markers.
-        self._rock_landmarks_pub = self.create_publisher(
-            String, "/terrain/rock_landmarks", reliable_qos
-        )
-        self._rock_landmark_markers_pub = self.create_publisher(
-            MarkerArray, "/terrain/rock_landmark_markers", reliable_qos
         )
 
         # --- Debug publishers (only *published to* when enabled) ------
@@ -508,48 +426,6 @@ class TerrainGeometryNode(Node):
         self.declare_parameter("enable_performance_profiling", False)
         self.declare_parameter("profiling_interval", 30)
 
-        # --- Step 9: local terrain model (Part 5/6) -------------------
-        self.declare_parameter("enable_terrain_classification", True)
-        self.declare_parameter("terrain_patch_size", 0.5)
-        self.declare_parameter("terrain_fit_min_points", 15)
-        self.declare_parameter("terrain_fit_max_residual", 0.06)
-        self.declare_parameter("max_traversable_slope_deg", 25.0)
-        self.declare_parameter("caution_slope_deg", 15.0)
-
-        # --- Step 10: rock-vs-terrain classification (Part 9) ----------
-        self.declare_parameter("max_terrain_residual", 0.08)
-        self.declare_parameter("terrain_explained_fraction", 0.6)
-        self.declare_parameter("min_terrain_coverage_fraction", 0.3)
-        self.declare_parameter("min_rock_height", 0.06)
-        self.declare_parameter("min_rock_points", 10)
-        self.declare_parameter("min_rock_width", 0.04)
-        self.declare_parameter("min_rock_depth", 0.04)
-        self.declare_parameter("max_rock_footprint", 1.2)
-        self.declare_parameter("step_min_width", 0.6)
-        self.declare_parameter("step_max_roughness", 0.04)
-
-        # --- Step 11: persistent rock landmark database (Parts 10-19) --
-        self.declare_parameter("enable_rock_landmarks", True)
-        self.declare_parameter("map_frame", "map")
-        self.declare_parameter("odom_frame", "odom")
-        self.declare_parameter("rock_association_distance", 0.5)
-        self.declare_parameter("rock_position_gate", 0.5)  # alias/reserved, see _validate_parameters
-        self.declare_parameter("rock_dimension_similarity_tolerance", 0.6)
-        self.declare_parameter("rock_position_smoothing", 0.3)
-        self.declare_parameter("landmark_timeout_sec", 0.0)  # <= 0 => never expire (Part 18)
-        self.declare_parameter("confidence_threshold", 0.3)
-        self.declare_parameter("landmarks_save_path", "")  # empty => disabled
-
-        # --- Step 12: perception health / failure semantics (Part 3) --
-        self.declare_parameter("max_cloud_age_sec", 0.5)
-        self.declare_parameter("min_valid_points_health", 20)
-        self.declare_parameter("min_ground_points_health", 50)
-        self.declare_parameter("max_processing_latency_sec", 0.5)
-        self.declare_parameter("degraded_may_report_free", True)
-
-        # --- Step 13: negative obstacle / missing terrain (Part 21) ---
-        self.declare_parameter("enable_negative_obstacle_marking", True)
-
     def _read_parameters(self) -> None:
         gp = lambda name: self.get_parameter(name).value  # noqa: E731
 
@@ -615,45 +491,6 @@ class TerrainGeometryNode(Node):
 
         self._enable_performance_profiling = bool(gp("enable_performance_profiling"))
         self._profiling_interval = int(gp("profiling_interval"))
-
-        self._enable_terrain_classification = bool(gp("enable_terrain_classification"))
-        self._terrain_patch_size = float(gp("terrain_patch_size"))
-        self._terrain_fit_min_points = int(gp("terrain_fit_min_points"))
-        self._terrain_fit_max_residual = float(gp("terrain_fit_max_residual"))
-        self._max_traversable_slope_deg = float(gp("max_traversable_slope_deg"))
-        self._caution_slope_deg = float(gp("caution_slope_deg"))
-
-        self._max_terrain_residual = float(gp("max_terrain_residual"))
-        self._terrain_explained_fraction = float(gp("terrain_explained_fraction"))
-        self._min_terrain_coverage_fraction = float(gp("min_terrain_coverage_fraction"))
-        self._min_rock_height = float(gp("min_rock_height"))
-        self._min_rock_points = int(gp("min_rock_points"))
-        self._min_rock_width = float(gp("min_rock_width"))
-        self._min_rock_depth = float(gp("min_rock_depth"))
-        self._max_rock_footprint = float(gp("max_rock_footprint"))
-        self._step_min_width = float(gp("step_min_width"))
-        self._step_max_roughness = float(gp("step_max_roughness"))
-
-        self._enable_rock_landmarks = bool(gp("enable_rock_landmarks"))
-        self._map_frame = str(gp("map_frame"))
-        self._odom_frame = str(gp("odom_frame"))
-        self._rock_association_distance = float(gp("rock_association_distance"))
-        self._rock_dimension_similarity_tolerance = float(
-            gp("rock_dimension_similarity_tolerance")
-        )
-        self._rock_position_smoothing = float(gp("rock_position_smoothing"))
-        landmark_timeout = float(gp("landmark_timeout_sec"))
-        self._landmark_timeout_sec = landmark_timeout if landmark_timeout > 0.0 else None
-        self._confidence_threshold = float(gp("confidence_threshold"))
-        self._landmarks_save_path = str(gp("landmarks_save_path"))
-
-        self._max_cloud_age_sec = float(gp("max_cloud_age_sec"))
-        self._min_valid_points_health = int(gp("min_valid_points_health"))
-        self._min_ground_points_health = int(gp("min_ground_points_health"))
-        self._max_processing_latency_sec = float(gp("max_processing_latency_sec"))
-        self._degraded_may_report_free = bool(gp("degraded_may_report_free"))
-
-        self._enable_negative_obstacle_marking = bool(gp("enable_negative_obstacle_marking"))
 
     def _validate_parameters(self) -> None:
         """Validates configurable parameters up front, with clear errors.
@@ -747,46 +584,6 @@ class TerrainGeometryNode(Node):
             (self._leaf_size_x ** 2 + self._leaf_size_y ** 2 + self._leaf_size_z ** 2)
             ** 0.5
         )
-        if self._enable_terrain_classification:
-            if self._terrain_patch_size <= 0.0:
-                raise ValueError(
-                    f"terrain_patch_size must be > 0, got {self._terrain_patch_size}"
-                )
-            if self._terrain_fit_min_points < 3:
-                raise ValueError(
-                    f"terrain_fit_min_points must be >= 3, got {self._terrain_fit_min_points}"
-                )
-            if self._max_traversable_slope_deg <= 0.0 or self._max_traversable_slope_deg > 90.0:
-                raise ValueError(
-                    "max_traversable_slope_deg must be in (0, 90], got "
-                    f"{self._max_traversable_slope_deg}"
-                )
-            if self._caution_slope_deg <= 0.0 or self._caution_slope_deg >= self._max_traversable_slope_deg:
-                raise ValueError(
-                    "caution_slope_deg must be > 0 and < max_traversable_slope_deg, "
-                    f"got caution={self._caution_slope_deg}, "
-                    f"max={self._max_traversable_slope_deg}"
-                )
-
-        if self._enable_rock_landmarks:
-            if self._rock_association_distance <= 0.0:
-                raise ValueError(
-                    "rock_association_distance must be > 0, got "
-                    f"{self._rock_association_distance}"
-                )
-            if not (0.0 <= self._confidence_threshold <= 1.0):
-                raise ValueError(
-                    f"confidence_threshold must be in [0, 1], got {self._confidence_threshold}"
-                )
-
-        if self._max_cloud_age_sec <= 0.0:
-            raise ValueError(f"max_cloud_age_sec must be > 0, got {self._max_cloud_age_sec}")
-        if self._max_processing_latency_sec <= 0.0:
-            raise ValueError(
-                "max_processing_latency_sec must be > 0, got "
-                f"{self._max_processing_latency_sec}"
-            )
-
         if self._enable_clustering and self._cluster_eps < voxel_diagonal:
             self.get_logger().warning(
                 f"cluster_eps ({self._cluster_eps:.3f} m) is smaller than the "
@@ -822,32 +619,6 @@ class TerrainGeometryNode(Node):
     # ------------------------------------------------------------------ #
     # Main callback: the entire pipeline, one message in/out
     # ------------------------------------------------------------------ #
-    def _now_sec(self) -> float:
-        return self.get_clock().now().nanoseconds * 1e-9
-
-    def _cloud_stamp_sec(self, header: Header) -> float:
-        return float(header.stamp.sec) + float(header.stamp.nanosec) * 1e-9
-
-    def _evaluate_health(
-        self,
-        header: Header,
-        num_valid_points: int | None,
-        tf_available: bool,
-        ground_segmentation_ok: bool,
-        num_ground_points: int | None = None,
-    ):
-        """Wraps `PerceptionHealthMonitor.check` with this node's clock and
-        the previous frame's measured latency (Part 3)."""
-        return self._perception_monitor.check(
-            now_sec=self._now_sec(),
-            cloud_stamp_sec=self._cloud_stamp_sec(header),
-            num_valid_points=num_valid_points,
-            tf_available=tf_available,
-            ground_segmentation_ok=ground_segmentation_ok,
-            num_ground_points=num_ground_points,
-            last_frame_latency_sec=self._last_frame_latency_sec,
-        )
-
     def _cloud_callback(self, msg: PointCloud2) -> None:
         self._frame_counter += 1
         profiler = self._profiler
@@ -855,8 +626,6 @@ class TerrainGeometryNode(Node):
 
         if msg.width * msg.height == 0 or not msg.data:
             self.get_logger().warn("Received empty PointCloud2 -- skipping frame.")
-            health = self._evaluate_health(msg.header, 0, False, False)
-            self._publish_empty(msg.header, health)
             return
 
         # --- Decode: PointCloud2 -> raw (N, 3) float32 array, zero-copy
@@ -866,8 +635,7 @@ class TerrainGeometryNode(Node):
         profiler.mark("decode")
         if xyz_sensor.shape[0] == 0:
             self.get_logger().warn("No valid (finite) points in this frame -- skipping.")
-            health = self._evaluate_health(msg.header, 0, False, False)
-            self._publish_empty(msg.header, health)
+            self._publish_empty(msg.header)
             return
 
         # --- TF transform (sensor frame -> target_frame) -----------------
@@ -881,8 +649,6 @@ class TerrainGeometryNode(Node):
                 f"TF transform '{msg.header.frame_id}' -> '{self._target_frame}' "
                 "not yet available -- skipping frame (will retry next message)."
             )
-            health = self._evaluate_health(msg.header, xyz_sensor.shape[0], False, False)
-            self._publish_empty(msg.header, health)
             return
 
         header = Header()
@@ -903,8 +669,7 @@ class TerrainGeometryNode(Node):
                 f"No points remain after ROI filtering (in={xyz_sensor.shape[0]}) "
                 "-- skipping frame."
             )
-            health = self._evaluate_health(header, xyz_sensor.shape[0], True, False)
-            self._publish_empty(header, health)
+            self._publish_empty(header)
             return
 
         # --- Ground removal ------------------------------------------------
@@ -912,25 +677,12 @@ class TerrainGeometryNode(Node):
             ground_xyz, obstacle_xyz = self._ground_removal.segment(roi_xyz)
         except GroundNotFoundError as exc:
             self.get_logger().warn(f"Ground segmentation skipped: {exc}")
-            health = self._evaluate_health(header, xyz_sensor.shape[0], True, False)
-            self._publish_empty(header, health)
+            self._publish_empty(header)
             return
         profiler.mark("ground")
 
-        # Part 3: evaluate perception health as soon as we have every
-        # input the monitor needs (cloud freshness, TF, ground fit) --
-        # every remaining branch below uses `health.should_report_free`
-        # so a degraded/invalid frame can never silently assert "free".
-        health = self._evaluate_health(
-            header, xyz_sensor.shape[0], True, True, ground_xyz.shape[0]
-        )
-        if health.state != PerceptionState.VALID:
-            self.get_logger().warn(
-                f"Perception health = {health.state.value}: {'; '.join(health.reasons)}"
-            )
-
         if obstacle_xyz.shape[0] == 0:
-            self._publish_empty(header, health)
+            self._publish_empty(header)
             if self._publish_debug_topics:
                 self._ground_cloud_pub.publish(xyz_array_to_pointcloud2(ground_xyz, header))
             return
@@ -951,7 +703,7 @@ class TerrainGeometryNode(Node):
         profiler.mark("outlier")
 
         if inlier_xyz.shape[0] == 0:
-            self._publish_empty(header, health)
+            self._publish_empty(header)
             if self._publish_debug_topics:
                 self._ground_cloud_pub.publish(xyz_array_to_pointcloud2(ground_xyz, header))
                 self._voxel_cloud_pub.publish(xyz_array_to_pointcloud2(inlier_xyz, header))
@@ -969,165 +721,37 @@ class TerrainGeometryNode(Node):
             colors = np.zeros((inlier_xyz.shape[0], 3), dtype=np.float64)
         profiler.mark("cluster")
 
-        # --- Feature extraction ------------------------------------------------
+        # --- Feature extraction + RViz markers ---------------------------------
         clusters = group_points_by_label(inlier_xyz, labels)
         features = self._extractor.extract_all(clusters) if clusters else []
         profiler.mark("features")
-
-        # --- Local terrain model + rock-vs-terrain classification (Parts
-        # 4-9) -- THE core fix: a continuous incline gets explained by
-        # `self._terrain_model` and dropped here as TERRAIN, instead of
-        # being handed to tracking/occupancy/costmap as one giant
-        # obstacle. Only ROCK/OBSTACLE/STEP clusters continue downstream
-        # as safety-relevant obstacles; UNKNOWN clusters are kept
-        # separate and are rasterized as UNKNOWN cells, never FREE and
-        # never silently dropped (Part 21). ---------------------------
-        terrain_dropped_count = 0
-        unknown_features: list[ObstacleFeature] = []
-        if self._terrain_model is not None and self._classification_config is not None:
-            self._terrain_model.fit(ground_xyz)
-            classified_features: list[ObstacleFeature] = []
-            for feature in features:
-                points = clusters.get(feature.id)
-                if points is None or points.shape[0] == 0:
-                    continue
-                result = classify_cluster(
-                    points,
-                    self._terrain_model,
-                    feature.width,
-                    feature.depth,
-                    self._classification_config,
-                )
-                feature.classification = result.label
-                feature.height_above_terrain = result.height_above_terrain
-                feature.local_slope_deg = result.local_slope_deg
-                feature.roughness = result.roughness
-                height_for_confidence = (
-                    0.0 if np.isnan(result.height_above_terrain) else result.height_above_terrain
-                )
-                feature.confidence = compute_confidence(
-                    points, feature.distance, height_for_confidence, result.confidence
-                )
-
-                if result.label == TerrainClassification.TERRAIN:
-                    terrain_dropped_count += 1
-                    continue
-                if result.label == TerrainClassification.UNKNOWN:
-                    unknown_features.append(feature)
-                    continue
-                classified_features.append(feature)
-            features = classified_features
-        else:
-            # Classification disabled (enable_terrain_classification=False):
-            # preserve the exact prior behavior -- every cluster is an
-            # obstacle. `classification` stays at its default "UNKNOWN"
-            # string on the dataclass, which is cosmetic only here since
-            # this code path never inspects it.
-            pass
-        profiler.mark("classification")
 
         # --- Temporal obstacle tracking (optional) ------------------------------
         # Only ever returns detections matched THIS frame (see
         # obstacle_tracking.py) -- a missed detection never lingers on as
         # a phantom obstacle in the features/markers/grid/costmap below.
-        # Runs only on genuine ROCK/OBSTACLE/STEP detections -- a
-        # TERRAIN-classified cluster never enters the frame-local
-        # tracker in the first place.
         if self._tracker is not None:
             features = self._tracker.update(features)
         profiler.mark("tracking")
-
-        # --- Persistent rock landmark database (Parts 10-19) -------------------
-        # `feature.id` at this point is the ObstacleTracker's frame-local
-        # track_id (or the raw DBSCAN cluster id if tracking is
-        # disabled) -- unique within this frame either way, so it is
-        # used purely as a same-frame correlation key back from
-        # `RockLandmark.last_track_id` to the originating `feature`; the
-        # persistent `rock_N` identity itself is assigned independently
-        # by `RockLandmarkDatabase` (Part 17).
-        landmark_frame_used: str | None = None
-        if self._rock_db is not None and features:
-            map_matrix = self._tf.get_dynamic_matrix(self._map_frame, self._target_frame, stamp)
-            landmark_frame_used = self._map_frame
-            if map_matrix is None:
-                map_matrix = self._tf.get_dynamic_matrix(
-                    self._odom_frame, self._target_frame, stamp
-                )
-                landmark_frame_used = self._odom_frame
-            if map_matrix is None:
-                self.get_logger().warn(
-                    f"No TF to '{self._map_frame}' or '{self._odom_frame}' -- rock "
-                    "landmark association skipped this frame (frame-local obstacle "
-                    "tracking above is unaffected)."
-                )
-                landmark_frame_used = None
-            else:
-                rot = map_matrix[:3, :3]
-                trans = map_matrix[:3, 3]
-                observations = [
-                    RockObservation(
-                        position_map=rot @ f.centroid + trans,
-                        width=f.width,
-                        depth=f.depth,
-                        height=f.height,
-                        classification=f.classification,
-                        confidence=f.confidence if f.confidence is not None else 0.0,
-                        track_id=f.id,
-                        num_points=f.num_points,
-                        distance=f.distance,
-                    )
-                    for f in features
-                ]
-                visible_landmarks = self._rock_db.update(observations, now_sec=self._now_sec())
-                landmark_by_track = {lm.last_track_id: lm for lm in visible_landmarks}
-                for f in features:
-                    lm = landmark_by_track.get(f.id)
-                    if lm is not None:
-                        f.persistent_id = lm.persistent_id
-        elif self._rock_db is not None:
-            # No detections this frame: still age/prune the database so
-            # `currently_visible` flags and timeouts stay correct.
-            self._rock_db.update([], now_sec=self._now_sec())
-        profiler.mark("landmarks")
 
         feature_array_msg = ObstacleFeatureArray()
         feature_array_msg.header = header
         feature_array_msg.obstacles = [_feature_to_msg(f) for f in features]
         self._feature_pub.publish(feature_array_msg)
 
-        markers_to_build = (features + unknown_features) if self._enable_marker_visualization else []
+        markers_to_build = features if self._enable_marker_visualization else []
         marker_array_msg = self._marker_builder.build_marker_array(markers_to_build, header)
         self._marker_pub.publish(marker_array_msg)
 
         # --- Occupancy grid rasterization --------------------------------------
         grid_obstacles = [_feature_to_grid_obstacle(f) for f in features]
-        uncertain_obstacles = [_feature_to_grid_obstacle(f) for f in unknown_features]
-        if self._enable_negative_obstacle_marking and self._terrain_model is not None:
-            for cx, cy in self._terrain_model.missing_patch_centers():
-                uncertain_obstacles.append(
-                    SimpleNamespace(
-                        centroid=SimpleNamespace(x=float(cx), y=float(cy)),
-                        width=self._terrain_patch_size,
-                        height=0.0,
-                        depth=self._terrain_patch_size,
-                    )
-                )
-        occupancy_msg, _grid_stats = self._grid_generator.generate(
-            grid_obstacles,
-            header,
-            uncertain_obstacles=uncertain_obstacles,
-            mark_known_region_free=health.should_report_free,
-        )
+        occupancy_msg, _grid_stats = self._grid_generator.generate(grid_obstacles, header)
         profiler.mark("occupancy")
 
         # --- Costmap inflation (distance transform + exp decay) ----------------
         costmap_msg, _inflation_stats = self._inflator.inflate(occupancy_msg)
         self._costmap_pub.publish(costmap_msg)
         profiler.mark("costmap")
-
-        # --- New structured outputs (Parts 3, 32, 33) ---------------------------
-        self._publish_health(health)
-        self._publish_rock_landmarks(header, landmark_frame_used)
 
         # --- Optional debug topics -----------------------------------------
         if self._publish_debug_topics:
@@ -1138,14 +762,11 @@ class TerrainGeometryNode(Node):
             )
 
         total_ms = profiler.total_ms()
-        self._last_frame_latency_sec = total_ms / 1000.0
         self.get_logger().info(
             f"Frame processed | in={xyz_sensor.shape[0]} pts, "
             f"roi={roi_xyz.shape[0]}, obstacle={obstacle_xyz.shape[0]}, "
             f"voxel={voxel_xyz.shape[0]}, inlier={inlier_xyz.shape[0]}, "
-            f"terrain_dropped={terrain_dropped_count}, unknown={len(unknown_features)}, "
-            f"obstacles={len(features)}, health={health.state.value}, "
-            f"time={total_ms:.2f} ms"
+            f"obstacles={len(features)}, time={total_ms:.2f} ms"
         )
 
         self._maybe_log_profiling_summary(
@@ -1189,17 +810,10 @@ class TerrainGeometryNode(Node):
         stage_breakdown = self._profiler.format_stage_breakdown()
         self.get_logger().info(f"{summary}\nstages: {stage_breakdown}")
 
-    def _publish_empty(self, header: Header, health) -> None:
+    def _publish_empty(self, header: Header) -> None:
         """Publish empty-but-valid outputs so downstream consumers and
         RViz2 both reflect "nothing detected" instead of keeping stale
-        data from the previous frame.
-
-        Part 3: `health.should_report_free` gates whether the occupancy
-        grid's known region may be marked FREE this frame. A skipped
-        frame (empty cloud, missing TF, failed ground segmentation) is
-        always INVALID, so this always ends up UNKNOWN, never FREE --
-        the safety property this whole module exists to guarantee.
-        """
+        data from the previous frame."""
         empty_features = ObstacleFeatureArray()
         empty_features.header = header
         self._feature_pub.publish(empty_features)
@@ -1207,83 +821,9 @@ class TerrainGeometryNode(Node):
         empty_markers = self._marker_builder.build_marker_array([], header)
         self._marker_pub.publish(empty_markers)
 
-        empty_grid_msg, _stats = self._grid_generator.generate(
-            [], header, mark_known_region_free=health.should_report_free
-        )
+        empty_grid_msg, _stats = self._grid_generator.generate([], header)
         empty_costmap_msg, _inflation_stats = self._inflator.inflate(empty_grid_msg)
         self._costmap_pub.publish(empty_costmap_msg)
-
-        self._publish_health(health)
-
-        if self._rock_db is not None:
-            # No detections this frame -- still age/prune the database
-            # (currently_visible flags, timeout pruning) and publish its
-            # current state rather than freezing stale data.
-            self._rock_db.update([], now_sec=self._now_sec())
-        self._publish_rock_landmarks(header, None)
-
-    def _publish_health(self, health) -> None:
-        text = health.state.value
-        if health.reasons:
-            text = f"{text}: {'; '.join(health.reasons)}"
-        self._health_pub.publish(String(data=text))
-
-    def _publish_rock_landmarks(self, header: Header, landmark_frame_used: str | None) -> None:
-        """Publishes the full persistent landmark database (Part 32: a
-        clean structured interface, not RViz marker parsing) plus its
-        RViz2 visualization (Part 33)."""
-        if self._rock_db is None:
-            return
-
-        all_landmarks = self._rock_db.all_landmarks()
-        frame_id = landmark_frame_used or self._map_frame
-        payload = {
-            "frame_id": frame_id,
-            "stamp_sec": self._cloud_stamp_sec(header),
-            "rocks": [
-                {
-                    "persistent_id": lm.persistent_id,
-                    "classification": lm.classification,
-                    "position_map": [float(v) for v in lm.position_map],
-                    "width": lm.dimensions[0],
-                    "depth": lm.dimensions[1],
-                    "height": lm.dimensions[2],
-                    "confidence": lm.confidence,
-                    "currently_visible": lm.currently_visible,
-                    "first_seen": lm.first_seen,
-                    "last_seen": lm.last_seen,
-                    "observation_count": lm.observation_count,
-                }
-                for lm in all_landmarks
-            ],
-        }
-        self._rock_landmarks_pub.publish(String(data=json.dumps(payload)))
-
-        landmark_header = Header()
-        landmark_header.stamp = header.stamp
-        landmark_header.frame_id = frame_id
-        self._rock_landmark_markers_pub.publish(
-            self._marker_builder.build_landmark_marker_array(all_landmarks, landmark_header)
-        )
-
-    def save_landmarks_now(self) -> bool:
-        """Explicit, on-demand landmark persistence (Part 19). Never
-        called from the per-frame callback -- only from `destroy_node`
-        (mission end) or an external trigger -- so disk I/O never
-        blocks the real-time perception path."""
-        if self._rock_db is None or not self._landmarks_save_path:
-            return False
-        try:
-            self._rock_db.save_to_file(self._landmarks_save_path)
-            self.get_logger().info(f"Saved rock landmarks to {self._landmarks_save_path}")
-            return True
-        except OSError as exc:
-            self.get_logger().error(f"Failed to save rock landmarks: {exc}")
-            return False
-
-    def destroy_node(self) -> bool:
-        self.save_landmarks_now()
-        return super().destroy_node()
 
 
 def main(args: list[str] | None = None) -> None:

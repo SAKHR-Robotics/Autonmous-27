@@ -11,22 +11,15 @@ Example override:
         cluster_eps:=0.25 publish_debug_topics:=true
 """
 
-import os
-from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
 def generate_launch_description() -> LaunchDescription:
-    pkg_share = get_package_share_directory('terrain_geometry')
-    rviz_config = os.path.join(pkg_share, 'rviz', 'terrain_geometry_view.rviz')
-
     args = [
         DeclareLaunchArgument("use_sim_time", default_value="true", description="Use simulation clock if true"),
-        DeclareLaunchArgument("launch_rviz", default_value="true", description="Launch RViz with combined terrain and SLAM config"),
         DeclareLaunchArgument("input_pointcloud_topic", default_value="/camera/depth/color/points"),
         DeclareLaunchArgument("target_frame", default_value="base_link"),
         DeclareLaunchArgument("tf_timeout_sec", default_value="0.2"),
@@ -94,7 +87,7 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument("inflate_unknown_cells", default_value="false"),
 
         # Debug
-        DeclareLaunchArgument("publish_debug_topics", default_value="true"),
+        DeclareLaunchArgument("publish_debug_topics", default_value="false"),
 
         # Performance profiling
         DeclareLaunchArgument("enable_performance_profiling", default_value="false"),
@@ -132,14 +125,4 @@ def generate_launch_description() -> LaunchDescription:
         parameters=[{name: LaunchConfiguration(name) for name in param_names}],
     )
 
-    rviz_node = Node(
-        package="rviz2",
-        executable="rviz2",
-        name="rviz2",
-        arguments=["-d", rviz_config],
-        parameters=[{"use_sim_time": LaunchConfiguration("use_sim_time")}],
-        condition=IfCondition(LaunchConfiguration("launch_rviz")),
-        output="screen",
-    )
-
-    return LaunchDescription(args + [terrain_node, rviz_node])
+    return LaunchDescription(args + [terrain_node])

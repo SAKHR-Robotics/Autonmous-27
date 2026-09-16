@@ -31,29 +31,6 @@ from visualization_msgs.msg import Marker, MarkerArray
 
 from terrain_geometry.obstacle_features import ObstacleFeature
 
-try:  # pragma: no cover - typing only, avoids a hard import cycle at runtime
-    from terrain_geometry.rock_landmarks import RockLandmark
-except ImportError:  # pragma: no cover
-    RockLandmark = object  # type: ignore[assignment,misc]
-
-
-# Cube color per classification label (Part 33: "must make it immediately
-# obvious whether the algorithm thinks a slope is terrain or an
-# obstacle"). Falls back to the original cyan for any unrecognized/unset
-# label so pre-classification callers see unchanged behavior.
-_CLASSIFICATION_COLORS: dict[str, tuple] = {
-    "ROCK": (0.9, 0.25, 0.1, 0.65),      # red-orange
-    "OBSTACLE": (0.95, 0.85, 0.1, 0.6),  # yellow
-    "STEP": (0.6, 0.2, 0.9, 0.6),        # purple
-    "UNKNOWN": (0.5, 0.5, 0.5, 0.5),     # gray
-    "TERRAIN": (0.2, 0.8, 0.2, 0.35),    # green, translucent (rarely shown --
-                                          # TERRAIN clusters are normally
-                                          # filtered out upstream, but kept
-                                          # here so a debug caller can still
-                                          # visualize them distinctly).
-}
-_DEFAULT_CUBE_COLOR = (0.1, 0.7, 1.0, 0.5)
-
 
 class ObstacleMarkerBuilder:
     """Builds a MarkerArray of cube + text markers for detected obstacles.
@@ -179,8 +156,7 @@ class ObstacleMarkerBuilder:
             )
         marker.pose = pose
 
-        classification = getattr(obstacle, "classification", None)
-        r, g, b, a = _CLASSIFICATION_COLORS.get(classification, _DEFAULT_CUBE_COLOR)
+        r, g, b, a = self.CUBE_COLOR
         marker.color.r = r
         marker.color.g = g
         marker.color.b = b
@@ -234,106 +210,10 @@ class ObstacleMarkerBuilder:
         marker.color.b = b
         marker.color.a = a
 
-        # Prefer the persistent world-frame identity (Part 33: "each
-        # persistent rock should display rock_7 near its location")
-        # once the landmark database has assigned one; fall back to the
-        # frame-local ID before that happens.
-        persistent_id = getattr(obstacle, "persistent_id", None)
-        classification = getattr(obstacle, "classification", None)
-        label = persistent_id if persistent_id else f"ID {obstacle.id}"
-        if classification and classification not in ("UNKNOWN",):
-            label = f"{label} ({classification})"
-        marker.text = label
+        marker.text = f"ID {obstacle.id}"
 
         marker.lifetime.sec = 0
         marker.lifetime.nanosec = 0
         marker.frame_locked = False
 
-        return marker
-
-    # ------------------------------------------------------------------ #
-    # Persistent landmark markers (Part 33) -- separate namespace/topic
-    # from the per-frame obstacle markers above, since a landmark can be
-    # in the database (and worth showing, dimmed, in RViz2) even when it
-    # is not part of this frame's live obstacle list.
-    # ------------------------------------------------------------------ #
-
-    LANDMARK_NAMESPACE = "rock_landmarks"
-    LANDMARK_LABEL_NAMESPACE = "rock_landmark_labels"
-    VISIBLE_COLOR = (0.9, 0.25, 0.1, 0.8)     # currently seen -- solid red-orange
-    REMEMBERED_COLOR = (0.6, 0.6, 0.6, 0.35)  # known but not currently visible -- dim gray
-
-    def build_landmark_marker_array(
-        self, landmarks: list, header: Header
-    ) -> MarkerArray:
-        """Build a MarkerArray for the persistent rock landmark database.
-
-        Args:
-            landmarks: List of `RockLandmark` (map/world frame).
-            header: Header whose `frame_id` MUST be the landmark
-                database's stable frame (e.g. "map"), not base_link --
-                the caller (terrain_node.py) is responsible for that.
-
-        Returns:
-            A sphere + text marker per landmark, colored/opacity-coded
-            by `currently_visible` (Part 33: "differentiate currently
-            visible / known but not currently visible").
-        """
-        marker_array = MarkerArray()
-        marker_array.markers.append(self._build_delete_all_marker(header))
-
-        for idx, lm in enumerate(landmarks):
-            marker_array.markers.append(self._build_landmark_sphere(lm, header, idx))
-            marker_array.markers.append(self._build_landmark_label(lm, header, idx))
-
-        return marker_array
-
-    def _build_landmark_sphere(self, lm, header: Header, idx: int) -> Marker:
-        marker = Marker()
-        marker.header = header
-        marker.ns = self.LANDMARK_NAMESPACE
-        marker.id = idx
-        marker.type = Marker.SPHERE
-        marker.action = Marker.ADD
-
-        pos = lm.position_map
-        marker.pose.position = Point(x=float(pos[0]), y=float(pos[1]), z=float(pos[2]))
-        marker.pose.orientation.w = 1.0
-
-        width, depth, height = lm.dimensions
-        marker.scale = Vector3(
-            x=max(float(depth), self.MIN_CUBE_DIMENSION),
-            y=max(float(width), self.MIN_CUBE_DIMENSION),
-            z=max(float(height), self.MIN_CUBE_DIMENSION),
-        )
-
-        r, g, b, a = self.VISIBLE_COLOR if lm.currently_visible else self.REMEMBERED_COLOR
-        marker.color.r, marker.color.g, marker.color.b, marker.color.a = r, g, b, a
-        marker.lifetime.sec = 0
-        marker.lifetime.nanosec = 0
-        return marker
-
-    def _build_landmark_label(self, lm, header: Header, idx: int) -> Marker:
-        marker = Marker()
-        marker.header = header
-        marker.ns = self.LANDMARK_LABEL_NAMESPACE
-        marker.id = idx
-        marker.type = Marker.TEXT_VIEW_FACING
-        marker.action = Marker.ADD
-
-        pos = lm.position_map
-        _, _, height = lm.dimensions
-        marker.pose.position = Point(
-            x=float(pos[0]), y=float(pos[1]), z=float(pos[2]) + float(height) / 2.0 + self.LABEL_Z_OFFSET
-        )
-        marker.pose.orientation.w = 1.0
-        marker.scale.z = self.LABEL_TEXT_HEIGHT
-
-        r, g, b, a = self.LABEL_COLOR
-        marker.color.r, marker.color.g, marker.color.b, marker.color.a = r, g, b, a
-
-        visibility = "" if lm.currently_visible else " (remembered)"
-        marker.text = f"{lm.persistent_id}{visibility}"
-        marker.lifetime.sec = 0
-        marker.lifetime.nanosec = 0
         return marker

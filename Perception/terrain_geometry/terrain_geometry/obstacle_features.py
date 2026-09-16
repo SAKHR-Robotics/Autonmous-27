@@ -247,36 +247,6 @@ class ObstacleFeature:
     obb_extents: Optional[np.ndarray] = None
     obb_quaternion: Optional[tuple] = None
 
-    # --- Additive fields (terrain/rock upgrade) -----------------------
-    # These are populated by terrain_classification.classify_cluster()
-    # and confidence.compute_confidence() downstream of this extractor
-    # (terrain_node.py wires them in after feature extraction, before
-    # tracking). They are NOT part of `ObstacleFeature.msg` and are
-    # never serialized onto the ROS message by `_feature_to_msg()` --
-    # purely additive, so nothing about the existing message schema
-    # changes. Left at their defaults, every existing caller of
-    # `ObstacleFeatureExtractor` behaves exactly as before.
-    #
-    #   classification: One of `terrain_classification.
-    #       TerrainClassification`'s labels ("TERRAIN", "ROCK",
-    #       "OBSTACLE", "STEP", "UNKNOWN"). Defaults to "UNKNOWN"
-    #       until the classification stage runs.
-    #   height_above_terrain: Representative height (m) above the
-    #       local terrain surface (Part 7), not a global threshold.
-    #   local_slope_deg / roughness: Local terrain surface stats under
-    #       this cluster (Part 6).
-    #   confidence: 0..1 detection confidence (Part 24).
-    #   persistent_id: The `RockLandmarkDatabase` ID (e.g. "rock_7")
-    #       this detection was associated with this frame, if any
-    #       (Part 11). None for TERRAIN/UNKNOWN clusters, which are
-    #       never given a persistent identity.
-    classification: str = "UNKNOWN"
-    height_above_terrain: Optional[float] = None
-    local_slope_deg: Optional[float] = None
-    roughness: Optional[float] = None
-    confidence: Optional[float] = None
-    persistent_id: Optional[str] = None
-
 
 # ---------------------------------------------------------------------------
 # Feature extraction
