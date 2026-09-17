@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake \
     git \
     python3-pip \
+    python3-tk \
     python3-colcon-common-extensions \
     python3-rosdep \
     python3-vcstool \

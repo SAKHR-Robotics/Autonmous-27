@@ -21,19 +21,11 @@
     <material>Gazebo/Grey</material>
   </gazebo>
   
-  <gazebo reference="left_middle_arm_link">
-    <material>Gazebo/Grey</material>
-  </gazebo>
-  
   <gazebo reference="left_rear_arm_link">
     <material>Gazebo/Grey</material>
   </gazebo>
   
   <gazebo reference="right_front_arm_link">
-    <material>Gazebo/Grey</material>
-  </gazebo>
-  
-  <gazebo reference="right_middle_arm_link">
     <material>Gazebo/Grey</material>
   </gazebo>
   
@@ -44,14 +36,6 @@
   <!-- Wheel Gazebo Properties -->
   <!-- High friction for wheels, low damping for smooth rolling -->
   <gazebo reference="left_front_wheel_link">
-    <material>Gazebo/Black</material>
-    <mu1>1.0</mu1>
-    <mu2>1.0</mu2>
-    <kp>1000000.0</kp>
-    <kd>1.0</kd>
-  </gazebo>
-  
-  <gazebo reference="left_middle_wheel_link">
     <material>Gazebo/Black</material>
     <mu1>1.0</mu1>
     <mu2>1.0</mu2>
@@ -75,14 +59,6 @@
     <kd>1.0</kd>
   </gazebo>
   
-  <gazebo reference="right_middle_wheel_link">
-    <material>Gazebo/Black</material>
-    <mu1>1.0</mu1>
-    <mu2>1.0</mu2>
-    <kp>1000000.0</kp>
-    <kd>1.0</kd>
-  </gazebo>
-  
   <gazebo reference="right_rear_wheel_link">
     <material>Gazebo/Black</material>
     <mu1>1.0</mu1>
@@ -93,15 +69,13 @@
 
   <!-- Differential Drive Plugin for Gazebo (ROS 2 Jazzy) -->
   <!-- This plugin allows controlling the robot using /cmd_vel topic -->
-  <!-- It simulates a 6-wheel skid-steer rover -->
+  <!-- It simulates a 4-wheel tank-style skid-steer rover -->
   <gazebo>
     <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
-      <!-- Wheel joints to control (all 6 wheels for skid-steer drive) -->
+      <!-- Wheel joints to control (4 wheels for 4WD tank-style skid-steer drive) -->
       <left_joint>left_front_wheel_joint</left_joint>
-      <left_joint>left_middle_wheel_joint</left_joint>
       <left_joint>left_rear_wheel_joint</left_joint>
       <right_joint>right_front_wheel_joint</right_joint>
-      <right_joint>right_middle_wheel_joint</right_joint>
       <right_joint>right_rear_wheel_joint</right_joint>
       
       <!-- Wheel separation and diameter -->

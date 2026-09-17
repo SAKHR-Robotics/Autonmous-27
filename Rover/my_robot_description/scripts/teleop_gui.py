@@ -84,10 +84,32 @@ class TeleopGUI:
         
         # Status Label
         self.lbl_status = tk.Label(root, text="Status: IDLE (Press Arrow keys to drive)", font=("Helvetica", 10, "italic"), fg="#808e9b", bg="#1e272e")
-        self.lbl_status.pack(pady=6)
+        self.lbl_status.pack(pady=4)
+
+        # Telemetry Dashboard Launch Button
+        self.btn_dash = tk.Button(
+            root,
+            text="📊 Open Telemetry & IMU Visualizer",
+            font=("Helvetica", 9, "bold"),
+            bg="#0984e3",
+            fg="#ffffff",
+            activebackground="#74b9ff",
+            cursor="hand2",
+            command=self.open_telemetry_dashboard
+        )
+        self.btn_dash.pack(pady=(2, 6))
         
         # 10Hz Timer to continuously publish velocity commands to Gazebo
         self.timer = self.node.create_timer(0.1, self.timer_publish_callback)
+        
+    def open_telemetry_dashboard(self):
+        import subprocess
+        import os
+        script_path = os.path.join(os.path.dirname(__file__), "telemetry_dashboard.py")
+        if os.path.exists(script_path):
+            subprocess.Popen([sys.executable, script_path])
+        else:
+            subprocess.Popen(["ros2", "run", "my_robot_description", "telemetry_dashboard.py"])
         
     def update_speeds(self, event=None):
         self.linear_speed = float(self.scale_lin.get())

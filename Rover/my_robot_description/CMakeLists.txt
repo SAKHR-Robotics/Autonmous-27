@@ -32,9 +32,10 @@ install(DIRECTORY
   DESTINATION share/${PROJECT_NAME}
 )
 
-# Install teleop GUI script
+# Install teleop and telemetry dashboard GUI scripts
 install(PROGRAMS
   scripts/teleop_gui.py
+  scripts/telemetry_dashboard.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

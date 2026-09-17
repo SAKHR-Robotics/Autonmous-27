@@ -80,7 +80,7 @@ class EncoderTicksToOdomNode(Node):
         self.declare_parameter("wheel_radius", 0.06)
 
         # CUSTOMIZE WITH MECHANICAL TEAM: Left-to-right wheel baseline distance in meters
-        self.declare_parameter("track_width", 0.42)
+        self.declare_parameter("track_width", 0.49)
 
         # CUSTOMIZE WITH HARDWARE/SLAM TEAM: Set True if node should publish odom -> base_link TF
         self.declare_parameter("publish_tf", False)
@@ -92,10 +92,10 @@ class EncoderTicksToOdomNode(Node):
         self.declare_parameter(
             "wheel_names",
             [
-                "front_left",
-                "front_right",
-                "rear_left",
-                "rear_right",
+                "left_front",
+                "right_front",
+                "left_rear",
+                "right_rear",
             ],
         )
 
@@ -209,7 +209,9 @@ class EncoderTicksToOdomNode(Node):
         """
         for idx, name in enumerate(msg.name):
             for wheel_name in self.wheel_names:
-                if wheel_name in name and idx < len(msg.position):
+                parts = wheel_name.split("_")
+                inverted = f"{parts[1]}_{parts[0]}" if len(parts) == 2 else wheel_name
+                if (wheel_name in name or inverted in name) and idx < len(msg.position):
                     rad_pos: float = msg.position[idx]
                     ticks: int = int((rad_pos / (2.0 * math.pi)) * self.ticks_per_rev)
                     self._update_single_wheel_tick(wheel_name, ticks)
