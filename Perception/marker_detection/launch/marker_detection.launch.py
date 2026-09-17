@@ -10,15 +10,12 @@ import os
 def generate_launch_description() -> LaunchDescription:
     default_params = os.path.join(get_package_share_directory("marker_detection"), "config", "marker_detection.yaml")
     return LaunchDescription([
-        DeclareLaunchArgument("use_sim_time", default_value="false"),
+        DeclareLaunchArgument("use_sim_time", default_value="true"),
         DeclareLaunchArgument("params_file", default_value=default_params),
-        # Section 3/4 fix: these launch args are appended *after* params_file in the
-        # Node's parameters list below, so they win over config/marker_detection.yaml --
-        # their defaults must therefore also be the correct RealSense-aligned topics,
-        # not generic placeholders, or a correct YAML would be silently overridden.
-        DeclareLaunchArgument("rgb_topic", default_value="/camera/color/image_raw"),
-        DeclareLaunchArgument("depth_topic", default_value="/camera/aligned_depth_to_color/image_raw"),
-        DeclareLaunchArgument("camera_info_topic", default_value="/camera/color/camera_info"),
+        # Unified Workspace Standard topics (matches Gazebo, SLAM, and Perception)
+        DeclareLaunchArgument("rgb_topic", default_value="/camera/image_raw"),
+        DeclareLaunchArgument("depth_topic", default_value="/camera/depth/image_raw"),
+        DeclareLaunchArgument("camera_info_topic", default_value="/camera/camera_info"),
         Node(package="marker_detection", executable="marker_detection_node", name="marker_detection",
              output="screen", parameters=[LaunchConfiguration("params_file"), {
                  "use_sim_time": LaunchConfiguration("use_sim_time"),

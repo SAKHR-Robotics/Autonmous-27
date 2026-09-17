@@ -6,10 +6,11 @@ marker_detection:
     # these previously pointed at generic /camera/image_raw-style topics that
     # do not exist on a real D435 driver and are not geometrically compatible
     # with RGB-based detection. Adjust only the camera_name/namespace portion
-    # if your RealSense launch uses a non-default namespace.
-    rgb_topic: "/camera/color/image_raw"
-    depth_topic: "/camera/aligned_depth_to_color/image_raw"
-    camera_info_topic: "/camera/color/camera_info"
+    # Unified Workspace Standard topics (aligned with Gazebo, SLAM, and Perception)
+    # When deploying on physical rover with RealSense, remap RealSense topics to these names.
+    rgb_topic: "/camera/image_raw"
+    depth_topic: "/camera/depth/image_raw"
+    camera_info_topic: "/camera/camera_info"
     # Priority 3 (engineering audit follow-up): CameraInfo age was already reported
     # diagnostically but never enforced -- once older than this, pose estimation is
     # skipped for that frame (2D detection keeps running) until a fresh message

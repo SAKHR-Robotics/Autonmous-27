@@ -189,6 +189,7 @@ def launch_setup(context, *args, **kwargs):
             f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
             f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/depth_image@sensor_msgs/msg/Image[gz.msgs.Image',
             f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked',
+            f'/model/my_robot/tf@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V',
         ],
         remappings=[
             ('/imu', '/imu/data'),
@@ -197,6 +198,7 @@ def launch_setup(context, *args, **kwargs):
             (f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/camera_info', '/camera/camera_info'),
             (f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/depth_image', '/camera/depth/image_raw'),
             (f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/points', '/camera/depth/color/points'),
+            (f'/model/my_robot/tf', '/tf'),
         ],
         output='screen'
     )
@@ -212,12 +214,40 @@ def launch_setup(context, *args, **kwargs):
         output='screen'
     )
 
+    # Static transform publisher to bridge camera_link to Gazebo's camera sensor frame
+    camera_tf_node = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='camera_optical_bridge',
+        arguments=['--x', '0', '--y', '0', '--z', '0',
+                   '--roll', '0', '--pitch', '0', '--yaw', '0',
+                   '--frame-id', 'camera_link',
+                   '--child-frame-id', 'my_robot/camera_link/camera'],
+        parameters=[{'use_sim_time': True}],
+        output='screen'
+    )
+
+    # Static transform publisher to bridge map to odom (enables fixed map frame in RViz without running full SLAM)
+    map_to_odom_node = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='map_to_odom_bridge',
+        arguments=['--x', '0', '--y', '0', '--z', '0',
+                   '--roll', '0', '--pitch', '0', '--yaw', '0',
+                   '--frame-id', 'map',
+                   '--child-frame-id', 'odom'],
+        parameters=[{'use_sim_time': True}],
+        output='screen'
+    )
+
     return [
         gazebo,
         robot_state_publisher_node,
         joint_state_publisher_node,
         spawn_entity,
-        bridge
+        bridge,
+        camera_tf_node,
+        map_to_odom_node
     ]
 
 

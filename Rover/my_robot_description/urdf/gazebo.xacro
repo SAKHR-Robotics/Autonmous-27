@@ -121,7 +121,7 @@
       <!-- Odometry -->
       <odom_publish_frequency>50</odom_publish_frequency>
       <odom_topic>odom</odom_topic>
-      <tf_topic>tf</tf_topic>
+      <tf_topic>/model/my_robot/tf</tf_topic>
       
       <!-- Frame IDs -->
       <frame_id>odom</frame_id>

@@ -23,14 +23,13 @@ from launch.substitutions import LaunchConfiguration
 def generate_launch_description() -> LaunchDescription:
     share = get_package_share_directory("marker_detection")
 
-    # Section 3/4 fix: default to the RealSense D435 RGB + aligned-depth + matching
-    # color CameraInfo triplet, not generic /camera/... topics (see marker_detection.launch.py).
-    use_sim_time_arg = DeclareLaunchArgument("use_sim_time", default_value="false")
-    rgb_topic_arg = DeclareLaunchArgument("rgb_topic", default_value="/camera/color/image_raw")
+    # Unified Workspace Standard topics (aligned with Gazebo, SLAM, and Perception)
+    use_sim_time_arg = DeclareLaunchArgument("use_sim_time", default_value="true")
+    rgb_topic_arg = DeclareLaunchArgument("rgb_topic", default_value="/camera/image_raw")
     depth_topic_arg = DeclareLaunchArgument(
-        "depth_topic", default_value="/camera/aligned_depth_to_color/image_raw")
+        "depth_topic", default_value="/camera/depth/image_raw")
     camera_info_topic_arg = DeclareLaunchArgument(
-        "camera_info_topic", default_value="/camera/color/camera_info")
+        "camera_info_topic", default_value="/camera/camera_info")
 
     detection = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(share, "launch", "marker_detection.launch.py")),

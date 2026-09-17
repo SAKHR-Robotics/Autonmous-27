@@ -12,8 +12,8 @@ def generate_launch_description() -> LaunchDescription:
     return LaunchDescription([
         DeclareLaunchArgument(
             'use_sim_time',
-            default_value='false',
-            description='Use simulation (Gazebo) clock if true. Real-hardware default: false.'
+            default_value='true',
+            description='Use simulation (Gazebo) clock if true.'
         ),
         Node(
             package='rviz2',

@@ -45,11 +45,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-opencv \
     python3-numpy \
     python3-scipy \
+    python3-sklearn \
     # System Utility Tools
     mesa-utils \
     net-tools \
     iputils-ping \
     && rm -rf /var/lib/apt-get/lists/*
+
+# Install Patchwork++ for fast 3D ground plane segmentation
+RUN pip3 install --no-cache-dir --break-system-packages pypatchworkpp
 
 # Initialize rosdep if not already initialized
 RUN if [ ! -f /etc/ros/rosdep/sources.list.d/20-default.list ]; then rosdep init; fi && rosdep update

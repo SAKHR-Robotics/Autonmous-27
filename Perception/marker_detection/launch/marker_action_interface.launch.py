@@ -13,7 +13,7 @@ def generate_launch_description() -> LaunchDescription:
     default_params = os.path.join(
         get_package_share_directory("marker_detection"), "config", "marker_action_interface.yaml")
     return LaunchDescription([
-        DeclareLaunchArgument("use_sim_time", default_value="false"),
+        DeclareLaunchArgument("use_sim_time", default_value="true"),
         DeclareLaunchArgument("params_file", default_value=default_params),
         Node(package="marker_detection", executable="marker_action_interface_node",
              name="marker_action_interface", output="screen",

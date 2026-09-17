@@ -1,19 +1,24 @@
 Panels:
   - Class: rviz_common/Displays
-    Help Height: 237
+    Help Height: 150
     Name: Displays
     Property Tree Widget:
       Expanded:
         - /Global Options1
         - /Status1
+        - /TF1
+        - /Terrain Costmap1
+        - /Terrain Obstacle Markers1
+        - /Marker Map Visualization1
+        - /Camera RGB Feed1
       Splitter Ratio: 0.5
-    Tree Height: 616
+    Tree Height: 500
   - Class: rviz_common/Selection
     Name: Selection
   - Class: rviz_common/Tool Properties
     Expanded: ~
     Name: Tool Properties
-    Splitter Ratio: 0.5879999995231628
+    Splitter Ratio: 0.588
   - Class: rviz_common/Views
     Expanded:
       - /Current View1
@@ -28,7 +33,7 @@ Visualization Manager:
       Color: 160; 160; 164
       Enabled: true
       Line Style:
-        Line Width: 0.029999999329447746
+        Line Width: 0.03
         Value: Lines
       Name: Grid
       Normal Cell Count: 0
@@ -47,72 +52,11 @@ Visualization Manager:
       Frame Timeout: 15
       Frames:
         All Enabled: true
-        base_footprint:
-          Value: true
-        base_link:
-          Value: true
-        camera_link:
-          Value: true
-        imu_link:
-          Value: true
-        left_front_arm_link:
-          Value: true
-        left_front_wheel_link:
-          Value: true
-        left_middle_arm_link:
-          Value: true
-        left_middle_wheel_link:
-          Value: true
-        left_rear_arm_link:
-          Value: true
-        left_rear_wheel_link:
-          Value: true
-        my_robot/camera_link/camera:
-          Value: true
-        right_front_arm_link:
-          Value: true
-        right_front_wheel_link:
-          Value: true
-        right_middle_arm_link:
-          Value: true
-        right_middle_wheel_link:
-          Value: true
-        right_rear_arm_link:
-          Value: true
-        right_rear_wheel_link:
-          Value: true
-      Marker Scale: 0.30000001192092896
+      Marker Scale: 0.3
       Name: TF
       Show Arrows: true
       Show Axes: true
       Show Names: true
-      Tree:
-        base_link:
-          base_footprint:
-            {}
-          camera_link:
-            my_robot/camera_link/camera:
-              {}
-          imu_link:
-            {}
-          left_front_arm_link:
-            left_front_wheel_link:
-              {}
-          left_middle_arm_link:
-            left_middle_wheel_link:
-              {}
-          left_rear_arm_link:
-            left_rear_wheel_link:
-              {}
-          right_front_arm_link:
-            right_front_wheel_link:
-              {}
-          right_middle_arm_link:
-            right_middle_wheel_link:
-              {}
-          right_rear_arm_link:
-            right_rear_wheel_link:
-              {}
       Update Interval: 0
       Value: true
     - Alpha: 1
@@ -132,7 +76,7 @@ Visualization Manager:
       Update Interval: 0
       Value: true
       Visual Enabled: true
-    - Alpha: 0.699999988079071
+    - Alpha: 0.7
       Binary representation: false
       Binary threshold: 100
       Class: rviz_default_plugins/Map
@@ -167,6 +111,18 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /terrain/obstacle_markers
       Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Marker Map Visualization
+      Namespaces:
+        {}
+      Topic:
+        Depth: 10
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /marker_map/visualization
+      Value: true
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -179,7 +135,7 @@ Visualization Manager:
       Color: 255; 255; 255
       Color Transformer: RGB8
       Decay Time: 0
-      Enabled: false
+      Enabled: true
       Invert Rainbow: false
       Max Color: 255; 255; 255
       Max Intensity: 4096
@@ -189,7 +145,7 @@ Visualization Manager:
       Position Transformer: XYZ
       Selectable: true
       Size (Pixels): 2
-      Size (m): 0.009999999776482582
+      Size (m): 0.01
       Style: Flat Squares
       Topic:
         Depth: 5
@@ -222,7 +178,7 @@ Visualization Manager:
       Position Transformer: XYZ
       Selectable: true
       Size (Pixels): 3
-      Size (m): 0.019999999552965164
+      Size (m): 0.02
       Style: Flat Squares
       Topic:
         Depth: 5
@@ -255,7 +211,7 @@ Visualization Manager:
       Position Transformer: XYZ
       Selectable: true
       Size (Pixels): 2
-      Size (m): 0.009999999776482582
+      Size (m): 0.01
       Style: Flat Squares
       Topic:
         Depth: 5
@@ -280,30 +236,34 @@ Visualization Manager:
         Reliability Policy: Best Effort
         Value: /camera/image_raw
       Value: true
-    - Class: rviz_default_plugins/Camera
-      Enabled: false
-      Far Plane Distance: 100
-      Image Rendering: background and overlay
-      Name: Camera
-      Overlay Alpha: 0.5
+    - Class: rviz_default_plugins/Image
+      Enabled: true
+      Max Value: 1
+      Median window: 5
+      Min Value: 0
+      Name: Marker 2D Detection Debug Feed
+      Normalize Range: false
       Topic:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /camera/image_raw
-      Value: false
-      Visibility:
-        Camera Depth Points: true
-        Camera RGB Feed: true
-        Debug Clustered Cloud: true
-        Debug Ground Cloud: true
-        Grid: true
-        TF: true
-        Terrain Costmap: true
-        Terrain Obstacle Markers: true
-        Value: true
-      Zoom Factor: 1
+        Reliability Policy: Best Effort
+        Value: /marker_detection/debug_image
+      Value: true
+    - Class: rviz_default_plugins/Image
+      Enabled: true
+      Max Value: 1
+      Median window: 5
+      Min Value: 0
+      Name: Marker 3D Pose Debug Feed
+      Normalize Range: false
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /marker_detection/pose_debug_image
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -325,43 +285,13 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 11.464488983154297
-      Enable Stereo Rendering:
-        Stereo Eye Separation: 0.05999999865889549
-        Stereo Focal Distance: 1
-        Swap Stereo Eyes: false
-        Value: false
+      Distance: 10.0
       Focal Point:
-        X: 4.773373126983643
-        Y: -2.502812385559082
-        Z: 2.5569820404052734
-      Focal Shape Fixed Size: true
-      Focal Shape Size: 0.05000000074505806
-      Invert Z Axis: false
+        X: 2.0
+        Y: 0.0
+        Z: 0.5
       Name: Current View
-      Near Clip Distance: 0.009999999776482582
-      Pitch: 0.10500004887580872
+      Pitch: 0.3
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz_default_plugins)
-      Yaw: 3.1950161457061768
-    Saved: ~
-Window Geometry:
-  Camera:
-    collapsed: false
-  Camera RGB Feed:
-    collapsed: false
-  Displays:
-    collapsed: false
-  Height: 1011
-  Hide Left Dock: false
-  Hide Right Dock: false
-  QMainWindow State: 000000ff00000000fd0000000100000000000001c900000395fc0200000005fb000000100044006900730070006c006100790073010000003f00000395000000cc00fffffffb0000001200530065006c0065006300740069006f006e0000000136000000600000005d00fffffffb0000001e0054006f006f006c002000500072006f00700065007200740069006500730000000165000000740000005d00fffffffc00000252000000990000000000fffffffaffffffff0100000002fb0000001e00430061006d006500720061002000520047004200200046006500650064020000004200000297000001c900000099fb0000000a005600690065007700730000000000000001c90000010000fffffffb0000000c00430061006d00650072006100000002c1000001130000001700ffffff0000056f0000039500000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
-  Selection:
-    collapsed: false
-  Tool Properties:
-    collapsed: false
-  Views:
-    collapsed: false
-  Width: 1854
-  X: 66
-  Y: 32
+      Yaw: 3.14
