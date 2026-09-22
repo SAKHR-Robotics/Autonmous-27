@@ -55,12 +55,13 @@ rover_slam/
 │   ├── vision_helper.launch.py  # Camera depth filters & ArUco detector launch
 │   └── costmap.launch.py        # Nav2 Costmap 2D server launch
 ├── rover_slam/
-│   ├── encoder_ticks_to_odom.py  # Converts raw wheel ticks to nav_msgs/Odometry Twist
-│   ├── heuristic_slip_checker.py # Compares wheel vs IMU & updates covariance
+│   ├── encoder_ticks_to_odom.py  # Converts raw wheel ticks to nav_msgs/Odometry Twist & isolates single-wheel slip
+│   ├── heuristic_slip_checker.py # Compares wheel vs IMU, suppresses false velocity, and scales covariance
 │   ├── aruco_detector_node.py    # OpenCV ArUco detector & PnP solver
 │   └── costmap_test_stub.py      # Test stub simulating perception rock clouds
 └── test/
-    └── test_slip_checker.py      # Unit test suite
+    ├── test_encoder_ticks_to_odom.py # Unit tests for robust side velocity & kinematics
+    └── test_slip_checker.py          # Unit tests for slip detection & covariance logic
 ```
 
 ## 🛠️ System Dependencies Installation
@@ -142,3 +143,23 @@ Run the full system integration launch combining all sub-systems:
 ```bash
 ros2 launch rover_slam slam_bringup.launch.py
 ```
+
+---
+
+## 🛞 Wheel Slip Detection & IMU Fusion Pipeline
+
+### Multi-Stage Traction Validation
+1. **Intra-Side Single-Wheel Slip Isolation (`encoder_ticks_to_odom.py`)**:
+   * Cross-evaluates front vs rear wheels on each side (`|v_front - v_rear| > single_wheel_slip_threshold`).
+   * Rejects free-spinning wheels by bounding side speed to the lower-magnitude traction wheel.
+   * Publishes `/wheel/single_wheel_slip` (`std_msgs/msg/Bool`).
+2. **Kinematic & Impact Verification (`heuristic_slip_checker.py`)**:
+   * Subscribes to `/wheel/single_wheel_slip` and flags slip when individual wheels lose traction.
+   * Compares wheel yaw rate $w_{wheel}$ against IMU calibrated gyroscope $w_{imu,z}$.
+   * Symmetrically detects forward/reverse collision impact decelerations and sustained obstacle stalls.
+   * Detects stalled takeoff from rest across both forward and reverse commands.
+3. **Dynamic Odometry Clamping & Covariance Scaling**:
+   * On slip detection, clamps `filtered_odom.twist.twist.linear.x = 0.0` and `linear.y = 0.0`, preventing false EKF dead-reckoning forward motion while stuck or spinning.
+   * Directs calibrated IMU gyroscope rate `angular.z = w_imu` into filtered odometry.
+   * Inflates twist and pose covariance by `covariance_inflation_factor` (100x), commanding EKF to discount slipping wheel data.
+

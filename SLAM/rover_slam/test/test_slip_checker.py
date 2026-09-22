@@ -369,3 +369,46 @@ def test_ekf_configuration_uses_filtered_odometry():
     assert ekf_params["odom0"] == "/wheel/odom_filtered", (
         f"Expected odom0 to be '/wheel/odom_filtered', but got '{ekf_params['odom0']}'"
     )
+
+
+def test_single_wheel_slip_flags_slip():
+    """Verify that when single_wheel_slip is reported, slip is detected and covariance inflated."""
+    core = SlipCheckerCore(covariance_scale=100.0)
+
+    # Driving at 0.3 m/s, matching gyro and accel, but one wheel is slipping
+    is_slipping, lin_cov, ang_cov = core.evaluate(
+        v_wheel=0.3,
+        w_wheel=0.0,
+        w_imu=0.0,
+        a_imu_x=0.0,
+        current_time_sec=1.0,
+        single_wheel_slip=True,
+    )
+    assert is_slipping
+    assert lin_cov == pytest.approx(2.0)
+    assert ang_cov == pytest.approx(5.0)
+    assert core.last_slip_reason == "SingleWheelSlip"
+
+
+def test_reverse_stalled_on_takeoff():
+    """Verify that spinning wheels in reverse from rest without chassis acceleration triggers slip."""
+    core = SlipCheckerCore(covariance_scale=100.0)
+
+    # Stationary at t=1.0s
+    core.evaluate(v_wheel=0.0, w_wheel=0.0, w_imu=0.0, a_imu_x=0.0, current_time_sec=1.0)
+
+    # Reverse wheels spin to -0.4 m/s while chassis remains stationary
+    current_time = 1.0
+    for _ in range(15):  # 300ms window (> 280ms threshold)
+        current_time += 0.02
+        is_slipping, lin_cov, _ = core.evaluate(
+            v_wheel=-0.4,
+            w_wheel=0.0,
+            w_imu=0.0,
+            a_imu_x=0.0,
+            current_time_sec=current_time,
+        )
+
+    assert is_slipping
+    assert lin_cov == pytest.approx(2.0)
+    assert "StalledOnTakeoff" in core.last_slip_reason
