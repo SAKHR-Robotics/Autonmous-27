@@ -17,15 +17,32 @@ Developer Track: SLAM & Sensor Processing Subsystem
 """
 
 import math
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 
-import rclpy
-from rclpy.node import Node
-from std_msgs.msg import Int64, Int64MultiArray, Float64MultiArray
-from sensor_msgs.msg import JointState
-from nav_msgs.msg import Odometry
-from geometry_msgs.msg import Quaternion, TransformStamped
-import tf2_ros
+try:
+    import rclpy
+    from rclpy.node import Node
+    from std_msgs.msg import Int64, Int64MultiArray, Float64MultiArray, Bool
+    from sensor_msgs.msg import JointState
+    from nav_msgs.msg import Odometry
+    from geometry_msgs.msg import Quaternion, TransformStamped
+    import tf2_ros
+except ImportError:
+    rclpy = None
+    Node = object  # type: ignore
+    Int64 = None  # type: ignore
+    Int64MultiArray = None  # type: ignore
+    Float64MultiArray = None  # type: ignore
+    Bool = None  # type: ignore
+    JointState = None  # type: ignore
+    Odometry = None  # type: ignore
+
+    class Quaternion:  # type: ignore
+        def __init__(self, x: float = 0.0, y: float = 0.0, z: float = 0.0, w: float = 1.0):
+            self.x, self.y, self.z, self.w = x, y, z, w
+
+    TransformStamped = None  # type: ignore
+    tf2_ros = None  # type: ignore
 
 
 def euler_to_quaternion(roll: float, pitch: float, yaw: float) -> Quaternion:
@@ -51,6 +68,41 @@ def euler_to_quaternion(roll: float, pitch: float, yaw: float) -> Quaternion:
     q.z = qz
     q.w = qw
     return q
+
+
+def compute_robust_side_velocity(
+    velocities: List[float],
+    slip_diff_threshold: float = 0.15,
+) -> Tuple[float, bool]:
+    """
+    Computes robust side velocity for a rover side (e.g. left or right).
+    Detects if one wheel on the side is slipping (spinning faster than traction wheel)
+    and selects the traction wheel (smaller magnitude) to avoid corrupting odometry.
+
+    Args:
+        velocities (List[float]): Linear velocities of wheels on one side.
+        slip_diff_threshold (float): Velocity difference threshold in m/s.
+
+    Returns:
+        Tuple[float, bool]: (robust_velocity, single_wheel_slip_detected)
+    """
+    if not velocities:
+        return 0.0, False
+    if len(velocities) == 1:
+        return velocities[0], False
+    if len(velocities) == 2:
+        v1, v2 = velocities[0], velocities[1]
+        diff = abs(v1 - v2)
+        if diff > slip_diff_threshold:
+            # Slipping wheel spins faster; ground speed is bounded by the wheel with lower absolute speed
+            v_traction = v1 if abs(v1) < abs(v2) else v2
+            return v_traction, True
+        return (v1 + v2) / 2.0, False
+
+    sorted_v = sorted(velocities, key=abs)
+    mid = len(sorted_v) // 2
+    slip_flag = (abs(sorted_v[-1]) - abs(sorted_v[0])) > slip_diff_threshold
+    return sorted_v[mid], slip_flag
 
 
 class EncoderTicksToOdomNode(Node):
@@ -82,6 +134,9 @@ class EncoderTicksToOdomNode(Node):
         # CUSTOMIZE WITH MECHANICAL TEAM: Left-to-right wheel baseline distance in meters
         self.declare_parameter("track_width", 0.42)
 
+        # Threshold to flag single wheel slip (m/s difference between wheels on same side)
+        self.declare_parameter("single_wheel_slip_threshold", 0.15)
+
         # CUSTOMIZE WITH HARDWARE/SLAM TEAM: Set True if node should publish odom -> base_link TF
         self.declare_parameter("publish_tf", False)
 
@@ -103,6 +158,9 @@ class EncoderTicksToOdomNode(Node):
         self.ticks_per_rev: int = self.get_parameter("ticks_per_revolution").get_parameter_value().integer_value
         self.wheel_radius: float = self.get_parameter("wheel_radius").get_parameter_value().double_value
         self.track_width: float = self.get_parameter("track_width").get_parameter_value().double_value
+        self.single_wheel_slip_threshold: float = (
+            self.get_parameter("single_wheel_slip_threshold").get_parameter_value().double_value
+        )
         self.publish_tf: bool = self.get_parameter("publish_tf").get_parameter_value().bool_value
         self.odom_frame_id: str = self.get_parameter("odom_frame_id").get_parameter_value().string_value
         self.base_frame_id: str = self.get_parameter("base_frame_id").get_parameter_value().string_value
@@ -159,6 +217,7 @@ class EncoderTicksToOdomNode(Node):
         # Publishers
         self.pub_odom = self.create_publisher(Odometry, "/wheel/odom_raw", 10)
         self.pub_wheel_speeds = self.create_publisher(Float64MultiArray, "/wheel/per_wheel_speeds", 10)
+        self.pub_single_wheel_slip = self.create_publisher(Bool, "/wheel/single_wheel_slip", 10)
 
         # Optional Transform Broadcaster
         if self.publish_tf:
@@ -268,9 +327,10 @@ class EncoderTicksToOdomNode(Node):
             elif "right" in wheel_name.lower():
                 right_velocities.append(velocity)
 
-        # Average left and right side wheel speeds
-        v_left: float = (sum(left_velocities) / len(left_velocities)) if left_velocities else 0.0
-        v_right: float = (sum(right_velocities) / len(right_velocities)) if right_velocities else 0.0
+        # Robust per-side wheel velocity calculations rejecting single-wheel slippage
+        v_left, slip_left = compute_robust_side_velocity(left_velocities, self.single_wheel_slip_threshold)
+        v_right, slip_right = compute_robust_side_velocity(right_velocities, self.single_wheel_slip_threshold)
+        single_wheel_slip_active: bool = slip_left or slip_right
 
         # Kinematics calculations
         v_x: float = (v_right + v_left) / 2.0
@@ -316,6 +376,11 @@ class EncoderTicksToOdomNode(Node):
         wheel_speeds_msg = Float64MultiArray()
         wheel_speeds_msg.data = [self.wheel_velocities[w] for w in self.wheel_names]
         self.pub_wheel_speeds.publish(wheel_speeds_msg)
+
+        # Publish single-wheel slip telemetry flag
+        slip_msg = Bool()
+        slip_msg.data = single_wheel_slip_active
+        self.pub_single_wheel_slip.publish(slip_msg)
 
         # Broadcast odom -> base_link transform if enabled
         if self.publish_tf:

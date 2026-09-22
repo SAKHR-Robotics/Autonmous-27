@@ -61,11 +61,11 @@ flowchart TD
     subgraph ProcessingBlocks ["⚙️ SLAM PROCESSING MODULES"]
         
         subgraph BlockOdom ["Block 1: Odometry Kinematics"]
-            NODE_ODOM["<b>encoder_ticks_to_odom</b><br>• Converts tick deltas to linear & angular twist<br>• Computes wheel velocities & basic covariance"]
+            NODE_ODOM["<b>encoder_ticks_to_odom</b><br>• Converts tick deltas to linear & angular twist<br>• Isolates single-wheel slip per side<br>• Publishes /wheel/single_wheel_slip & per-wheel speeds"]
         end
         
         subgraph BlockSlip ["Block 2: Slip Checker & Covariance Filter"]
-            NODE_SLIP["<b>heuristic_slip_checker</b><br>• Compares wheel yaw rate vs IMU gyro rate<br>• Dynamically inflates covariance when slipping"]
+            NODE_SLIP["<b>heuristic_slip_checker</b><br>• Compares wheel yaw vs IMU gyro & detects stalls<br>• Clamps linear velocity to 0.0 & injects IMU gyro yaw on slip<br>• Dynamically inflates covariance to reject slipping wheels in EKF"]
         end
 
         subgraph BlockVisionHelper ["Block 3: RealSense Depth Filter"]
@@ -89,10 +89,11 @@ flowchart TD
     %% INTERMEDIATE TOPIC CONNECTIONS
     IN_TICKS --> NODE_ODOM
     NODE_ODOM -->|<b>/wheel/odom_raw</b><br><i>[nav_msgs/Odometry]</i>| NODE_SLIP
+    NODE_ODOM -->|<b>/wheel/single_wheel_slip</b><br><i>[std_msgs/Bool]</i>| NODE_SLIP
     NODE_ODOM -.->|<b>/wheel/per_wheel_speeds</b><br><i>[std_msgs/Float64MultiArray]</i>| DIAG["Telemetry / Logs"]
 
     IN_IMU --> NODE_SLIP
-    NODE_SLIP -->|<b>/wheel/odom_filtered</b><br><i>[nav_msgs/Odometry with inflated cov]</i>| NODE_EKF
+    NODE_SLIP -->|<b>/wheel/odom_filtered</b><br><i>[nav_msgs/Odometry with inflated cov & clamped v]</i>| NODE_EKF
     NODE_SLIP -->|<b>/wheel/slip_detected</b><br><i>[std_msgs/Bool]</i>| OUT_SLIP
 
     IN_IMU --> NODE_EKF

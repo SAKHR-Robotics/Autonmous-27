@@ -74,6 +74,7 @@ class SlipCheckerCore:
         current_time_sec: float,
         orientation_q: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0),
         w_imu_y: float = 0.0,
+        single_wheel_slip: bool = False,
     ) -> Tuple[bool, float, float]:
         """
         Evaluate wheel motion against IMU telemetry without open-loop drift.
@@ -87,6 +88,7 @@ class SlipCheckerCore:
             current_time_sec (float): Timestamp in seconds.
             orientation_q (Tuple[float, float, float, float]): IMU orientation quaternion (x, y, z, w).
             w_imu_y (float): IMU angular velocity around pitch y-axis (rad/s).
+            single_wheel_slip (bool): Intra-side single-wheel slip flag from encoder node.
 
         Returns:
             Tuple[bool, float, float]: (slip_detected, linear_covariance, angular_covariance)
@@ -94,16 +96,22 @@ class SlipCheckerCore:
         raw_slip = False
         reason = "None"
 
+        # Rule 0: Intra-side wheel slip reported by encoder odometry
+        if single_wheel_slip:
+            raw_slip = True
+            reason = "SingleWheelSlip"
+
         # Rule 1: Angular velocity (yaw) slip detection
         # Normal turning on open ground: wheels and chassis rotate in the same direction with genuine rotation (|w_imu| > 0.10)
         # Blocked turning against obstacle: wheels commanded to turn (|w_wheel| > 0.25), but chassis cannot rotate (|w_imu| < 0.10 or opposite)
-        if abs(w_wheel) > 0.25 and (abs(w_imu) < 0.10 or (w_wheel * w_imu < -0.05)):
-            raw_slip = True
-            reason = f"YawBlocked (w_wheel={w_wheel:.2f}, w_imu={w_imu:.2f})"
-        elif abs(w_wheel) < 0.10 and abs(w_imu) > 0.40:
-            # Chassis spinning out with stationary wheels
-            raw_slip = True
-            reason = f"UncontrolledYawSpin (w_imu={w_imu:.2f})"
+        if not raw_slip:
+            if abs(w_wheel) > 0.25 and (abs(w_imu) < 0.10 or (w_wheel * w_imu < -0.05)):
+                raw_slip = True
+                reason = f"YawBlocked (w_wheel={w_wheel:.2f}, w_imu={w_imu:.2f})"
+            elif abs(w_wheel) < 0.10 and abs(w_imu) > 0.40:
+                # Chassis spinning out with stationary wheels
+                raw_slip = True
+                reason = f"UncontrolledYawSpin (w_imu={w_imu:.2f})"
 
         # Dynamic gravity compensation on forward accelerometer (R_31)
         qx, qy, qz, qw = orientation_q
@@ -142,27 +150,28 @@ class SlipCheckerCore:
 
         # Rule 2: Collision Impact Detection
         # Forward collision: driving forward while body suffers deceleration impact or pitch climb
-        if v_wheel > 0.10 and (a_dynamic_x < -self.slip_accel_threshold or (a_dynamic_x < -0.10 and abs(w_imu_y) > 0.08)):
-            raw_slip = True
-            self.obstacle_blocked = True
-            self.blocked_direction = 1
-            reason = f"ForwardCollision (v={v_wheel:.2f}, a_dyn={a_dynamic_x:.2f})"
-        # Reverse collision: driving backward while body suffers severe forward deceleration impact
-        elif v_wheel < -0.15 and a_dynamic_x > 0.40:
-            raw_slip = True
-            self.obstacle_blocked = True
-            self.blocked_direction = -1
-            reason = f"ReverseCollision (v={v_wheel:.2f}, a_dyn={a_dynamic_x:.2f})"
+        if not raw_slip:
+            if v_wheel > 0.10 and (a_dynamic_x < -self.slip_accel_threshold or (a_dynamic_x < -0.10 and abs(w_imu_y) > 0.08)):
+                raw_slip = True
+                self.obstacle_blocked = True
+                self.blocked_direction = 1
+                reason = f"ForwardCollision (v={v_wheel:.2f}, a_dyn={a_dynamic_x:.2f})"
+            # Reverse collision: driving backward while body suffers severe forward deceleration impact
+            elif v_wheel < -0.10 and a_dynamic_x > self.slip_accel_threshold:
+                raw_slip = True
+                self.obstacle_blocked = True
+                self.blocked_direction = -1
+                reason = f"ReverseCollision (v={v_wheel:.2f}, a_dyn={a_dynamic_x:.2f})"
 
         # Rule 3: Obstacle Stall (sustained pushing against rock or obstacle)
         if not raw_slip and self.obstacle_blocked:
-            if (self.blocked_direction > 0 and v_wheel > 0.10) or (self.blocked_direction < 0 and v_wheel < -0.15):
+            if (self.blocked_direction > 0 and v_wheel > 0.10) or (self.blocked_direction < 0 and v_wheel < -0.10):
                 raw_slip = True
                 reason = f"ObstacleStall (v={v_wheel:.2f}, dir={self.blocked_direction})"
 
         # Rule 4: Stalled on Takeoff (spinning wheels from rest on frictionless ice)
         if not raw_slip and not self.obstacle_blocked and self.takeoff_start_time is not None:
-            if v_wheel > 0.15 and not self.takeoff_accel_seen and (current_time_sec - self.takeoff_start_time) >= 0.28:
+            if abs(v_wheel) > 0.15 and not self.takeoff_accel_seen and (current_time_sec - self.takeoff_start_time) >= 0.28:
                 raw_slip = True
                 reason = f"StalledOnTakeoff (v={v_wheel:.2f}, a_dyn={a_dynamic_x:.2f})"
 
@@ -276,6 +285,14 @@ class HeuristicSlipCheckerNode(Node):
             10,
         )
 
+        self.single_wheel_slip: bool = False
+        self.sub_single_wheel_slip = self.create_subscription(
+            Bool,
+            "/wheel/single_wheel_slip",
+            self._single_wheel_slip_callback,
+            10,
+        )
+
         self.pub_filtered_odom = self.create_publisher(Odometry, "/wheel/odom_filtered", 10)
         self.pub_slip_flag = self.create_publisher(Bool, "/wheel/slip_detected", 10)
 
@@ -284,6 +301,10 @@ class HeuristicSlipCheckerNode(Node):
     # --------------------------------------------------------------------------
     # Callbacks & Logic Execution
     # --------------------------------------------------------------------------
+    def _single_wheel_slip_callback(self, msg: Bool) -> None:
+        """Callback for single-wheel slip telemetry flag from encoder_ticks_to_odom."""
+        self.single_wheel_slip = msg.data
+
     def _imu_callback(self, msg: Imu) -> None:
         """
         Callback to process IMU angular velocity and linear acceleration telemetry.
@@ -338,6 +359,7 @@ class HeuristicSlipCheckerNode(Node):
                 current_time_sec=now_sec,
                 orientation_q=orientation_q,
                 w_imu_y=w_imu_y,
+                single_wheel_slip=self.single_wheel_slip,
             )
         else:
             self.get_logger().warn(
@@ -356,12 +378,16 @@ class HeuristicSlipCheckerNode(Node):
 
         multiplier: float = self.covariance_scale if slip_detected else 1.0
 
-        # Dynamic velocity suppression during confirmed obstacle stall:
-        # If wheels are spinning while chassis is blocked by an obstacle, true chassis velocity is 0.0.
+        # Dynamic velocity suppression during ANY confirmed slip:
+        # If wheels are slipping (spinning in sand, obstacle block, single wheel slip, etc.),
+        # wheel encoders do not represent true chassis ground velocity.
         # Clamping twist to 0.0 prevents EKF from integrating forward and penetrating the obstacle.
-        if slip_detected and self.core.obstacle_blocked:
+        if slip_detected:
             filtered_odom.twist.twist.linear.x = 0.0
             filtered_odom.twist.twist.linear.y = 0.0
+            if self.latest_imu is not None:
+                # Direct calibrated IMU gyro heading rate to EKF during wheel slippage
+                filtered_odom.twist.twist.angular.z = self.latest_imu.angular_velocity.z
 
         # Pose Covariance
         filtered_odom.pose.covariance[0] = 0.01 * multiplier
