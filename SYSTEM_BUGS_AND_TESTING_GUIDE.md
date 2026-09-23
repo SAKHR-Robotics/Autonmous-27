@@ -80,10 +80,10 @@ To balance **isolated module development** with **plug-and-play system integrati
 * **Affected Files**: [`SLAM/rover_slam/rover_slam/encoder_ticks_to_odom.py`](file:///e:/SHAKR/Autonmous-27/SLAM/rover_slam/rover_slam/encoder_ticks_to_odom.py#L160-L165).
 * **Audit Resolution**: Verified against `Rover/my_robot_description/urdf/my_robot.urdf.xacro` and `General_Docs/hardware_specs/hardware_specs.md`. The physical rover and URDF model are confirmed 4-wheel skid-steer systems (4 DC drill motors + 4 encoders). The 4-wheel configuration in `encoder_ticks_to_odom.py` is correct.
 
-#### Bug 9: EKF Lateral Velocity Over-Constraint
+#### Bug 9: EKF Lateral Velocity Over-Constraint [SOLVED]
 * **Affected Files**: [`SLAM/rover_slam/config/ekf.yaml`](file:///e:/SHAKR/Autonmous-27/SLAM/rover_slam/config/ekf.yaml#L17).
-* **The Flaw**: `odom0_config` fuses $V_y$ (`[true, true, false]`). However, wheel kinematics hardcodes $V_y = 0.0$. Meanwhile, IMU fuses linear acceleration $Y$. When turning in loose sand or slopes, EKF receives $V_y = 0$ with high certainty while the IMU measures lateral slip, causing filter instability.
-* **Action Required**: Set `odom0_config` $V_y$ to `false` (`[true, false, false]`).
+* **The Flaw**: `odom0_config` fused $V_y$ (`[true, true, false]`). However, wheel kinematics hardcodes $V_y = 0.0$. Meanwhile, IMU fuses linear acceleration $Y$. When turning in loose sand or slopes, EKF received $V_y = 0$ with high certainty while the IMU measured lateral slip, causing filter instability.
+* **The Fix Applied**: Set `odom0_config` $V_y$ to `false` (`[true, false, false]`) in `ekf.yaml`.
 
 ---
 
@@ -94,15 +94,15 @@ To balance **isolated module development** with **plug-and-play system integrati
 * **The Root Cause**: Node executed Scipy distance-transform costmap inflation every frame to publish `/terrain/costmap`. Nav2 does not use `/terrain/costmap` (it subscribes to `/bridge/pointcloud` from `costmap_bridge_node`), wasting ~35% of a CPU core.
 * **The Fix Applied**: Added parameter `enable_costmap:=false` (default `false`) across `terrain_node.py`, `terrain.launch.py`, and `perception_system.launch.py` to bypass 2D grid rasterization and costmap inflation during production runs.
 
-#### Bug 11: Broken Project Directory Index in Benchmarking Suite
+#### Bug 11: Broken Project Directory Index in Benchmarking Suite [SOLVED]
 * **Affected Files**: [`testing/PathPlanner/run_testing_suite.sh`](file:///e:/SHAKR/Autonmous-27/testing/PathPlanner/run_testing_suite.sh#L15).
-* **The Flaw**: `PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"` navigates 4 directories up to root (`E:\` or `/`), causing `colcon build` to fail or delete directories outside the workspace.
-* **Action Required**: Change path resolution to `$SCRIPT_DIR/../..`.
+* **The Flaw**: `PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"` navigated 4 directories up to root (`E:\`), causing `colcon build` to fail.
+* **The Fix Applied**: Corrected directory resolution to `$SCRIPT_DIR/../..`.
 
-#### Bug 12: Python Namespace Pollution
+#### Bug 12: Python Namespace Pollution [SOLVED]
 * **Affected Files**: [`testing/PathPlanner/setup.py`](file:///e:/SHAKR/Autonmous-27/testing/PathPlanner/setup.py#L10).
-* **The Flaw**: Packages generic directories `mock` and `scripts`, installing them into Python `site-packages` and shadowing standard library modules.
-* **Action Required**: Move mock scripts inside `global_path_benchmarking` namespace.
+* **The Flaw**: Packaged generic directories `mock` and `scripts`, installing them into Python `site-packages` and shadowing standard library modules.
+* **The Fix Applied**: Moved mock nodes (`mock_rover_sim.py`, `mock_perception.py`) and CLI tools (`drop_stone.py`) inside `global_path_benchmarking` namespace and restricted `packages=['global_path_benchmarking']`.
 
 ---
 
@@ -230,7 +230,8 @@ def generate_launch_description():
 4. [x] **Perception Costmap**: Added `enable_costmap:=false` across `terrain_node.py`, `terrain.launch.py`, and `perception_system.launch.py` to bypass 2D rasterization and save ~35% CPU during integrated runs.
 5. [x] **ArUco Perception Bridge**: In `marker_action_interface_node.py`, published confirmed target pose as `geometry_msgs/msg/PoseStamped` on `/perception/aruco_pose` for RTAB-Map.
 6. [x] **Rover Kinematics**: Verified rover is 4-wheel skid-steer in URDF and hardware specs (confirmed 4 wheels, closed invalid 6-wheel assumption).
-7. [ ] **SLAM Static Transforms**: In `static_transforms.launch.py`, remove redundant `static_tf_camera_optical_to_gz` node.
-8. [ ] **EKF Tuning**: In `config/ekf.yaml`, set `odom0_config` $V_y$ to `false` to avoid over-constraining lateral motion during skid turns.
-9. [ ] **Dedicated Launchers**: Create `test_slam_standalone.launch.py` and `test_perception_standalone.launch.py`.
-10. [ ] **Testing Runner**: Fix relative path in `testing/PathPlanner/run_testing_suite.sh`.
+7. [x] **SLAM Static Transforms**: In `static_transforms.launch.py`, removed redundant `static_tf_camera_optical_to_gz` node and defaulted `publish_optical_tf:=false`.
+8. [x] **EKF Tuning**: In `config/ekf.yaml`, set `odom0_config` $V_y$ to `false` to avoid over-constraining lateral motion during skid turns.
+9. [x] **Dedicated Launchers**: Created `test_slam_standalone.launch.py`, `test_perception_standalone.launch.py`, and `test_planner_standalone.launch.py`.
+10. [x] **Testing Runner & Packaging**: Corrected `PROJECT_ROOT` path in `testing/PathPlanner/run_testing_suite.sh` and resolved Python namespace pollution in `setup.py`.
+11. [x] **Modular Interactive Launchers**: Added `scripts/launch_sim.sh`, `scripts/launch_slam.sh`, `scripts/launch_perception.sh`, `scripts/launch_planning.sh`, and `scripts/launch_system.sh` for fast interactive testing.

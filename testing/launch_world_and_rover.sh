@@ -129,6 +129,7 @@ ros2 launch my_robot_description gazebo.launch.py \
     "world:=final_world_RA.world" \
     "publish_map_tf:=$PUBLISH_MAP_TF" \
     "publish_camera_tf:=$PUBLISH_CAMERA_TF" \
+    "bridge_sim_tf:=true" \
     "$@" &
 GZ_PID=$!
 
