@@ -141,3 +141,26 @@ flowchart TD
   * [`docs/SlamTasks.md`](docs/SlamTasks.md): Ready-to-use GitHub issues for pending tasks.
   * [`docs/SlamProp&Sol.md`](docs/SlamProp&Sol.md): In-depth architectural analysis and solutions.
   * [`docs/slam_nodes_and_topics.md`](docs/slam_nodes_and_topics.md): Full node, topic, and TF tree matrix.
+
+---
+
+## 🧪 Standalone SLAM Testing (World + Rover + Teleop + SLAM)
+
+To test SLAM, EKF state estimation, and RTAB-Map 3D mapping in isolation with the simulated rover:
+
+```bash
+# Method A: Interactive Script
+bash scripts/launch_slam.sh # Select Option 2 (Dedicated Standalone Test Launcher)
+
+# Method B: Manual Step-by-Step
+# Terminal 1: Launch World and Rover (bridge_sim_tf:=false keeps odom TF reserved for EKF)
+ros2 launch my_robot_description gazebo.launch.py
+
+# Terminal 2: Launch Teleoperation GUI
+ros2 run my_robot_description teleop_gui.py
+
+# Terminal 3: Launch Standalone SLAM Bringup
+ros2 launch rover_slam test_slam_standalone.launch.py
+```
+*(For detailed verification commands, see [`rover_slam/README.md`](rover_slam/README.md)).*
+

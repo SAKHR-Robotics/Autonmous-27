@@ -245,3 +245,76 @@ For a complete step-by-step tutorial on driving the rover, starting the percepti
    ```bash
    git push origin main
    ```
+
+---
+
+## ⚡ Full System Launch (Production Bringup)
+
+### 1. Interactive Master Dashboard Launch
+The fastest and safest way to launch the entire integrated stack with automatic cleanup of zombie processes:
+
+```bash
+bash scripts/launch_system.sh
+```
+Options provided in the dashboard:
+- **Option 1**: Start All Systems Sequentially (Simulation ➔ SLAM ➔ Perception ➔ Planning ➔ Teleop).
+- **Option 2**: Clean Restart (terminates hanging Gazebo, RViz, and ROS 2 bridges via `pkill`).
+- **Option 3-6**: Launch individual subsystems modularly.
+
+---
+
+### 2. Manual 5-Terminal Sequential Launch Playbook
+If you prefer running each subsystem in its own terminal window for diagnostics:
+
+#### Terminal 1: Simulation & Rover Spawn
+```bash
+source install/setup.bash
+ros2 launch my_robot_description gazebo.launch.py
+```
+*(Starts Gazebo with Mars Yard `world1.world`, spawns rover, publishes static transforms with `bridge_sim_tf:=false` to yield odom authority to EKF).*
+
+#### Terminal 2: State Estimation & SLAM
+```bash
+source install/setup.bash
+ros2 launch rover_slam slam_bringup.launch.py
+```
+*(Starts Heuristic Slip Checker, `robot_localization` EKF publishing `odom ➔ base_link`, and RTAB-Map SLAM publishing `map ➔ odom`).*
+
+#### Terminal 3: Perception (Obstacle Clustering & ArUco Detection)
+```bash
+source install/setup.bash
+ros2 launch marker_detection marker_detection.launch.py
+```
+*(Runs ArUco pose estimation and unified 3D DBSCAN point cloud rock extraction publishing `Detection3DArray` to `/perception/local_bboxes` and `/perception/obstacles_only`).*
+
+#### Terminal 4: Nav2 Path Planning & Controller
+```bash
+source install/setup.bash
+ros2 launch erc_path_planner path_planning.launch.py use_slam:=true
+```
+*(Boots Smac Hybrid A* global planner, MPPI trajectory controller, and `costmap_bridge_node` sampling 3D obstacles at 5cm into `/bridge/pointcloud`).*
+
+#### Terminal 5: Teleoperation & Manual Driving
+```bash
+source install/setup.bash
+ros2 run my_robot_description teleop_gui.py
+```
+*(Opens Pygame/Tkinter driving GUI publishing to `/cmd_vel`).*
+
+---
+
+## 🔬 Subsystem Standalone Testing Guides
+
+Every module in the repository can be tested completely in isolation without launching the rest of the stack:
+
+| Subsystem | Standalone Test Command | Test Documentation & Guide |
+| :--- | :--- | :--- |
+| **Rover & Simulation** | `bash scripts/launch_sim.sh` | [`Rover/my_robot_description/README.md`](Rover/my_robot_description/README.md) |
+| **SLAM & EKF** | `bash scripts/launch_slam.sh` | [`SLAM/rover_slam/README.md`](SLAM/rover_slam/README.md) |
+| **Perception (Rocks & ArUco)** | `bash scripts/launch_perception.sh` | [`Perception/terrain_geometry/README.md`](Perception/terrain_geometry/README.md) |
+| **Path Planning (Nav2 & MPPI)** | `bash scripts/launch_planning.sh` | [`PathPlanning/erc_path_planner/README.md`](PathPlanning/erc_path_planner/README.md) |
+| **Skid-Steer Motor Control** | `ros2 run my_robot_description teleop_gui.py` | [`Control/README.md`](Control/README.md) |
+| **Modular Launch Scripts** | `bash scripts/launch_system.sh` | [`scripts/README.md`](scripts/README.md) |
+
+For comprehensive bug audit logs, architectural matrices, and testing verification checklists, consult [`SYSTEM_BUGS_AND_TESTING_GUIDE.md`](SYSTEM_BUGS_AND_TESTING_GUIDE.md).
+

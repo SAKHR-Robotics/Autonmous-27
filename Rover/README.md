@@ -41,3 +41,19 @@ When the simulation launch command (`ros2 launch my_robot_description gazebo.lau
 *   **`/camera/depth/color/points`** (`sensor_msgs/msg/PointCloud2`)
     *   *Direction:* Publisher (Output from Gazebo)
     *   *Description:* Dense 3D Point Cloud ($x, y, z$) mapping spatial points relative to the camera frame. **(Primary input to the Terrain Geometry node)**.
+
+---
+
+## 🧪 Standalone Simulation & Teleop Quickstart
+
+To launch the rover in the Mars Yard simulation and drive it with the teleoperation GUI:
+
+```bash
+# Terminal 1: Launch World and Rover (Standalone mode with static map->odom TF)
+ros2 launch my_robot_description gazebo.launch.py publish_map_tf:=true bridge_sim_tf:=true
+
+# Terminal 2: Launch Interactive Teleop GUI
+ros2 run my_robot_description teleop_gui.py
+```
+*(Or use the interactive launcher: `bash scripts/launch_sim.sh`).*
+

@@ -77,14 +77,69 @@ sudo apt update && sudo apt install -y \
 
 ## 🚀 How to Build
 ```bash
-cd ~/Desktop/MESEKET/Autonmous-27/Autonmous_Ws
-colcon build --packages-select rover_slam
+colcon build --symlink-install --packages-select rover_slam
 source install/setup.bash
 ```
 
 ---
 
-## 🧪 Step-by-Step Validation & Testing Suite
+## 🧪 Standalone Testing Guide (World + Rover + Teleop + SLAM)
+
+You can validate state estimation, EKF fusion, and RTAB-Map 3D SLAM mapping in isolation with the simulated rover:
+
+### Method A: Interactive Launcher (Fastest)
+```bash
+bash scripts/launch_slam.sh
+# Select Option 1 for Production Bringup, or Option 2 for Dedicated Standalone Testing
+```
+
+---
+
+### Method B: Manual Step-by-Step Terminal Playbook
+
+#### Step 1: Launch Mars Yard Simulation & Spawn Rover
+Open Terminal 1:
+```bash
+source install/setup.bash
+# Keep bridge_sim_tf:=false (default) so EKF owns the odom -> base_link transform
+ros2 launch my_robot_description gazebo.launch.py
+```
+
+#### Step 2: Launch Teleoperation GUI
+Open Terminal 2:
+```bash
+source install/setup.bash
+ros2 run my_robot_description teleop_gui.py
+```
+
+#### Step 3: Launch Standalone SLAM Bringup
+Open Terminal 3:
+```bash
+source install/setup.bash
+ros2 launch rover_slam test_slam_standalone.launch.py
+```
+*(Boots Static TFs, Heuristic Slip Checker, EKF state estimator, RTAB-Map SLAM, and opens `slam_visualization.rviz`).*
+
+#### Step 4: Verification & Transform Diagnostics
+Open Terminal 4:
+```bash
+# 1. Verify EKF publishes continuous filtered odometry (~50 Hz)
+ros2 topic hz /odometry/filtered
+
+# 2. Verify odom -> base_link transform is owned solely by EKF
+ros2 run tf2_ros tf2_echo odom base_link
+
+# 3. Verify RTAB-Map publishes dynamic map -> odom transform (1-5 Hz)
+ros2 run tf2_ros tf2_echo map odom
+
+# 4. Verify 2D occupancy grid map generation
+ros2 topic hz /map
+```
+As you drive the rover using the GUI, observe the 3D point cloud assembling and the 2D occupancy grid expanding in RViz2 without TF jitter.
+
+---
+
+## 🔬 Subsystem Unit Tests & Standalone Checkpoints
 
 ### 1️⃣ Test 1: Static Transforms Validation (Checkpoint 1)
 Verify that static coordinate frames (`base_link -> camera_link` and `base_link -> imu_link`) broadcast correctly:

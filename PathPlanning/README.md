@@ -218,15 +218,36 @@ ros2 launch erc_path_planner path_planning.launch.py use_sim_time:=true
 ros2 launch erc_path_planner rviz.launch.py
 ```
 
-### Standalone Testing (Without SLAM / Isolated Planner)
-To test path planning in isolation without running RTAB-Map SLAM, set `use_slam:=false`. This launches `nav2_map_server` with `dummy_map.yaml` (or a custom map):
-```bash
-# Launch with default dummy blank map
-ros2 launch erc_path_planner path_planning.launch.py use_slam:=false
+### Standalone Testing in Simulation (World + Rover + Teleop + Planner)
+To test path planning in isolation with the simulated rover without running SLAM:
 
-# Launch standalone with a custom benchmark map
-ros2 launch erc_path_planner path_planning.launch.py use_slam:=false map:=$(ros2 pkg prefix erc_path_planner)/share/erc_path_planner/maps/rock_field.yaml
+#### Method A: Interactive Launcher (Fastest)
+```bash
+bash scripts/launch_planning.sh
+# Select Option 2 (Standalone Testing with dummy_map)
 ```
+
+#### Method B: Manual Step-by-Step Playbook
+1. **Terminal 1 (Simulation & Rover Spawn)**:
+   ```bash
+   source install/setup.bash
+   ros2 launch my_robot_description gazebo.launch.py publish_map_tf:=true
+   ```
+2. **Terminal 2 (Teleoperation GUI)**:
+   ```bash
+   source install/setup.bash
+   ros2 run my_robot_description teleop_gui.py
+   ```
+3. **Terminal 3 (Standalone Path Planner)**:
+   ```bash
+   source install/setup.bash
+   ros2 launch erc_path_planner test_planner_standalone.launch.py
+   ```
+4. **Terminal 4 (Set Goal / Verification)**:
+   Use the **2D Goal Pose** tool in the opened RViz2 window to set navigation targets, or echo `/cmd_vel` to verify motor commands:
+   ```bash
+   ros2 topic echo /cmd_vel
+   ```
 
 ---
 

@@ -264,6 +264,63 @@ CPU-bound end to end.
 All parameters are exposed as launch arguments in `launch/terrain.launch.py`
 under the same names.
 
+---
+
+## 🧪 Standalone Testing Guide (World + Rover + Teleop + Perception)
+
+To test terrain ground removal, 3D rock clustering, and standard `vision_msgs/msg/Detection3DArray` bounding box generation in isolation with the simulated rover:
+
+### Method A: Interactive Launcher (Fastest)
+```bash
+bash scripts/launch_perception.sh
+# Select Option 2 (Dedicated Standalone Test Launcher)
+```
+
+---
+
+### Method B: Manual Step-by-Step Terminal Playbook
+
+#### Step 1: Launch Mars Yard World & Spawn Rover
+Open Terminal 1:
+```bash
+source install/setup.bash
+# When testing perception standalone without SLAM, pass publish_map_tf:=true to provide map -> odom
+ros2 launch my_robot_description gazebo.launch.py publish_map_tf:=true
+```
+
+#### Step 2: Launch Teleoperation GUI
+Open Terminal 2:
+```bash
+source install/setup.bash
+ros2 run my_robot_description teleop_gui.py
+```
+*(Drive the rover within 1 to 4 meters of Mars Yard rocks).*
+
+#### Step 3: Launch Standalone Perception Pipeline
+Open Terminal 3:
+```bash
+source install/setup.bash
+ros2 launch terrain_geometry test_perception_standalone.launch.py
+```
+*(Boots `terrain_node` with RViz2 visualization, rendering ground removal, DBSCAN clusters, and 3D bounding boxes).*
+
+#### Step 4: Verification Commands
+Open Terminal 4:
+```bash
+# 1. Verify standard Detection3DArray output (single-frame raw bboxes)
+ros2 topic hz /perception/local_bboxes
+ros2 topic echo /perception/local_bboxes
+
+# 2. Verify Detection3DArray output on /perception/obstacles_only (consumed by Nav2)
+ros2 topic hz /perception/obstacles_only
+
+# 3. Verify RViz 3D bounding box visual markers
+ros2 topic hz /terrain/obstacle_markers
+```
+*Expected Result:* As the rover faces physical rocks in the simulation, RViz2 renders bounding boxes enclosing each rock, and `/perception/local_bboxes` outputs 3D centroids and extents matching the rock sizes.
+
+---
+
 ## 14. Expected failure cases (all handled without crashing)
 
 | Case | Behavior |

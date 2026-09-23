@@ -1,129 +1,97 @@
-# Robot Description Package
+# Robot Description & Simulation (`my_robot_description`)
 
-A 4-wheeled Mars rover style robot for ROS 2 Humble with Gazebo Ignition simulation support.
+Autonomous 4-wheeled skid-steer Mars rover simulation package for ROS 2 Jazzy and Gazebo Harmonic/Ignition.
 
-## Quick Start
+---
 
-### Build Workspace
+## 📌 Overview
+
+This package defines the robot kinematics, URDF/Xacro models, sensor transforms, and Gazebo world spawning orchestration:
+
+- **Robot Model**: 4-wheel skid-steer rover with chassis, suspension arms, drill motors, RealSense D435 RGB-D depth camera, and BNO055 IMU.
+- **Simulation Bridge**: ROS-GZ parameter bridge routing `/cmd_vel`, `/model/my_robot/odometry`, `/camera/*`, and `/imu/data`.
+- **TF Ownership**: Configured with `bridge_sim_tf:=false` in production so the EKF (`robot_localization`) holds sole transform authority over `odom ➔ base_link`.
+
+---
+
+## 🧪 Standalone Testing Guide (World + Rover + Teleop)
+
+Test rover spawning, physics simulation, sensor data streams, and manual driving in isolation:
+
+### Method A: Interactive Launcher (Recommended)
 ```bash
-cd ~/Desktop/ROARTASK/ros2_ws
-source /opt/ros/humble/setup.bash
-colcon build --symlink-install
+bash scripts/launch_sim.sh
+# Select Option 1 for SLAM-compatible mode (bridge_sim_tf:=false)
+# Select Option 2 for Standalone Teleop mode (bridge_sim_tf:=true, publish_map_tf:=true)
+```
+
+---
+
+### Method B: Manual Step-by-Step Terminal Playbook
+
+#### Step 1: Launch Mars Yard World & Spawn Rover
+Open Terminal 1:
+```bash
 source install/setup.bash
+
+# Standalone Teleop without SLAM:
+ros2 launch my_robot_description gazebo.launch.py publish_map_tf:=true bridge_sim_tf:=true
+
+# Or with custom world (e.g., empty world with sensors):
+ros2 launch my_robot_description gazebo.launch.py world:=empty_with_sensors.sdf publish_map_tf:=true bridge_sim_tf:=true
 ```
 
-### Launch Options
-
-**Gazebo Simulation** (recommended for testing movement):
+#### Step 2: Launch Teleoperation GUI
+Open Terminal 2:
 ```bash
-# Standard launch with SLAM active (publish_map_tf and publish_camera_tf are false by default to prevent TF conflicts)
-ros2 launch my_robot_description gazebo.launch.py
+source install/setup.bash
+ros2 run my_robot_description teleop_gui.py
+```
+*(Provides interactive forward/reverse, turning sliders, and emergency stop buttons).*
 
-# Standalone manual teleop without SLAM (publishes static map->odom and camera optical TF for RViz)
-ros2 launch my_robot_description gazebo.launch.py publish_map_tf:=true publish_camera_tf:=true
+#### Step 3: Sensor Verification
+Open Terminal 3 to verify live sensor outputs as you drive:
+
+```bash
+# 1. Verify IMU publishes at 100 Hz
+ros2 topic hz /imu/data
+
+# 2. Verify RealSense RGB image stream
+ros2 topic hz /camera/color/image_raw
+
+# 3. Verify RealSense 3D point cloud stream
+ros2 topic hz /camera/depth/color/points
+
+# 4. Verify cmd_vel responsiveness
+ros2 topic echo /cmd_vel
 ```
 
-**RViz Visualization** (for model inspection only):
+#### Step 4: Model Inspection in RViz2
+To visualize kinematics and URDF frames without Gazebo physics:
 ```bash
 ros2 launch my_robot_description display.launch.py
 ```
 
-### Control the Robot
+---
 
-**GUI Controller** (sliders for easy control):
-```bash
-python3 robot_teleop_gui.py
-```
+## ⚙️ Topic Contract
 
-**Command Line** (manual velocity commands):
-```bash
-ros2 topic pub /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.5}, angular: {z: 0.0}}"
-```
+| Topic Name | Type | Direction | Purpose |
+| :--- | :--- | :--- | :--- |
+| `/cmd_vel` | `geometry_msgs/msg/Twist` | Input | Motor velocity requests (linear $x$, angular $z$) |
+| `/camera/color/image_raw` | `sensor_msgs/msg/Image` | Output | 640x480 RGB camera stream |
+| `/camera/depth/color/points` | `sensor_msgs/msg/PointCloud2` | Output | RealSense 3D depth point cloud |
+| `/imu/data` | `sensor_msgs/msg/Imu` | Output | 100 Hz linear acceleration & angular velocity |
+| `/model/my_robot/odometry` | `nav_msgs/msg/Odometry` | Output | Raw wheel contact odometry from Gazebo diff-drive plugin |
+| `/tf` | `tf2_msgs/msg/TFMessage` | Output | Robot joint and body link transforms |
 
-## Package Files
+---
 
-### Launch Files
-- **`gazebo.launch.py`**: Spawns robot in Gazebo with physics simulation and differential drive control
-- **`display.launch.py`**: Visualizes robot model in RViz without physics
+## 📐 Kinematic & Physical Specifications
 
-### URDF/Xacro Files
-- **`my_robot.urdf.xacro`**: Main robot description with 4-wheeled Mars rover structure and IMU sensor
-- **`macros.xacro`**: Reusable macros for inertia calculations and suspension components
-- **`materials.xacro`**: Color definitions (red, black, gray)
-- **`gazebo.xacro`**: Gazebo-specific properties, differential drive plugin, and IMU sensor plugin
-
-### Control
-- **`robot_teleop_gui.py`**: GUI with sliders for linear/angular velocity control (publishes to `/cmd_vel`)
-
-## Validation
-```bash
-xacro src/my_robot_description/urdf/my_robot.urdf.xacro > /tmp/my_robot.urdf
-check_urdf /tmp/my_robot.urdf
-```
-
-## Sensor Verification
-
-### IMU Sensor
-```bash
-# Check IMU topic exists
-ros2 topic list | grep imu
-
-# View IMU data
-ros2 topic echo /imu/data
-
-# Check IMU frequency
-ros2 topic hz /imu/data
-
-# Run IMU verification script
-python3 verify_imu.py
-```
-
-### Camera Sensor
-```bash
-# Check camera topics exist
-ros2 topic list | grep camera
-
-# View camera image data
-ros2 topic echo /camera/image_raw
-
-# View camera info data
-ros2 topic echo /camera/camera_info
-
-# Check camera frequency
-ros2 topic hz /camera/image_raw
-
-# Run camera verification script
-python3 verify_camera.py
-```
-
-## Topics
-
-**Published by Robot**:
-- `/odom` - Odometry data (position, velocity)
-- `/tf` - Transform tree
-- `/joint_states` - Joint positions
-- `/imu/data` - IMU sensor data (linear acceleration, angular velocity)
-- `/camera/image_raw` - Camera image data (640x480 RGB)
-- `/camera/camera_info` - Camera calibration information
-
-**Subscribed by Robot**:
-- `/cmd_vel` - Velocity commands (Twist messages)
-
-## Robot Specifications
-
-- **Base**: 0.4m × 0.4m × 0.15m (square, red)
-- **Suspension Arms**: 4 gray rectangular links
-- **Wheels**: 4 total (2 per side, radius=0.06m)
-- **Drive System**: 4-wheel differential drive / skid-steer
-- **Sensors**:
-  - **IMU**: Positioned at base_link center, 100 Hz update rate
-    - Linear acceleration noise: σ=0.01 m/s², bias=0.01 m/s²
-    - Angular velocity noise: σ=0.001 rad/s, bias=0.0001 rad/s
-  - **Camera**: Positioned on front face of base_link, centered, pitched down 15°
-    - Resolution: 640×480 pixels
-    - Field of view: 60° horizontal (1.047 radians)
-    - Update rate: 30 Hz
-    - Image format: RGB8
-    - Position: Front face of robot (x=0.215m from base center)
-- **Total Links**: 13 (base_footprint, base_link, imu_link, camera_link, my_robot/camera_link/camera, 4 arms, 4 wheels)
-- **Total Joints**: 12 (1 fixed footprint, 1 fixed IMU, 1 fixed camera, 1 fixed camera optical, 4 fixed arms, 4 continuous wheels)
+- **Chassis Dimensions**: $0.4\times 0.4\times 0.15\text{ m}$ (center box).
+- **Track Width**: $0.65\text{ m}$ (wheel separation lateral).
+- **Wheel Base**: $0.4\text{ m}$ (wheel separation longitudinal).
+- **Wheel Radius**: $0.15\text{ m}$.
+- **Drive Configuration**: 4-wheel skid-steer (differential drive plugin).
+- **Camera Mount**: Pitched down $15^\circ$, centered on front face ($x = +0.215\text{ m}$).

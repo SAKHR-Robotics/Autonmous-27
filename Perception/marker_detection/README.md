@@ -422,15 +422,70 @@ architecture:
 
 ## Build and run on Ubuntu 24.04 / ROS 2 Jazzy
 
-Place this directory in `<workspace>/src/marker_detection`, then run:
-
 ```bash
 source /opt/ros/jazzy/setup.bash
-cd <workspace>
-rosdep install --from-paths src --ignore-src -r -y
-colcon build --packages-select marker_detection
+colcon build --symlink-install --packages-select marker_detection
 source install/setup.bash
-pytest src/marker_detection/test
+```
+
+---
+
+## 🧪 Standalone Testing Guide in Simulation (World + Rover + Teleop + ArUco)
+
+You can validate ArUco detection, 6-DoF pose estimation, and target generation in isolation with the simulated rover:
+
+### Method A: Interactive Launcher (Fastest)
+```bash
+bash scripts/launch_perception.sh
+# Select Option 3 (ArUco Tag Marker Detection Only) or Option 1 (Full Perception)
+```
+
+---
+
+### Method B: Manual Step-by-Step Terminal Playbook
+
+#### Step 1: Launch Mars Yard World & Spawn Rover
+Open Terminal 1:
+```bash
+source install/setup.bash
+# When testing standalone without SLAM, pass publish_map_tf:=true to provide map -> odom
+ros2 launch my_robot_description gazebo.launch.py publish_map_tf:=true
+```
+
+#### Step 2: Launch Teleoperation GUI
+Open Terminal 2:
+```bash
+source install/setup.bash
+ros2 run my_robot_description teleop_gui.py
+```
+*(Drive the rover to face ArUco marker posts in Mars Yard simulation).*
+
+#### Step 3: Launch Marker Detection Node
+Open Terminal 3:
+```bash
+source install/setup.bash
+ros2 launch marker_detection marker_detection.launch.py
+```
+
+#### Step 4: Verification Commands
+Open Terminal 4:
+```bash
+# 1. Verify 2D and 3D detection streams
+ros2 topic echo /marker_detections
+ros2 topic echo /marker_poses
+
+# 2. Verify high-level target output for navigation & manipulation
+ros2 topic echo /marker_detection/targets
+
+# 3. View visual debug stream with bounding boxes and estimated Z distance
+rqt_image_view /marker_detection/debug_image
+```
+
+---
+
+## Hardware Deployment with Physical RealSense D435
+
+```bash
 ros2 launch realsense2_camera rs_launch.py enable_color:=true enable_depth:=true enable_sync:=true align_depth.enable:=true
 ```
 

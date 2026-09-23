@@ -250,20 +250,34 @@ Use this workflow to run both pipelines concurrently:
 ## 🧪 5. Testing & Validation Workflows
 
 ### Method A: Testing in Gazebo Mars Yard Simulation (Recommended)
+
+#### Quickest: Interactive Launcher
+```bash
+# Terminal 1: Simulation World & Rover
+bash scripts/launch_sim.sh   # Select Option 1 (or Option 2 for standalone teleop)
+
+# Terminal 2: Teleop GUI
+ros2 run my_robot_description teleop_gui.py
+
+# Terminal 3: Standalone Perception
+bash scripts/launch_perception.sh # Select Option 2 (Standalone Test Launcher)
+```
+
+#### Manual Playbook:
 1. **Start World & Spawn Rover:**
    ```bash
-   ros2 launch my_robot_description gazebo.launch.py world:=world1.world
+   ros2 launch my_robot_description gazebo.launch.py publish_map_tf:=true
    ```
-2. **Launch Perception:**
+2. **Drive the Rover with Teleop GUI:**
    ```bash
-   ros2 launch terrain_geometry perception_system.launch.py
+   ros2 run my_robot_description teleop_gui.py
    ```
-3. **Drive the Rover:**
+3. **Launch Standalone Perception with Visualization:**
    ```bash
-   ros2 run teleop_twist_keyboard teleop_twist_keyboard
+   ros2 launch terrain_geometry test_perception_standalone.launch.py
    ```
 4. **Inspect RViz2:**
-   Open `Perception/rviz/perception_system_view.rviz` in RViz2 to verify costmap updates and 3D bounding box stability.
+   Verify `/perception/local_bboxes` and `/perception/obstacles_only` (`vision_msgs/msg/Detection3DArray`) and visual markers on `/terrain/obstacle_markers`.
 
 ### Method B: Testing with ROS 2 Bag Playback
 1. **Publish Camera TF (if not in bag):**
