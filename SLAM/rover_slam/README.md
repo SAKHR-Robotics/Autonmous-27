@@ -98,6 +98,9 @@ ros2 run tf2_ros tf2_echo base_link imu_link
 ```
 *Expected Result:* 3D translation and rotation frames print continuously at 10 Hz with 0 lookup errors.
 
+> [!NOTE]
+> **TF Tree Conflict Prevention**: When running the full SLAM stack (`slam_bringup.launch.py`), `spawn_rover.launch.py` and `gazebo.launch.py` MUST run with `publish_map_tf:=false` (default) and `publish_camera_tf:=false` (default). This guarantees that RTAB-Map is the sole publisher of `map ➔ odom` and `static_transforms.launch.py` is the sole owner of the camera optical frame, preventing TF conflicts.
+
 ---
 
 ### 2️⃣ Test 2: RealSense Depth Filter Pipeline (Checkpoint 2)

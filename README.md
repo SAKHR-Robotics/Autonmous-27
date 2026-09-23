@@ -194,7 +194,12 @@ ros2 launch my_robot_description gazebo.launch.py
 ```
 
 > [!NOTE]
-> By default, the launch file loads `world1.world` and spawns the rover at a safe altitude (`z:=0.5`) to prevent collisions on startup.
+> By default, `gazebo.launch.py` loads `world1.world` with `publish_map_tf:=false` and `publish_camera_tf:=false` to ensure clean integration when running with the SLAM stack (RTAB-Map publishes dynamic `map ➔ odom`).
+>
+> If running standalone teleop/visualization without SLAM, pass:
+> ```bash
+> ros2 launch my_robot_description gazebo.launch.py publish_map_tf:=true publish_camera_tf:=true
+> ```
 >
 > If you want to launch the rover in the **empty world** instead, run:
 > ```bash

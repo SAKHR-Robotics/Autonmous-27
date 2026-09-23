@@ -16,7 +16,11 @@ source install/setup.bash
 
 **Gazebo Simulation** (recommended for testing movement):
 ```bash
+# Standard launch with SLAM active (publish_map_tf and publish_camera_tf are false by default to prevent TF conflicts)
 ros2 launch my_robot_description gazebo.launch.py
+
+# Standalone manual teleop without SLAM (publishes static map->odom and camera optical TF for RViz)
+ros2 launch my_robot_description gazebo.launch.py publish_map_tf:=true publish_camera_tf:=true
 ```
 
 **RViz Visualization** (for model inspection only):

@@ -133,20 +133,25 @@ def launch_setup(context, *args, **kwargs):
         output='screen'
     )
 
-    # Static transform publisher to bridge camera_link to Gazebo's camera sensor frame
+    publish_map_tf = LaunchConfiguration('publish_map_tf').perform(context).lower() in ['true', '1']
+    publish_camera_tf = LaunchConfiguration('publish_camera_tf').perform(context).lower() in ['true', '1']
+
+    # Static transform publisher to bridge Gazebo's camera sensor frame to REP-103 optical frame
+    # (Only active in standalone mode when SLAM static_transforms.launch.py is NOT running)
     camera_tf_node = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
         name='camera_optical_bridge',
         arguments=['--x', '0', '--y', '0', '--z', '0',
                    '--roll', '0', '--pitch', '0', '--yaw', '0',
-                   '--frame-id', 'camera_link',
+                   '--frame-id', 'camera_depth_optical_frame',
                    '--child-frame-id', 'my_robot/camera_link/camera'],
         parameters=[{'use_sim_time': True}],
         output='screen'
     )
 
-    # Static transform publisher to bridge map to odom (enables fixed map frame in RViz without running full SLAM)
+    # Static transform publisher to bridge map to odom
+    # (Only active for standalone teleop when SLAM RTAB-Map is NOT running)
     map_to_odom_node = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
@@ -159,14 +164,18 @@ def launch_setup(context, *args, **kwargs):
         output='screen'
     )
 
-    return [
+    nodes = [
         robot_state_publisher_node,
         joint_state_publisher_node,
         spawn_entity,
         bridge,
-        camera_tf_node,
-        map_to_odom_node
     ]
+    if publish_camera_tf:
+        nodes.append(camera_tf_node)
+    if publish_map_tf:
+        nodes.append(map_to_odom_node)
+
+    return nodes
 
 def generate_launch_description():
     return LaunchDescription([
@@ -174,6 +183,16 @@ def generate_launch_description():
             'world',
             default_value='marsyard',
             description='World name in Gazebo simulation (e.g. marsyard, empty)'
+        ),
+        DeclareLaunchArgument(
+            'publish_map_tf',
+            default_value='false',
+            description='Publish static map -> odom transform (set false when SLAM RTAB-Map is active)'
+        ),
+        DeclareLaunchArgument(
+            'publish_camera_tf',
+            default_value='false',
+            description='Publish static camera optical TF (set false when SLAM static_transforms.launch.py is active)'
         ),
         OpaqueFunction(function=launch_setup)
     ])

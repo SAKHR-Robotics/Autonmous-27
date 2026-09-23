@@ -59,12 +59,13 @@ map (Global World / RTAB-Map SLAM)
 1. **Never Duplicate Publishers**:
    - `odom ➔ base_link` MUST only be published by `robot_localization` EKF (`rover_slam/launch/ekf.launch.py`).
    - Do NOT allow Gazebo diff-drive plugin or raw wheel odom to publish the `odom ➔ base_link` TF directly when EKF is active.
-2. **`map ➔ odom`**:
-   - Published by RTAB-Map (`rover_slam/launch/rtabmap.launch.py`) to eliminate accumulated wheel drift.
+2. **`map ➔ odom` Ownership**:
+   - Dynamic `map ➔ odom` is published exclusively by RTAB-Map (`rover_slam/launch/rtabmap.launch.py`).
+   - In `spawn_rover.launch.py` and `gazebo.launch.py`, `publish_map_tf:=false` by default to prevent dual-publisher conflicts. Only set `publish_map_tf:=true` for standalone teleop without SLAM.
 3. **Camera Optical Frames**:
    - ROS image processing algorithms expect optical coordinates ($Z$ forward, $X$ right, $Y$ down).
    - Sensor mounting frames use standard body coordinates ($X$ forward, $Y$ left, $Z$ up).
-   - Static transform publisher in `spawn_rover.launch.py` bridges `camera_link` to `my_robot/camera_link/camera`.
+   - `static_transforms.launch.py` owns the static bridge from `camera_depth_optical_frame ➔ my_robot/camera_link/camera`. `spawn_rover.launch.py` sets `publish_camera_tf:=false` by default to prevent duplicate parents.
 
 ---
 

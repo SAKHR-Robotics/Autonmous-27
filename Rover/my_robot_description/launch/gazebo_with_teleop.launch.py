@@ -21,11 +21,27 @@ def generate_launch_description():
         description='World file or path to load in simulation'
     )
 
+    publish_map_tf_arg = DeclareLaunchArgument(
+        'publish_map_tf',
+        default_value='true',
+        description='Publish static map -> odom transform for standalone teleop visualization'
+    )
+
+    publish_camera_tf_arg = DeclareLaunchArgument(
+        'publish_camera_tf',
+        default_value='true',
+        description='Publish static camera optical TF for standalone teleop visualization'
+    )
+
     gazebo_sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
             os.path.join(pkg_share, 'launch', 'gazebo.launch.py')
         ]),
-        launch_arguments={'world': LaunchConfiguration('world')}.items()
+        launch_arguments={
+            'world': LaunchConfiguration('world'),
+            'publish_map_tf': LaunchConfiguration('publish_map_tf'),
+            'publish_camera_tf': LaunchConfiguration('publish_camera_tf'),
+        }.items()
     )
 
     teleop_gui_node = Node(
@@ -37,6 +53,8 @@ def generate_launch_description():
 
     return LaunchDescription([
         world_arg,
+        publish_map_tf_arg,
+        publish_camera_tf_arg,
         gazebo_sim,
         teleop_gui_node
     ])

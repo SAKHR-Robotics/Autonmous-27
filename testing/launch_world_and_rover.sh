@@ -118,7 +118,9 @@ export IGN_GAZEBO_RESOURCE_PATH="$EXTRA_PATHS:${IGN_GAZEBO_RESOURCE_PATH:-}"
 
 # Step 4: Launch Gazebo Simulation in Background
 echo "[4/4] Starting Gazebo simulation with rover and final_world_RA.world..."
-# Use properly quoted world argument to prevent bash '&' splitting
+echo "ℹ️  TF Notice: publish_map_tf=false & publish_camera_tf=false by default."
+echo "ℹ️  (RTAB-Map SLAM owns map->odom; pass 'publish_map_tf:=true' for standalone teleop)."
+# Forward any CLI flags (e.g. publish_map_tf:=true) directly to gazebo.launch.py
 ros2 launch my_robot_description gazebo.launch.py "world:=final_world_RA.world" "$@" &
 GZ_PID=$!
 
