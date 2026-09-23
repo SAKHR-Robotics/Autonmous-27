@@ -9,7 +9,7 @@
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include "sensor_msgs/point_cloud2_iterator.hpp"
 
-#include "terrain_geometry_msgs/msg/obstacle_feature_array.hpp"
+#include "vision_msgs/msg/detection3_d_array.hpp"
 
 class CostmapBridgeNode : public rclcpp::Node
 {
@@ -17,17 +17,17 @@ public:
   CostmapBridgeNode()
   : Node("costmap_bridge_node")
   {
-    // Subscriber: يستمع لخصائص العوائق القادمة من Perception
+    // Subscriber: Subscribes to 3D obstacle bounding boxes from Perception (/perception/obstacles_only)
     obstacle_subscriber_ =
-      this->create_subscription<terrain_geometry_msgs::msg::ObstacleFeatureArray>(
-        "/terrain/obstacle_features",
+      this->create_subscription<vision_msgs::msg::Detection3DArray>(
+        "/perception/obstacles_only",
         10,
         std::bind(
           &CostmapBridgeNode::obstacle_callback,
           this,
           std::placeholders::_1));
 
-    // Publisher: ينشر السحابة النقطية للـ Costmap
+    // Publisher: Publishes point cloud for Nav2 native ObstacleLayer
     pointcloud_publisher_ =
       this->create_publisher<sensor_msgs::msg::PointCloud2>(
         "/bridge/pointcloud",
@@ -35,7 +35,7 @@ public:
 
     RCLCPP_INFO(
       this->get_logger(),
-      "Costmap Bridge Node started with 3D dense bounding volume sampling.");
+      "Costmap Bridge Node started. Subscribing to /perception/obstacles_only (Detection3DArray) and sampling 3D footprints at 5cm into /bridge/pointcloud.");
   }
 
 private:
@@ -47,51 +47,58 @@ private:
   };
 
   void obstacle_callback(
-    const terrain_geometry_msgs::msg::ObstacleFeatureArray::SharedPtr msg)
+    const vision_msgs::msg::Detection3DArray::SharedPtr msg)
   {
     std::vector<Point3D> sampled_points;
-    const double resolution = 0.05;  // دقة الخطوة 5cm مطابقة للـ costmap resolution
-    const double epsilon = 1e-4;     // لضمان شمول الحد الأقصى max_point بدقة الفاصلة العائمة
+    const float step = 0.05f;      // 5cm grid resolution matching costmap resolution
+    const float epsilon = 1e-4f;
 
-    for (const auto & obstacle : msg->obstacles)
+    for (const auto & detection : msg->detections)
     {
-      double min_x = std::min(obstacle.min_point.x, obstacle.max_point.x);
-      double max_x = std::max(obstacle.min_point.x, obstacle.max_point.x);
-      double min_y = std::min(obstacle.min_point.y, obstacle.max_point.y);
-      double max_y = std::max(obstacle.min_point.y, obstacle.max_point.y);
-      double min_z = std::min(obstacle.min_point.z, obstacle.max_point.z);
-      double max_z = std::max(obstacle.min_point.z, obstacle.max_point.z);
+      const auto & center = detection.bbox.center.position;
+      const auto & size = detection.bbox.size;
+      const auto & orient = detection.bbox.center.orientation;
 
-      // حماية إضافية (Fallback): إذا لم تكن min/max محددة واستخدمت الأبعاد بدلاً منها
-      if (std::abs(max_x - min_x) < 1e-5 && obstacle.depth > 0.0f)
+      // Ignore detections with invalid / non-positive footprint dimensions
+      if (size.x <= 0.0f || size.y <= 0.0f)
       {
-        min_x = obstacle.centroid.x - obstacle.depth / 2.0;
-        max_x = obstacle.centroid.x + obstacle.depth / 2.0;
-      }
-      if (std::abs(max_y - min_y) < 1e-5 && obstacle.width > 0.0f)
-      {
-        min_y = obstacle.centroid.y - obstacle.width / 2.0;
-        max_y = obstacle.centroid.y + obstacle.width / 2.0;
-      }
-      if (std::abs(max_z - min_z) < 1e-5 && obstacle.height > 0.0f)
-      {
-        min_z = obstacle.centroid.z - obstacle.height / 2.0;
-        max_z = obstacle.centroid.z + obstacle.height / 2.0;
+        continue;
       }
 
-      // أخذ عينات نقطية عبر كامل الصندوق المحيط ثلاثي الأبعاد (Full 3D Bounding Envelope)
-      for (double x = min_x; x <= max_x + epsilon; x += resolution)
+      // Compute yaw from quaternion: atan2(2*(w*z + x*y), 1 - 2*(y*y + z*z))
+      double siny_cosp = 2.0 * (orient.w * orient.z + orient.x * orient.y);
+      double cosy_cosp = 1.0 - 2.0 * (orient.y * orient.y + orient.z * orient.z);
+      double yaw = std::atan2(siny_cosp, cosy_cosp);
+
+      bool has_rotation = (std::abs(yaw) > 1e-3);
+      float cos_yaw = static_cast<float>(std::cos(yaw));
+      float sin_yaw = static_cast<float>(std::sin(yaw));
+
+      float half_x = static_cast<float>(size.x / 2.0);
+      float half_y = static_cast<float>(size.y / 2.0);
+
+      // Sample 3D bounding box footprint at 5cm grid resolution
+      for (float dx = -half_x; dx <= half_x + epsilon; dx += step)
       {
-        for (double y = min_y; y <= max_y + epsilon; y += resolution)
+        for (float dy = -half_y; dy <= half_y + epsilon; dy += step)
         {
-          for (double z = min_z; z <= max_z + epsilon; z += resolution)
+          float x, y;
+          if (has_rotation)
           {
-            sampled_points.push_back({
-              static_cast<float>(x),
-              static_cast<float>(y),
-              static_cast<float>(z)
-            });
+            x = static_cast<float>(center.x) + dx * cos_yaw - dy * sin_yaw;
+            y = static_cast<float>(center.y) + dx * sin_yaw + dy * cos_yaw;
           }
+          else
+          {
+            x = static_cast<float>(center.x) + dx;
+            y = static_cast<float>(center.y) + dy;
+          }
+
+          sampled_points.push_back({
+            x,
+            y,
+            static_cast<float>(center.z)
+          });
         }
       }
     }
@@ -101,23 +108,19 @@ private:
       return;
     }
 
-    // تجهيز رسالة PointCloud2
+    // Prepare PointCloud2 message
     sensor_msgs::msg::PointCloud2 pointcloud;
-
-    // الحفاظ على نفس الـ frame_id والـ timestamp للرسالة القادمة
     pointcloud.header = msg->header;
-
-    // سحابة نقطية غير مرتبة (1 row)
     pointcloud.height = 1;
     pointcloud.width = static_cast<uint32_t>(sampled_points.size());
     pointcloud.is_dense = true;
 
-    // تحديد حقول XYZ وحجم الذاكرة
+    // Set XYZ fields and buffer size
     sensor_msgs::PointCloud2Modifier modifier(pointcloud);
     modifier.setPointCloud2FieldsByString(1, "xyz");
     modifier.resize(sampled_points.size());
 
-    // Iterators لتعبئة النقاط
+    // Fill point cloud data
     sensor_msgs::PointCloud2Iterator<float> iter_x(pointcloud, "x");
     sensor_msgs::PointCloud2Iterator<float> iter_y(pointcloud, "y");
     sensor_msgs::PointCloud2Iterator<float> iter_z(pointcloud, "z");
@@ -132,7 +135,7 @@ private:
       ++iter_z;
     }
 
-    // نشر السحابة النقطية على التوبيك
+    // Publish to /bridge/pointcloud for Nav2 ObstacleLayer
     pointcloud_publisher_->publish(pointcloud);
 
     RCLCPP_INFO_THROTTLE(
@@ -141,10 +144,10 @@ private:
       5000,
       "Published PointCloud2 with %zu points covering %zu obstacles.",
       sampled_points.size(),
-      msg->obstacles.size());
+      msg->detections.size());
   }
 
-  rclcpp::Subscription<terrain_geometry_msgs::msg::ObstacleFeatureArray>::SharedPtr
+  rclcpp::Subscription<vision_msgs::msg::Detection3DArray>::SharedPtr
     obstacle_subscriber_;
 
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr

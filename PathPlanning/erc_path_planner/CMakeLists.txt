@@ -13,7 +13,7 @@ find_package(ament_cmake REQUIRED)
 
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
-find_package(terrain_geometry_msgs REQUIRED)
+find_package(vision_msgs REQUIRED)
 
 
 # --------------------------------------------------
@@ -27,7 +27,7 @@ add_executable(costmap_bridge_node
 ament_target_dependencies(costmap_bridge_node
   rclcpp
   sensor_msgs
-  terrain_geometry_msgs
+  vision_msgs
 )
 
 
