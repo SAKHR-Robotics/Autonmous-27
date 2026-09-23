@@ -82,7 +82,7 @@
     Creates suspension arm (rectangular link) + wheel
     Arm connects vertically through wheel CENTER
     Parameters:
-      prefix - identifier (e.g., "left_front", "right_middle")
+      prefix - identifier (e.g., "left_front", "right_rear")
       x_pos - x position relative to base_link (m)
       y_pos - y position relative to base_link (m)
       wheel_offset_x - wheel X offset from arm center (m)

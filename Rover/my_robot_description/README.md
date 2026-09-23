@@ -1,6 +1,6 @@
 # Robot Description Package
 
-A 6-wheeled Mars rover style robot for ROS 2 Humble with Gazebo Ignition simulation support.
+A 4-wheeled Mars rover style robot for ROS 2 Humble with Gazebo Ignition simulation support.
 
 ## Quick Start
 
@@ -43,7 +43,7 @@ ros2 topic pub /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.5}, angular: {z:
 - **`display.launch.py`**: Visualizes robot model in RViz without physics
 
 ### URDF/Xacro Files
-- **`my_robot.urdf.xacro`**: Main robot description with 6-wheeled Mars rover structure and IMU sensor
+- **`my_robot.urdf.xacro`**: Main robot description with 4-wheeled Mars rover structure and IMU sensor
 - **`macros.xacro`**: Reusable macros for inertia calculations and suspension components
 - **`materials.xacro`**: Color definitions (red, black, gray)
 - **`gazebo.xacro`**: Gazebo-specific properties, differential drive plugin, and IMU sensor plugin
@@ -108,9 +108,9 @@ python3 verify_camera.py
 ## Robot Specifications
 
 - **Base**: 0.4m × 0.4m × 0.15m (square, red)
-- **Suspension Arms**: 6 gray rectangular links
-- **Wheels**: 6 total (3 per side, radius=0.06m)
-- **Drive System**: Differential drive using middle wheels
+- **Suspension Arms**: 4 gray rectangular links
+- **Wheels**: 4 total (2 per side, radius=0.06m)
+- **Drive System**: 4-wheel differential drive / skid-steer
 - **Sensors**:
   - **IMU**: Positioned at base_link center, 100 Hz update rate
     - Linear acceleration noise: σ=0.01 m/s², bias=0.01 m/s²
@@ -121,5 +121,5 @@ python3 verify_camera.py
     - Update rate: 30 Hz
     - Image format: RGB8
     - Position: Front face of robot (x=0.215m from base center)
-- **Total Links**: 16 (base_footprint, base_link, imu_link, camera_link, 6 arms, 6 wheels)
-- **Total Joints**: 15 (1 fixed footprint, 1 fixed IMU, 1 fixed camera, 6 fixed arms, 6 continuous wheels)
+- **Total Links**: 13 (base_footprint, base_link, imu_link, camera_link, my_robot/camera_link/camera, 4 arms, 4 wheels)
+- **Total Joints**: 12 (1 fixed footprint, 1 fixed IMU, 1 fixed camera, 1 fixed camera optical, 4 fixed arms, 4 continuous wheels)

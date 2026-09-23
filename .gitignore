@@ -32,3 +32,6 @@ Makefile
 *.o
 *.so
 *.a
+
+# Multi-agent teamwork scratch
+.agents/

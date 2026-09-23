@@ -91,16 +91,6 @@ Visualization Manager:
           Show Axes: false
           Show Trail: false
           Value: true
-        left_middle_arm_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        left_middle_wheel_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
         left_rear_arm_link:
           Alpha: 1
           Show Axes: false
@@ -121,16 +111,6 @@ Visualization Manager:
           Show Trail: false
           Value: true
         right_front_wheel_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        right_middle_arm_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        right_middle_wheel_link:
           Alpha: 1
           Show Axes: false
           Show Trail: false
@@ -172,8 +152,6 @@ Visualization Manager:
           Value: true
         left_front_arm_link:
           Value: true
-        left_middle_arm_link:
-          Value: true
         left_rear_arm_link:
           Value: true
         map:
@@ -183,8 +161,6 @@ Visualization Manager:
         odom:
           Value: true
         right_front_arm_link:
-          Value: true
-        right_middle_arm_link:
           Value: true
         right_rear_arm_link:
           Value: true
@@ -208,13 +184,9 @@ Visualization Manager:
                 {}
               left_front_arm_link:
                 {}
-              left_middle_arm_link:
-                {}
               left_rear_arm_link:
                 {}
               right_front_arm_link:
-                {}
-              right_middle_arm_link:
                 {}
               right_rear_arm_link:
                 {}

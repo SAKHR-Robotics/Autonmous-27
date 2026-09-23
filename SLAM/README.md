@@ -61,7 +61,7 @@ flowchart TD
     subgraph ProcessingBlocks ["⚙️ SLAM PROCESSING MODULES"]
         
         subgraph BlockOdom ["Block 1: Odometry Kinematics"]
-            NODE_ODOM["<b>encoder_ticks_to_odom</b><br>• Converts tick deltas to linear & angular twist<br>• Isolates single-wheel slip per side<br>• Publishes /wheel/single_wheel_slip & per-wheel speeds"]
+            NODE_ODOM["<b>encoder_ticks_to_odom</b><br>• Converts 4-wheel tick deltas to linear & angular twist<br>• Isolates single-wheel slip per side across 4 wheels<br>• Publishes /wheel/single_wheel_slip & 4-wheel speeds"]
         end
         
         subgraph BlockSlip ["Block 2: Slip Checker & Covariance Filter"]
@@ -131,7 +131,7 @@ flowchart TD
 ## 📂 Package Directory
 
 * **`rover_slam/`**: Core ROS 2 package containing launch files, configurations, and preprocessing nodes.
-  * **`rover_slam/encoder_ticks_to_odom.py`**: Wheel tick differential kinematics calculator.
+  * **`rover_slam/encoder_ticks_to_odom.py`**: 4-wheel encoder tick differential kinematics & odometry calculator.
   * **`rover_slam/heuristic_slip_checker.py`**: Sand slippage detection and dynamic covariance inflation.
   * **`config/ekf.yaml`**: `robot_localization` sensor fusion configuration.
   * **`config/rtabmap.yaml`**: RTAB-Map visual SLAM and graph optimization parameters.

@@ -61,10 +61,6 @@ Visualization Manager:
           Value: true
         left_front_wheel_link:
           Value: true
-        left_middle_arm_link:
-          Value: true
-        left_middle_wheel_link:
-          Value: true
         left_rear_arm_link:
           Value: true
         left_rear_wheel_link:
@@ -74,10 +70,6 @@ Visualization Manager:
         right_front_arm_link:
           Value: true
         right_front_wheel_link:
-          Value: true
-        right_middle_arm_link:
-          Value: true
-        right_middle_wheel_link:
           Value: true
         right_rear_arm_link:
           Value: true
@@ -100,17 +92,11 @@ Visualization Manager:
           left_front_arm_link:
             left_front_wheel_link:
               {}
-          left_middle_arm_link:
-            left_middle_wheel_link:
-              {}
           left_rear_arm_link:
             left_rear_wheel_link:
               {}
           right_front_arm_link:
             right_front_wheel_link:
-              {}
-          right_middle_arm_link:
-            right_middle_wheel_link:
               {}
           right_rear_arm_link:
             right_rear_wheel_link:

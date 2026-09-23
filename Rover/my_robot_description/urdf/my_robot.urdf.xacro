@@ -2,9 +2,9 @@
 <!-- 
   my_robot.urdf.xacro - Mars Rover Style Robot Description
   
-  This file defines a 6-wheeled Mars rover style robot with:
+  This file defines a 4-wheeled Mars rover style robot with:
   - Square base (0.4m × 0.4m × 0.15m) in RED color
-  - 6 wheels: 3 on left side, 3 on right side
+  - 4 wheels: 2 on left side, 2 on right side
   - Each wheel connected via continuous joint for driving
   
   The robot uses xacro macros for reusability and maintainability.
@@ -54,7 +54,7 @@
   <!-- Wheel positioning -->
   <!-- 
     TO SHIFT SUSPENSION ARMS AND WHEELS:
-    - Edit wheel_x_front, wheel_x_middle, wheel_x_rear to move wheels forward/backward
+    - Edit wheel_x_front, wheel_x_rear to move wheels forward/backward
     - Edit arm_y_offset to move arms (and wheels) left/right
     - Edit arm_x_offset to move arms forward/backward relative to wheels
     - Edit arm_z_adjustment to move arms up/down
@@ -66,9 +66,8 @@
   <xacro:property name="arm_z_offset" value="${-base_height/2 - arm_height/2 + arm_z_adjustment}"/>
   <!-- Y offset: arms extend from sides of base (outside the base body) -->
   <xacro:property name="arm_y_offset" value="0.21"/>
-  <!-- X positions: front, middle, rear (evenly spaced along base length) -->
+  <!-- X positions: front, rear (+0.15m and -0.15m along base length) -->
   <xacro:property name="wheel_x_front" value="0.15"/>
-  <xacro:property name="wheel_x_middle" value="0.0"/>
   <xacro:property name="wheel_x_rear" value="-0.15"/>
   
   <!-- Wheel offset relative to arm link (fine-tune wheel position) -->
@@ -133,20 +132,13 @@
 
   <!-- ========================================== -->
   <!-- SUSPENSION ARMS + WHEELS (Mars rover style) -->
-  <!-- 6 rectangular arms extending down from base -->
-  <!-- 6 wheels attached to bottom of arms         -->
+  <!-- 4 rectangular arms extending down from base -->
+  <!-- 4 wheels attached to bottom of arms         -->
   <!-- ========================================== -->
   
   <!-- LEFT SIDE -->
   <xacro:suspension_wheel_macro prefix="left_front" 
                                 x_pos="${wheel_x_front}" 
-                                y_pos="${arm_y_offset}"
-                                wheel_offset_x="${wheel_offset_x_left}"
-                                wheel_offset_y="${wheel_offset_y_left}"
-                                wheel_offset_z="${wheel_offset_z_left}"/>
-
-  <xacro:suspension_wheel_macro prefix="left_middle" 
-                                x_pos="${wheel_x_middle}" 
                                 y_pos="${arm_y_offset}"
                                 wheel_offset_x="${wheel_offset_x_left}"
                                 wheel_offset_y="${wheel_offset_y_left}"
@@ -162,13 +154,6 @@
   <!-- RIGHT SIDE -->
   <xacro:suspension_wheel_macro prefix="right_front" 
                                 x_pos="${wheel_x_front}" 
-                                y_pos="${-arm_y_offset}"
-                                wheel_offset_x="${wheel_offset_x_right}"
-                                wheel_offset_y="${wheel_offset_y_right}"
-                                wheel_offset_z="${wheel_offset_z_right}"/>
-
-  <xacro:suspension_wheel_macro prefix="right_middle" 
-                                x_pos="${wheel_x_middle}" 
                                 y_pos="${-arm_y_offset}"
                                 wheel_offset_x="${wheel_offset_x_right}"
                                 wheel_offset_y="${wheel_offset_y_right}"
