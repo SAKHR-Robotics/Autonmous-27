@@ -33,6 +33,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile
 from rclpy.time import Time
 from tf2_ros import Buffer, TransformException, TransformListener
+from geometry_msgs.msg import PoseStamped
 from marker_detection_msgs.msg import MarkerActionTarget, MarkerActionTargetArray, MarkerTrackedPose, MarkerTrackedPoseArray
 from marker_detection.action_target_builder import ActionTarget, build_action_target
 from marker_detection.frame_transform import ResolvedPose, transform_to_base_link
@@ -56,6 +57,8 @@ class MarkerActionInterfaceNode(Node):
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.targets_pub = self.create_publisher(
             MarkerActionTargetArray, self.get_parameter("targets_topic").value, QoSProfile(depth=10))
+        self.slam_landmark_pub = self.create_publisher(
+            PoseStamped, self.get_parameter("slam_landmark_topic").value, QoSProfile(depth=10))
         self.pose_sub = self.create_subscription(
             MarkerTrackedPoseArray, self.get_parameter("tracked_pose_topic").value,
             self._poses_callback, QoSProfile(depth=10))
@@ -64,6 +67,7 @@ class MarkerActionInterfaceNode(Node):
     def _declare_parameters(self) -> None:
         for name, value in {
             "tracked_pose_topic": "/marker_poses", "targets_topic": "/marker_detection/targets",
+            "slam_landmark_topic": "/perception/aruco_pose",
             "base_link_frame": "base_link", "tf_cache_seconds": 10.0, "tf_lookup_timeout_seconds": 0.05,
             # Part 6/16: the only two new configurable thresholds this
             # interface needs; everything else is read from the existing
@@ -77,7 +81,20 @@ class MarkerActionInterfaceNode(Node):
         output = MarkerActionTargetArray()
         output.header.stamp, output.header.frame_id = message.header.stamp, self.base_link_frame
         for pose in message.markers:
-            output.markers.append(self._build_message(pose))
+            msg = self._build_message(pose)
+            output.markers.append(msg)
+            if msg.usable_for_action and msg.pose_valid:
+                pose_stamped = PoseStamped()
+                pose_stamped.header.stamp = msg.header.stamp
+                pose_stamped.header.frame_id = self.base_link_frame
+                pose_stamped.pose.position.x = msg.position.x
+                pose_stamped.pose.position.y = msg.position.y
+                pose_stamped.pose.position.z = msg.position.z
+                pose_stamped.pose.orientation.x = msg.orientation.x
+                pose_stamped.pose.orientation.y = msg.orientation.y
+                pose_stamped.pose.orientation.z = msg.orientation.z
+                pose_stamped.pose.orientation.w = msg.orientation.w
+                self.slam_landmark_pub.publish(pose_stamped)
         self.targets_pub.publish(output)
 
     def _build_message(self, pose: MarkerTrackedPose) -> MarkerActionTarget:

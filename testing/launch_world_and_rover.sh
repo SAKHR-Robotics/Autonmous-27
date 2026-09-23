@@ -116,12 +116,20 @@ EXTRA_PATHS="$MODELS_DIR:$MODELS_DIR/rocks:$MODELS_DIR/aruco:$INSTALL_MODELS_DIR
 export GZ_SIM_RESOURCE_PATH="$EXTRA_PATHS:${GZ_SIM_RESOURCE_PATH:-}"
 export IGN_GAZEBO_RESOURCE_PATH="$EXTRA_PATHS:${IGN_GAZEBO_RESOURCE_PATH:-}"
 
+# Optional TF flags (default: false to prevent conflicts with RTAB-Map SLAM and EKF)
+PUBLISH_MAP_TF="${PUBLISH_MAP_TF:-false}"
+PUBLISH_CAMERA_TF="${PUBLISH_CAMERA_TF:-false}"
+
 # Step 4: Launch Gazebo Simulation in Background
 echo "[4/4] Starting Gazebo simulation with rover and final_world_RA.world..."
-echo "ℹ️  TF Notice: publish_map_tf=false & publish_camera_tf=false by default."
-echo "ℹ️  (RTAB-Map SLAM owns map->odom; pass 'publish_map_tf:=true' for standalone teleop)."
-# Forward any CLI flags (e.g. publish_map_tf:=true) directly to gazebo.launch.py
-ros2 launch my_robot_description gazebo.launch.py "world:=final_world_RA.world" "$@" &
+echo "ℹ️  TF Configuration: publish_map_tf=$PUBLISH_MAP_TF, publish_camera_tf=$PUBLISH_CAMERA_TF"
+echo "ℹ️  (Default is 'false' for full SLAM/Nav2 pipeline; set to 'true' for standalone teleop testing)."
+# Forward TF flags and any additional CLI flags directly to gazebo.launch.py
+ros2 launch my_robot_description gazebo.launch.py \
+    "world:=final_world_RA.world" \
+    "publish_map_tf:=$PUBLISH_MAP_TF" \
+    "publish_camera_tf:=$PUBLISH_CAMERA_TF" \
+    "$@" &
 GZ_PID=$!
 
 # Wait briefly for ROS nodes and Gazebo to initialize

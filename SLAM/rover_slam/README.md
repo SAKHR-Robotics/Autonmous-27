@@ -144,7 +144,11 @@ ros2 topic pub /perception/aruco_pose geometry_msgs/msg/PoseStamped "{header: {f
 ### 5️⃣ Test 5: Master SLAM Bringup (Checkpoint 5)
 Run the full system integration launch combining all sub-systems:
 ```bash
+# Production mode (clean defaults: real perception, no stubs, Nav2 costmap managed by path planner):
 ros2 launch rover_slam slam_bringup.launch.py
+
+# Standalone SLAM testing mode (enable internal costmap & synthetic ArUco generator):
+ros2 launch rover_slam slam_bringup.launch.py launch_costmap:=true launch_costmap_stub:=true launch_aruco_stub:=true
 ```
 
 ---

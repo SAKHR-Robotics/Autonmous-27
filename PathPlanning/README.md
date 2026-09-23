@@ -208,22 +208,31 @@ source install/setup.bash
 
 ## 🚀 7. Execution & Quickstart
 
+### Standard Execution (With SLAM / Live Rover)
+By default, `use_slam:=true`. Nav2's `map_server` is disabled and RTAB-Map SLAM owns the live `/map` topic:
 ```bash
-# Terminal 1: Launch Nav2 Path Planning Stack
-ros2 launch erc_path_planner path_planning.launch.py
+# Terminal 1: Launch Nav2 Path Planning Stack (RTAB-Map supplies /map)
+ros2 launch erc_path_planner path_planning.launch.py use_sim_time:=true
 
 # Terminal 2: Launch RViz Visualization Dashboard
 ros2 launch erc_path_planner rviz.launch.py
+```
 
-# Terminal 3: Run Costmap Perception Bridge (if testing standalone)
-ros2 run erc_path_planner costmap_bridge_node
+### Standalone Testing (Without SLAM / Isolated Planner)
+To test path planning in isolation without running RTAB-Map SLAM, set `use_slam:=false`. This launches `nav2_map_server` with `dummy_map.yaml` (or a custom map):
+```bash
+# Launch with default dummy blank map
+ros2 launch erc_path_planner path_planning.launch.py use_slam:=false
+
+# Launch standalone with a custom benchmark map
+ros2 launch erc_path_planner path_planning.launch.py use_slam:=false map:=$(ros2 pkg prefix erc_path_planner)/share/erc_path_planner/maps/rock_field.yaml
 ```
 
 ---
 
 ## 🗺️ 8. Benchmark & Operational Maps
 
-All custom 2D occupancy grid maps are located in [`PathPlanning/erc_path_planner/maps/`](file:///e:/meseket/Autonmous-27/PathPlanning/erc_path_planner/maps/):
+All custom 2D occupancy grid maps are located in [`PathPlanning/erc_path_planner/maps/`](file:///e:/SHAKR/Autonmous-27/PathPlanning/erc_path_planner/maps/):
 
 | Map Name | Image / YAML | Dimensions & Resolution | Terrain Description | Key Test Objective |
 | :--- | :--- | :---: | :--- | :--- |
@@ -231,28 +240,17 @@ All custom 2D occupancy grid maps are located in [`PathPlanning/erc_path_planner
 | **Narrow Corridor** | `narrow_corridor.yaml` (`.pgm`) | $10\text{m} \times 10\text{m}$ ($0.05\text{m/px}$) | $1.2\text{m}$ canyon gate between walls | High-precision tracking through tight clearances |
 | **Dead End** | `dead_end.yaml` (`.pgm`) | $10\text{m} \times 10\text{m}$ ($0.05\text{m/px}$) | U-shaped obstacle trap | Smac heuristic escape & reverse turnarounds |
 
-### How to Launch the Real Full Path Planner with Custom Maps
+### How to Launch Standalone Benchmarking with Custom Maps
 
-#### Option A: Pass the Map Directly via CLI
 ```bash
-# Launch with the rock field map
-ros2 launch erc_path_planner path_planning.launch.py map:=$(ros2 pkg prefix erc_path_planner)/share/erc_path_planner/maps/rock_field.yaml
+# Launch standalone planner with the rock field map
+ros2 launch erc_path_planner path_planning.launch.py use_slam:=false map:=$(ros2 pkg prefix erc_path_planner)/share/erc_path_planner/maps/rock_field.yaml
 
-# Launch with the narrow corridor map
-ros2 launch erc_path_planner path_planning.launch.py map:=$(ros2 pkg prefix erc_path_planner)/share/erc_path_planner/maps/narrow_corridor.yaml
+# Launch standalone planner with the narrow corridor map
+ros2 launch erc_path_planner path_planning.launch.py use_slam:=false map:=$(ros2 pkg prefix erc_path_planner)/share/erc_path_planner/maps/narrow_corridor.yaml
 
-# Launch with the dead end trap map
-ros2 launch erc_path_planner path_planning.launch.py map:=$(ros2 pkg prefix erc_path_planner)/share/erc_path_planner/maps/dead_end.yaml
-```
-
-#### Option B: Change Default Map in `path_planning.launch.py`
-To make a specific map the permanent default when running `ros2 launch erc_path_planner path_planning.launch.py` without arguments, edit [`PathPlanning/erc_path_planner/launch/path_planning.launch.py`](file:///e:/meseket/Autonmous-27/PathPlanning/erc_path_planner/launch/path_planning.launch.py):
-```python
-default_map = os.path.join(
-    erc_path_planner_dir,
-    'maps',
-    'rock_field.yaml'
-)
+# Launch standalone planner with the dead end trap map
+ros2 launch erc_path_planner path_planning.launch.py use_slam:=false map:=$(ros2 pkg prefix erc_path_planner)/share/erc_path_planner/maps/dead_end.yaml
 ```
 
 #### Option C: Dynamic Map Swapping at Runtime (Without restarting Nav2)
