@@ -73,9 +73,10 @@ from rcl_interfaces.msg import SetParametersResult
 
 from std_msgs.msg import Header
 from sensor_msgs.msg import PointCloud2
-from geometry_msgs.msg import Point
+from geometry_msgs.msg import Point, Pose, Vector3, Quaternion
 from visualization_msgs.msg import MarkerArray
 from nav_msgs.msg import OccupancyGrid
+from vision_msgs.msg import Detection3D, Detection3DArray, BoundingBox3D
 
 from terrain_geometry_msgs.msg import ObstacleFeature as ObstacleFeatureMsg
 from terrain_geometry_msgs.msg import ObstacleFeatureArray
@@ -137,6 +138,42 @@ def _feature_to_grid_obstacle(feature: ObstacleFeature) -> SimpleNamespace:
         height=feature.height,
         depth=feature.depth,
     )
+
+
+def _feature_to_detection3d(feature: ObstacleFeature, header: Header) -> Detection3D:
+    """Convert an internal `ObstacleFeature` into a standard `vision_msgs/Detection3D` message."""
+    det = Detection3D()
+    det.header = header
+    det.id = str(feature.id)
+
+    bbox = BoundingBox3D()
+    if feature.obb_center is not None and feature.obb_extents is not None and feature.obb_quaternion is not None:
+        bbox.center.position.x = float(feature.obb_center[0])
+        bbox.center.position.y = float(feature.obb_center[1])
+        bbox.center.position.z = float(feature.obb_center[2])
+        bbox.center.orientation.x = float(feature.obb_quaternion[0])
+        bbox.center.orientation.y = float(feature.obb_quaternion[1])
+        bbox.center.orientation.z = float(feature.obb_quaternion[2])
+        bbox.center.orientation.w = float(feature.obb_quaternion[3])
+        bbox.size.x = float(feature.obb_extents[0])
+        bbox.size.y = float(feature.obb_extents[1])
+        bbox.size.z = float(feature.obb_extents[2])
+    else:
+        # AABB geometric center (center of min and max bounds)
+        bbox.center.position.x = float((feature.min_point[0] + feature.max_point[0]) / 2.0)
+        bbox.center.position.y = float((feature.min_point[1] + feature.max_point[1]) / 2.0)
+        bbox.center.position.z = float((feature.min_point[2] + feature.max_point[2]) / 2.0)
+        bbox.center.orientation.x = 0.0
+        bbox.center.orientation.y = 0.0
+        bbox.center.orientation.z = 0.0
+        bbox.center.orientation.w = 1.0
+        # In base_link: depth=X (longitudinal), width=Y (lateral), height=Z (vertical)
+        bbox.size.x = float(feature.depth)
+        bbox.size.y = float(feature.width)
+        bbox.size.z = float(feature.height)
+
+    det.bbox = bbox
+    return det
 
 
 class TerrainGeometryNode(Node):
@@ -312,6 +349,14 @@ class TerrainGeometryNode(Node):
             MarkerArray, "/terrain/obstacle_markers", reliable_qos
         )
 
+        # Standard 3D bounding box detection publishers
+        self._local_bbox_pub = self.create_publisher(
+            Detection3DArray, "/perception/local_bboxes", reliable_qos
+        )
+        self._obstacles_only_pub = self.create_publisher(
+            Detection3DArray, "/perception/obstacles_only", reliable_qos
+        )
+
         # --- Debug publishers (only *published to* when enabled) ------
         self._ground_cloud_pub = self.create_publisher(
             PointCloud2, "/terrain/debug/ground_cloud", qos_profile_sensor_data
@@ -420,6 +465,9 @@ class TerrainGeometryNode(Node):
         # Costmap generation toggle (False by default to avoid wasting ~35% CPU when Nav2 builds its own costmaps)
         self.declare_parameter("enable_costmap", False)
 
+        # Standard Detection3DArray publishers toggle
+        self.declare_parameter("publish_to_obstacles_only", True)
+
         # Debug
         self.declare_parameter("publish_debug_topics", False)
 
@@ -491,6 +539,7 @@ class TerrainGeometryNode(Node):
         self._cost_scaling_factor = float(gp("cost_scaling_factor"))
         self._inflate_unknown_cells = bool(gp("inflate_unknown_cells"))
         self._enable_costmap = bool(gp("enable_costmap"))
+        self._publish_to_obstacles_only = bool(gp("publish_to_obstacles_only"))
 
         self._publish_debug_topics = bool(gp("publish_debug_topics"))
 
@@ -620,6 +669,8 @@ class TerrainGeometryNode(Node):
                 self._publish_debug_topics = bool(param.value)
             elif param.name == "enable_costmap":
                 self._enable_costmap = bool(param.value)
+            elif param.name == "publish_to_obstacles_only":
+                self._publish_to_obstacles_only = bool(param.value)
 
         return SetParametersResult(successful=True)
 
@@ -746,6 +797,14 @@ class TerrainGeometryNode(Node):
         feature_array_msg.obstacles = [_feature_to_msg(f) for f in features]
         self._feature_pub.publish(feature_array_msg)
 
+        # Standard Detection3DArray output for persistent memory and costmap bridge
+        detection_array_msg = Detection3DArray()
+        detection_array_msg.header = header
+        detection_array_msg.detections = [_feature_to_detection3d(f, header) for f in features]
+        self._local_bbox_pub.publish(detection_array_msg)
+        if self._publish_to_obstacles_only:
+            self._obstacles_only_pub.publish(detection_array_msg)
+
         markers_to_build = features if self._enable_marker_visualization else []
         marker_array_msg = self._marker_builder.build_marker_array(markers_to_build, header)
         self._marker_pub.publish(marker_array_msg)
@@ -825,6 +884,12 @@ class TerrainGeometryNode(Node):
         empty_features = ObstacleFeatureArray()
         empty_features.header = header
         self._feature_pub.publish(empty_features)
+
+        empty_detections = Detection3DArray()
+        empty_detections.header = header
+        self._local_bbox_pub.publish(empty_detections)
+        if self._publish_to_obstacles_only:
+            self._obstacles_only_pub.publish(empty_detections)
 
         empty_markers = self._marker_builder.build_marker_array([], header)
         self._marker_pub.publish(empty_markers)
