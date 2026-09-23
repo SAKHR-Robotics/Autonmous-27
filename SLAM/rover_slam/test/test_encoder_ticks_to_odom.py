@@ -405,3 +405,70 @@ def test_yaw_normalization_and_track_width_guard():
         pass
 
 
+def test_odometry_startup_timer_before_first_tick_no_jump():
+    """
+    Verify that if the odometry timer fires before any encoder ticks arrive,
+    subsequent arrival of a non-zero initial encoder counter does NOT cause
+    a position jump, and stationary idle cycles produce zero drift.
+    """
+    from rover_slam.encoder_ticks_to_odom import EncoderTicksToOdomNode
+    try:
+        import rclpy
+        from rclpy.time import Duration
+        from std_msgs.msg import Int64MultiArray
+        if not rclpy.ok():
+            rclpy.init()
+        node = EncoderTicksToOdomNode()
+
+        # Step 1: Timer fires 3 times BEFORE any encoder messages arrive
+        for _ in range(3):
+            node.last_time = node.get_clock().now() - Duration(seconds=0, nanoseconds=20000000)
+            node._update_odometry()
+            assert node.x == 0.0
+            for w in node.wheel_names:
+                assert node.wheel_delta_ticks[w] == 0
+                assert node.wheel_velocities[w] == pytest.approx(0.0)
+
+        # Step 2: First encoder message arrives with arbitrary power-on absolute counts (e.g. 15000)
+        msg1 = Int64MultiArray()
+        msg1.data = [15000, 15000, 15000, 15000]
+        node._ticks_array_callback(msg1)
+
+        # Step 3: Timer fires immediately after first message
+        node.last_time = node.get_clock().now() - Duration(seconds=0, nanoseconds=20000000)
+        node._update_odometry()
+
+        # Must NOT teleport: delta must be 0 and x must remain 0.0
+        assert node.x == pytest.approx(0.0)
+        for w in node.wheel_names:
+            assert node.wheel_delta_ticks[w] == 0
+            assert node.wheel_velocities[w] == pytest.approx(0.0)
+
+        # Step 4: Rover drives: second message arrives with +50 ticks (15050)
+        msg2 = Int64MultiArray()
+        msg2.data = [15050, 15050, 15050, 15050]
+        node._ticks_array_callback(msg2)
+
+        node.last_time = node.get_clock().now() - Duration(seconds=0, nanoseconds=20000000)
+        node._update_odometry()
+
+        # Rover must have moved forward by exactly 50 ticks
+        assert node.x > 0.0
+        x_driven = node.x
+        for w in node.wheel_names:
+            assert node.wheel_delta_ticks[w] == 50
+
+        # Step 5: Rover stops: timer fires 5 times without new messages
+        for _ in range(5):
+            node.last_time = node.get_clock().now() - Duration(seconds=0, nanoseconds=20000000)
+            node._update_odometry()
+            assert node.x == pytest.approx(x_driven)
+            for w in node.wheel_names:
+                assert node.wheel_delta_ticks[w] == 0
+                assert node.wheel_velocities[w] == pytest.approx(0.0)
+
+        node.destroy_node()
+    except (ImportError, AttributeError):
+        pass
+
+

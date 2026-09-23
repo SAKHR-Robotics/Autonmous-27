@@ -362,8 +362,7 @@ class EncoderTicksToOdomNode(Node):
             self.prev_ticks[wheel_name] = new_tick_count
             self.current_ticks[wheel_name] = new_tick_count
             self.wheel_delta_ticks[wheel_name] = 0
-            if self.last_odom_ticks.get(wheel_name) is None:
-                self.last_odom_ticks[wheel_name] = new_tick_count
+            self.last_odom_ticks[wheel_name] = new_tick_count
             return
 
         delta: int = new_tick_count - self.current_ticks[wheel_name]
@@ -396,16 +395,19 @@ class EncoderTicksToOdomNode(Node):
 
         # Calculate linear velocity for every individual wheel based on delta since last odometry cycle
         for wheel_name in self.wheel_names:
-            current: int = self.current_ticks.get(wheel_name, 0)
-            last_odom: Optional[int] = self.last_odom_ticks.get(wheel_name)
-
-            if last_odom is not None:
-                delta_ticks: int = current - last_odom
-                self.last_odom_ticks[wheel_name] = current
+            if self.prev_ticks.get(wheel_name) is None:
+                # No encoder data received yet for this wheel; hold at zero
+                delta_ticks = 0
             else:
-                # First odometry update: baseline current ticks or use pre-populated delta (test harnesses)
+                current: int = self.current_ticks.get(wheel_name, 0)
+                last_odom: Optional[int] = self.last_odom_ticks.get(wheel_name)
+
+                if last_odom is not None:
+                    delta_ticks = current - last_odom
+                else:
+                    delta_ticks = 0
+
                 self.last_odom_ticks[wheel_name] = current
-                delta_ticks = self.wheel_delta_ticks.get(wheel_name, 0)
 
             self.wheel_delta_ticks[wheel_name] = delta_ticks
             dist: float = delta_ticks * self.meters_per_tick
