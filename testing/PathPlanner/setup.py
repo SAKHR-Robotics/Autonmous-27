@@ -7,7 +7,7 @@ package_name = 'global_path_benchmarking'
 setup(
     name=package_name,
     version='1.0.0',
-    packages=find_packages(exclude=['test']),
+    packages=['global_path_benchmarking'],
     data_files=[
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
@@ -28,9 +28,9 @@ setup(
         'console_scripts': [
             'benchmarking_node = global_path_benchmarking.benchmarking_node:main',
             'testing_node = global_path_benchmarking.testing_node:main',
-            'mock_rover_sim = mock.mock_rover_sim:main',
-            'mock_perception = mock.mock_perception:main',
-            'drop_stone = scripts.drop_stone:main',
+            'mock_rover_sim = global_path_benchmarking.mock_rover_sim:main',
+            'mock_perception = global_path_benchmarking.mock_perception:main',
+            'drop_stone = global_path_benchmarking.drop_stone:main',
         ],
     },
 )
