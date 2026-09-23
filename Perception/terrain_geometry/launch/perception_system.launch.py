@@ -61,6 +61,11 @@ def generate_launch_description() -> LaunchDescription:
         default_value="/camera/camera_info",
         description="Camera calibration CameraInfo topic.",
     )
+    enable_costmap_arg = DeclareLaunchArgument(
+        "enable_costmap",
+        default_value="false",
+        description="Generate and inflate 2D costmap on /terrain/costmap if true (default false to save CPU).",
+    )
 
     # 1. Terrain Geometry Pipeline
     terrain_launch = IncludeLaunchDescription(
@@ -70,6 +75,7 @@ def generate_launch_description() -> LaunchDescription:
         launch_arguments={
             "use_sim_time": LaunchConfiguration("use_sim_time"),
             "input_pointcloud_topic": LaunchConfiguration("input_pointcloud_topic"),
+            "enable_costmap": LaunchConfiguration("enable_costmap"),
         }.items(),
     )
 
@@ -107,6 +113,7 @@ def generate_launch_description() -> LaunchDescription:
         rgb_topic_arg,
         depth_topic_arg,
         camera_info_topic_arg,
+        enable_costmap_arg,
         terrain_launch,
         marker_branch_launch,
         rviz_node,

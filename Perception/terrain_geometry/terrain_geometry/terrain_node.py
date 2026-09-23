@@ -329,6 +329,7 @@ class TerrainGeometryNode(Node):
             f"roi_filter={'enabled' if self._enable_roi_filter else 'disabled'}, "
             f"ground_backend_requested='{self._ground_removal_backend}', "
             f"ground_backend_active='{self._ground_removal.backend_name}', "
+            f"enable_costmap={self._enable_costmap}, "
             f"publish_debug_topics={self._publish_debug_topics}."
         )
 
@@ -416,6 +417,9 @@ class TerrainGeometryNode(Node):
         self.declare_parameter("cost_scaling_factor", 10.0)
         self.declare_parameter("inflate_unknown_cells", False)
 
+        # Costmap generation toggle (False by default to avoid wasting ~35% CPU when Nav2 builds its own costmaps)
+        self.declare_parameter("enable_costmap", False)
+
         # Debug
         self.declare_parameter("publish_debug_topics", False)
 
@@ -486,6 +490,7 @@ class TerrainGeometryNode(Node):
         self._costmap_inflation_radius = float(gp("costmap_inflation_radius"))
         self._cost_scaling_factor = float(gp("cost_scaling_factor"))
         self._inflate_unknown_cells = bool(gp("inflate_unknown_cells"))
+        self._enable_costmap = bool(gp("enable_costmap"))
 
         self._publish_debug_topics = bool(gp("publish_debug_topics"))
 
@@ -613,6 +618,8 @@ class TerrainGeometryNode(Node):
                 self._enable_obb = new_obb
             elif param.name == "publish_debug_topics":
                 self._publish_debug_topics = bool(param.value)
+            elif param.name == "enable_costmap":
+                self._enable_costmap = bool(param.value)
 
         return SetParametersResult(successful=True)
 
@@ -743,15 +750,16 @@ class TerrainGeometryNode(Node):
         marker_array_msg = self._marker_builder.build_marker_array(markers_to_build, header)
         self._marker_pub.publish(marker_array_msg)
 
-        # --- Occupancy grid rasterization --------------------------------------
-        grid_obstacles = [_feature_to_grid_obstacle(f) for f in features]
-        occupancy_msg, _grid_stats = self._grid_generator.generate(grid_obstacles, header)
-        profiler.mark("occupancy")
+        # --- Occupancy grid rasterization & Costmap inflation (optional) ------
+        if self._enable_costmap:
+            grid_obstacles = [_feature_to_grid_obstacle(f) for f in features]
+            occupancy_msg, _grid_stats = self._grid_generator.generate(grid_obstacles, header)
+            profiler.mark("occupancy")
 
-        # --- Costmap inflation (distance transform + exp decay) ----------------
-        costmap_msg, _inflation_stats = self._inflator.inflate(occupancy_msg)
-        self._costmap_pub.publish(costmap_msg)
-        profiler.mark("costmap")
+            # --- Costmap inflation (distance transform + exp decay) ----------------
+            costmap_msg, _inflation_stats = self._inflator.inflate(occupancy_msg)
+            self._costmap_pub.publish(costmap_msg)
+            profiler.mark("costmap")
 
         # --- Optional debug topics -----------------------------------------
         if self._publish_debug_topics:
@@ -821,9 +829,10 @@ class TerrainGeometryNode(Node):
         empty_markers = self._marker_builder.build_marker_array([], header)
         self._marker_pub.publish(empty_markers)
 
-        empty_grid_msg, _stats = self._grid_generator.generate([], header)
-        empty_costmap_msg, _inflation_stats = self._inflator.inflate(empty_grid_msg)
-        self._costmap_pub.publish(empty_costmap_msg)
+        if self._enable_costmap:
+            empty_grid_msg, _stats = self._grid_generator.generate([], header)
+            empty_costmap_msg, _inflation_stats = self._inflator.inflate(empty_grid_msg)
+            self._costmap_pub.publish(empty_costmap_msg)
 
 
 def main(args: list[str] | None = None) -> None:

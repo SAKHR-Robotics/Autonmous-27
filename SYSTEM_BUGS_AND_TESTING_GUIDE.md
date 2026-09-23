@@ -32,9 +32,9 @@ To balance **isolated module development** with **plug-and-play system integrati
 ### 🔴 Category A: Coordinate Frame (TF) Tree Violations & Multi-Parent Collisions
 
 #### Bug 1: Gazebo DiffDrive TF Bridge Flooding `/tf` [SOLVED]
-* **Affected Files**: [`Rover/my_robot_description/launch/spawn_rover.launch.py`](file:///e:/SHAKR/Autonmous-27/Rover/my_robot_description/launch/spawn_rover.launch.py) & [`gazebo.launch.py`](file:///e:/SHAKR/Autonmous-27/Rover/my_robot_description/launch/gazebo.launch.py).
+* **Affected Files**: [`Rover/my_robot_description/launch/spawn_rover.launch.py`](file:///e:/SHAKR/Autonmous-27/Rover/my_robot_description/launch/spawn_rover.launch.py), [`gazebo.launch.py`](file:///e:/SHAKR/Autonmous-27/Rover/my_robot_description/launch/gazebo.launch.py), & [`gazebo_with_teleop.launch.py`](file:///e:/SHAKR/Autonmous-27/Rover/my_robot_description/launch/gazebo_with_teleop.launch.py).
 * **The Root Cause**: Gazebo diff-drive plugin broadcasts `odom -> base_footprint` to `/tf`. Meanwhile, EKF publishes `odom -> base_link`, creating dual competing parent frames on `base_link`.
-* **The Fix Applied**: Added `publish_map_tf:=false` (default `false`) and disabled simulation `/model/my_robot/tf` bridge into `/tf` during integrated bringup.
+* **The Fix Applied**: Added `bridge_sim_tf:=false` (default `false`) across `spawn_rover.launch.py` and `gazebo.launch.py`. In `gazebo_with_teleop.launch.py`, `bridge_sim_tf:=true` by default for standalone manual teleoperation without EKF.
 
 #### Bug 2: Triple Broadcaster & Conflicting Parent on Camera Frame [SOLVED]
 * **Affected Files**: [`Rover/my_robot_description/urdf/my_robot.urdf.xacro`](file:///e:/SHAKR/Autonmous-27/Rover/my_robot_description/urdf/my_robot.urdf.xacro#L282), [`spawn_rover.launch.py`](file:///e:/SHAKR/Autonmous-27/Rover/my_robot_description/launch/spawn_rover.launch.py), [`SLAM/rover_slam/launch/static_transforms.launch.py`](file:///e:/SHAKR/Autonmous-27/SLAM/rover_slam/launch/static_transforms.launch.py).
@@ -76,10 +76,9 @@ To balance **isolated module development** with **plug-and-play system integrati
 
 ### 🔴 Category D: State Estimation Kinematics & Filter Tuning
 
-#### Bug 8: 4-Wheel Hardcoding on 6-Wheel Rover
+#### Bug 8: 4-Wheel vs 6-Wheel Rover Configuration [CLOSED / INVALID]
 * **Affected Files**: [`SLAM/rover_slam/rover_slam/encoder_ticks_to_odom.py`](file:///e:/SHAKR/Autonmous-27/SLAM/rover_slam/rover_slam/encoder_ticks_to_odom.py#L160-L165).
-* **The Flaw**: Node hardcodes `wheel_names` to 4 wheels with `track_width: 0.42`. The rover has 6 wheels with `track_width: 0.49`. Middle wheels (`left_middle`, `right_middle`) are completely ignored.
-* **Action Required**: Update default `wheel_names` to include all 6 wheels and set `track_width: 0.49`.
+* **Audit Resolution**: Verified against `Rover/my_robot_description/urdf/my_robot.urdf.xacro` and `General_Docs/hardware_specs/hardware_specs.md`. The physical rover and URDF model are confirmed 4-wheel skid-steer systems (4 DC drill motors + 4 encoders). The 4-wheel configuration in `encoder_ticks_to_odom.py` is correct.
 
 #### Bug 9: EKF Lateral Velocity Over-Constraint
 * **Affected Files**: [`SLAM/rover_slam/config/ekf.yaml`](file:///e:/SHAKR/Autonmous-27/SLAM/rover_slam/config/ekf.yaml#L17).
@@ -90,10 +89,10 @@ To balance **isolated module development** with **plug-and-play system integrati
 
 ### 🔴 Category E: Performance & Testing Infrastructure
 
-#### Bug 10: Unused CPU Costmap Rasterization in Perception
-* **Affected Files**: [`Perception/terrain_geometry/terrain_geometry/terrain_node.py`](file:///e:/SHAKR/Autonmous-27/Perception/terrain_geometry/terrain_geometry/terrain_node.py#L240-L260).
-* **The Flaw**: Node executes Scipy distance-transform costmap inflation every frame to publish `/terrain/costmap`. Nav2 does not use `/terrain/costmap` (it subscribes to `/bridge/pointcloud` from `costmap_bridge_node`). This wastes ~35% of a CPU core.
-* **Action Required**: Add parameter `enable_costmap:=false` (default `false`) to bypass steps 7 & 8 during integrated runs.
+#### Bug 10: Unused CPU Costmap Rasterization in Perception [SOLVED]
+* **Affected Files**: [`Perception/terrain_geometry/terrain_geometry/terrain_node.py`](file:///e:/SHAKR/Autonmous-27/Perception/terrain_geometry/terrain_geometry/terrain_node.py), [`terrain.launch.py`](file:///e:/SHAKR/Autonmous-27/Perception/terrain_geometry/launch/terrain.launch.py), & [`perception_system.launch.py`](file:///e:/SHAKR/Autonmous-27/Perception/terrain_geometry/launch/perception_system.launch.py).
+* **The Root Cause**: Node executed Scipy distance-transform costmap inflation every frame to publish `/terrain/costmap`. Nav2 does not use `/terrain/costmap` (it subscribes to `/bridge/pointcloud` from `costmap_bridge_node`), wasting ~35% of a CPU core.
+* **The Fix Applied**: Added parameter `enable_costmap:=false` (default `false`) across `terrain_node.py`, `terrain.launch.py`, and `perception_system.launch.py` to bypass 2D grid rasterization and costmap inflation during production runs.
 
 #### Bug 11: Broken Project Directory Index in Benchmarking Suite
 * **Affected Files**: [`testing/PathPlanner/run_testing_suite.sh`](file:///e:/SHAKR/Autonmous-27/testing/PathPlanner/run_testing_suite.sh#L15).
@@ -226,10 +225,12 @@ def generate_launch_description():
 ## 6. Step-by-Step Resolution Roadmap
 
 1. [x] **Path Planning**: Conditionalize `map_server` behind `use_slam:=true` and sync `use_sim_time` in `path_planning.launch.py`.
-2. [ ] **SLAM Bringup**: In `slam_bringup.launch.py`, change `launch_aruco_stub` default to `false` and wrap `costmap_launch` behind `launch_costmap:=false`.
-3. [ ] **Gazebo / Spawn Bridge**: In `spawn_rover.launch.py` and `gazebo.launch.py`, add `bridge_sim_tf:=false` to prevent Gazebo diff-drive from publishing conflicting `/tf` when EKF is active.
-4. [ ] **SLAM Static Transforms**: In `static_transforms.launch.py`, remove redundant `static_tf_camera_optical_to_gz` node.
-5. [ ] **ArUco Perception Bridge**: In `marker_action_interface_node.py`, publish confirmed target pose as `geometry_msgs/msg/PoseStamped` on `/perception/aruco_pose`.
-6. [ ] **Kinematics & EKF**: Update `encoder_ticks_to_odom.py` with all 6 wheels and set `odom0_config` $V_y$ to `false` in `ekf.yaml`.
-7. [ ] **Dedicated Launchers**: Create `test_slam_standalone.launch.py` and `test_perception_standalone.launch.py`.
-8. [ ] **Testing Runner**: Fix relative path in `testing/PathPlanner/run_testing_suite.sh`.
+2. [x] **SLAM Bringup**: In `slam_bringup.launch.py`, verified `launch_aruco_stub` default is `false` and `costmap_launch` is conditioned on `launch_costmap:=false`.
+3. [x] **Gazebo / Spawn Bridge**: In `spawn_rover.launch.py`, `gazebo.launch.py`, and `gazebo_with_teleop.launch.py`, added `bridge_sim_tf:=false` to prevent Gazebo diff-drive from publishing conflicting `/tf` when EKF is active.
+4. [x] **Perception Costmap**: Added `enable_costmap:=false` across `terrain_node.py`, `terrain.launch.py`, and `perception_system.launch.py` to bypass 2D rasterization and save ~35% CPU during integrated runs.
+5. [x] **ArUco Perception Bridge**: In `marker_action_interface_node.py`, published confirmed target pose as `geometry_msgs/msg/PoseStamped` on `/perception/aruco_pose` for RTAB-Map.
+6. [x] **Rover Kinematics**: Verified rover is 4-wheel skid-steer in URDF and hardware specs (confirmed 4 wheels, closed invalid 6-wheel assumption).
+7. [ ] **SLAM Static Transforms**: In `static_transforms.launch.py`, remove redundant `static_tf_camera_optical_to_gz` node.
+8. [ ] **EKF Tuning**: In `config/ekf.yaml`, set `odom0_config` $V_y$ to `false` to avoid over-constraining lateral motion during skid turns.
+9. [ ] **Dedicated Launchers**: Create `test_slam_standalone.launch.py` and `test_perception_standalone.launch.py`.
+10. [ ] **Testing Runner**: Fix relative path in `testing/PathPlanner/run_testing_suite.sh`.

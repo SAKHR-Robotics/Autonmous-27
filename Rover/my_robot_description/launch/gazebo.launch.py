@@ -174,32 +174,39 @@ def launch_setup(context, *args, **kwargs):
         output='screen'
     )
     
+    bridge_sim_tf = LaunchConfiguration('bridge_sim_tf').perform(context).lower() in ['true', '1']
+
+    bridge_arguments = [
+        '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
+        '/cmd_vel@geometry_msgs/msg/Twist@gz.msgs.Twist',
+        '/odom@nav_msgs/msg/Odometry@gz.msgs.Odometry',
+        '/imu@sensor_msgs/msg/Imu[gz.msgs.IMU',
+        '/imu/data@sensor_msgs/msg/Imu[gz.msgs.IMU',
+        f'/world/{world_name}/model/my_robot/joint_state@sensor_msgs/msg/JointState[gz.msgs.Model',
+        f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/image@sensor_msgs/msg/Image[gz.msgs.Image',
+        f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
+        f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/depth_image@sensor_msgs/msg/Image[gz.msgs.Image',
+        f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked',
+    ]
+    bridge_remappings = [
+        ('/imu', '/imu/data'),
+        (f'/world/{world_name}/model/my_robot/joint_state', '/joint_states_gz'),
+        (f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/image', '/camera/image_raw'),
+        (f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/camera_info', '/camera/camera_info'),
+        (f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/depth_image', '/camera/depth/image_raw'),
+        (f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/points', '/camera/depth/color/points'),
+    ]
+
+    if bridge_sim_tf:
+        bridge_arguments.append(f'/model/my_robot/tf@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V')
+        bridge_remappings.append((f'/model/my_robot/tf', '/tf'))
+
     # Bridge between Ignition Gazebo and ROS 2
     bridge = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
-        arguments=[
-            '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
-            '/cmd_vel@geometry_msgs/msg/Twist@gz.msgs.Twist',
-            '/odom@nav_msgs/msg/Odometry@gz.msgs.Odometry',
-            '/imu@sensor_msgs/msg/Imu[gz.msgs.IMU',
-            '/imu/data@sensor_msgs/msg/Imu[gz.msgs.IMU',
-            f'/world/{world_name}/model/my_robot/joint_state@sensor_msgs/msg/JointState[gz.msgs.Model',
-            f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/image@sensor_msgs/msg/Image[gz.msgs.Image',
-            f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
-            f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/depth_image@sensor_msgs/msg/Image[gz.msgs.Image',
-            f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked',
-            f'/model/my_robot/tf@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V',
-        ],
-        remappings=[
-            ('/imu', '/imu/data'),
-            (f'/world/{world_name}/model/my_robot/joint_state', '/joint_states_gz'),
-            (f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/image', '/camera/image_raw'),
-            (f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/camera_info', '/camera/camera_info'),
-            (f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/depth_image', '/camera/depth/image_raw'),
-            (f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/points', '/camera/depth/color/points'),
-            (f'/model/my_robot/tf', '/tf'),
-        ],
+        arguments=bridge_arguments,
+        remappings=bridge_remappings,
         output='screen'
     )
     # Joint state publisher to ensure continuous wheel joints are published to TF
@@ -277,11 +284,17 @@ def generate_launch_description():
         default_value='false',
         description='Publish static camera optical TF (set false when SLAM static_transforms.launch.py is active)'
     )
+    bridge_sim_tf_arg = DeclareLaunchArgument(
+        'bridge_sim_tf',
+        default_value='false',
+        description='Bridge Gazebo simulation TF to /tf (set false when EKF is publishing odom -> base_link to prevent collisions)'
+    )
 
     return LaunchDescription([
         world_arg,
         publish_map_tf_arg,
         publish_camera_tf_arg,
+        bridge_sim_tf_arg,
         OpaqueFunction(function=launch_setup)
     ])
 

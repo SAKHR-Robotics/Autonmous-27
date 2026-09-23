@@ -85,6 +85,7 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument("costmap_inflation_radius", default_value="0.6"),
         DeclareLaunchArgument("cost_scaling_factor", default_value="10.0"),
         DeclareLaunchArgument("inflate_unknown_cells", default_value="false"),
+        DeclareLaunchArgument("enable_costmap", default_value="false", description="Generate and inflate 2D costmap on /terrain/costmap if true"),
 
         # Debug
         DeclareLaunchArgument("publish_debug_topics", default_value="true"),
@@ -112,7 +113,7 @@ def generate_launch_description() -> LaunchDescription:
         "grid_resolution", "grid_width_cells", "grid_height_cells",
         "grid_origin_x", "grid_origin_y", "grid_origin_z", "use_unknown_space",
         "robot_radius", "costmap_inflation_radius", "cost_scaling_factor",
-        "inflate_unknown_cells", "publish_debug_topics",
+        "inflate_unknown_cells", "enable_costmap", "publish_debug_topics",
         "enable_performance_profiling", "profiling_interval",
     ]
 

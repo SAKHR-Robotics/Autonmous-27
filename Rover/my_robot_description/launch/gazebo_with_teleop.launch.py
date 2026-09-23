@@ -33,6 +33,12 @@ def generate_launch_description():
         description='Publish static camera optical TF for standalone teleop visualization'
     )
 
+    bridge_sim_tf_arg = DeclareLaunchArgument(
+        'bridge_sim_tf',
+        default_value='true',
+        description='Bridge Gazebo simulation TF for standalone teleop visualization'
+    )
+
     gazebo_sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
             os.path.join(pkg_share, 'launch', 'gazebo.launch.py')
@@ -41,6 +47,7 @@ def generate_launch_description():
             'world': LaunchConfiguration('world'),
             'publish_map_tf': LaunchConfiguration('publish_map_tf'),
             'publish_camera_tf': LaunchConfiguration('publish_camera_tf'),
+            'bridge_sim_tf': LaunchConfiguration('bridge_sim_tf'),
         }.items()
     )
 
@@ -55,6 +62,7 @@ def generate_launch_description():
         world_arg,
         publish_map_tf_arg,
         publish_camera_tf_arg,
+        bridge_sim_tf_arg,
         gazebo_sim,
         teleop_gui_node
     ])
