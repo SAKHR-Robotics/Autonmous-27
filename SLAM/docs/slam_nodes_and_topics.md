@@ -25,11 +25,11 @@ This document summarizes every node, its responsibilities, published topics, sub
 
 ```mermaid
 graph LR
-    map["map (Global Frame)"] -->|RTAB-Map SLAM (1-5 Hz Offset)| odom["odom (Local Odometry Frame)"]
-    odom -->|EKF Node (100 Hz Smooth Pose)| base_link["base_link (Rover Center)"]
-    base_link -->|Static Transform| camera_link["camera_link"]
-    base_link -->|Static Transform| imu_link["imu_link"]
-    camera_link -->|Static Transform| optical_frame["camera_depth_optical_frame"]
+    map["map (Global Frame)"] -->|"RTAB-Map SLAM (1-5 Hz Offset)"| odom["odom (Local Odometry Frame)"]
+    odom -->|"EKF Node (100 Hz Smooth Pose)"| base_link["base_link (Rover Center)"]
+    base_link -->|"Static Transform"| camera_link["camera_link"]
+    base_link -->|"Static Transform"| imu_link["imu_link"]
+    camera_link -->|"Static Transform"| optical_frame["camera_depth_optical_frame"]
 ```
 
 ### Key TF Distinctions:

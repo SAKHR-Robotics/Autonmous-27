@@ -42,7 +42,7 @@ graph TD
 
 ## 🔄 2. End-to-End Dataflow: Inputs, Blocks & Outputs
 
-The diagram below details the entire dataflow: the sensor inputs, internal computation blocks, messages/topics passed between them, and final outputs delivered to the Path Planning and Control subsystems.
+![SLAM Architecture Pipeline](../General_Docs/slam_pipeline.png)
 
 ```mermaid
 flowchart TD
@@ -88,28 +88,28 @@ flowchart TD
 
     %% INTERMEDIATE TOPIC CONNECTIONS
     IN_TICKS --> NODE_ODOM
-    NODE_ODOM -->|<b>/wheel/odom_raw</b><br><i>[nav_msgs/Odometry]</i>| NODE_SLIP
-    NODE_ODOM -->|<b>/wheel/single_wheel_slip</b><br><i>[std_msgs/Bool]</i>| NODE_SLIP
-    NODE_ODOM -.->|<b>/wheel/per_wheel_speeds</b><br><i>[std_msgs/Float64MultiArray]</i>| DIAG["Telemetry / Logs"]
+    NODE_ODOM -->|"<b>/wheel/odom_raw</b><br><i>[nav_msgs/Odometry]</i>"| NODE_SLIP
+    NODE_ODOM -->|"<b>/wheel/single_wheel_slip</b><br><i>[std_msgs/Bool]</i>"| NODE_SLIP
+    NODE_ODOM -.->|"<b>/wheel/per_wheel_speeds</b><br><i>[std_msgs/Float64MultiArray]</i>"| DIAG["Telemetry / Logs"]
 
     IN_IMU --> NODE_SLIP
-    NODE_SLIP -->|<b>/wheel/odom_filtered</b><br><i>[nav_msgs/Odometry with inflated cov & clamped v]</i>| NODE_EKF
-    NODE_SLIP -->|<b>/wheel/slip_detected</b><br><i>[std_msgs/Bool]</i>| OUT_SLIP
+    NODE_SLIP -->|"<b>/wheel/odom_filtered</b><br><i>[nav_msgs/Odometry with inflated cov & clamped v]</i>"| NODE_EKF
+    NODE_SLIP -->|"<b>/wheel/slip_detected</b><br><i>[std_msgs/Bool]</i>"| OUT_SLIP
 
     IN_IMU --> NODE_EKF
 
     IN_DEPTH --> NODE_VISION
-    NODE_VISION -->|<b>/camera/depth/filtered</b><br><i>[sensor_msgs/Image]</i>| NODE_RTAB
+    NODE_VISION -->|"<b>/camera/depth/filtered</b><br><i>[sensor_msgs/Image]</i>"| NODE_RTAB
     
     IN_RGB --> NODE_RTAB
     IN_INFO --> NODE_RTAB
     IN_ARUCO --> NODE_RTAB
 
-    NODE_EKF -->|<b>/odometry/filtered</b><br><i>[nav_msgs/Odometry @ 50-100Hz]</i>| NODE_RTAB
-    NODE_EKF -->|<b>TF: odom &rarr; base_link</b><br><i>[tf2_msgs/TFMessage]</i>| OUT_LOCAL_TF
+    NODE_EKF -->|"<b>/odometry/filtered</b><br><i>[nav_msgs/Odometry @ 50-100Hz]</i>"| NODE_RTAB
+    NODE_EKF -->|"<b>TF: odom &rarr; base_link</b><br><i>[tf2_msgs/TFMessage]</i>"| OUT_LOCAL_TF
 
-    NODE_RTAB -->|<b>/map</b><br><i>[nav_msgs/OccupancyGrid]</i>| NODE_COSTMAP
-    NODE_RTAB -->|<b>TF: map &rarr; odom</b><br><i>[tf2_msgs/TFMessage @ 1-5Hz]</i>| OUT_GLOBAL_TF
+    NODE_RTAB -->|"<b>/map</b><br><i>[nav_msgs/OccupancyGrid]</i>"| NODE_COSTMAP
+    NODE_RTAB -->|"<b>TF: map &rarr; odom</b><br><i>[tf2_msgs/TFMessage @ 1-5Hz]</i>"| OUT_GLOBAL_TF
 
     IN_ROCKS --> NODE_COSTMAP
 

@@ -100,6 +100,8 @@ In modern autonomous robotics, rather than using separate, decoupled modules for
 
 ## 🔄 3. End-to-End Pipeline & Data Flowchart
 
+![Path Planning Pipeline](../General_Docs/path_planning_pipeline.png)
+
 ```mermaid
 flowchart TD
     subgraph INPUTS["🌐 External Subsystem Inputs"]

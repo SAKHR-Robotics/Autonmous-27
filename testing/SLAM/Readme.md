@@ -113,12 +113,12 @@ graph TD
 
     T_Odom --> SlipNode
     T_IMU --> SlipNode
-    SlipNode -->|Inflated /wheel/odom_raw| EKFNode
+    SlipNode -->|"Inflated /wheel/odom_raw"| EKFNode
     T_IMU --> EKFNode
-    EKFNode -->|/odometry/filtered & TF odom->base_link| RTABNode
+    EKFNode -->|"/odometry/filtered & TF: odom &rarr; base_link"| RTABNode
     T_Depth --> RTABNode
     T_Aruco --> RTABNode
-    RTABNode -->|TF map->odom & /map| CostmapNode
+    RTABNode -->|"TF: map &rarr; odom & /map"| CostmapNode
 ```
 
 ### Sensor Topic Specifications Provided by Tester:

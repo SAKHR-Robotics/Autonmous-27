@@ -14,6 +14,8 @@ This ROS 2 workspace contains packages for simulating, estimating state, perceiv
 
 ### 2. Full Project Block Diagram (Inputs, Outputs & Inter-Node Topics)
 
+![Full Project Block Diagram](General_Docs/FlowWTopics.png)
+
 ```mermaid
 graph LR
     %% Styles & Colors

@@ -44,6 +44,12 @@ Perception/
 
 ---
 
+## 🔄 Subsystem Architecture Pipeline
+
+![Perception Subsystem Architecture Pipeline](../General_Docs/perception_pipeline.png)
+
+---
+
 ## 📡 2. Input & Output Topics
 
 ### A. Subscriptions (Sensor Inputs - Unified Standard)
