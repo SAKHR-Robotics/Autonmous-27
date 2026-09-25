@@ -16,7 +16,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             color: #f3f4f6;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             display: inline-block;
-            min-width: 900px;
+            min-width: 950px;
         }}
         .header {{
             margin-bottom: 24px;
@@ -36,7 +36,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.05em;
-            padding: 4px 10px;
+            padding: 4px 12px;
             border-radius: 9999px;
             background-color: #1e1b4b;
             color: #a5b4fc;
@@ -54,7 +54,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             padding: 28px;
             box-shadow: 0 12px 30px -5px rgba(0, 0, 0, 0.6);
         }}
-        /* Tooltip and label styling overrides */
         .edgeLabel {{
             background-color: #0b0f19 !important;
             color: #38bdf8 !important;
@@ -103,15 +102,292 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </html>
 """
 
-DIAGRAMS = [
-    # -------------------------------------------------------------
-    # 1. SLAM Full Pipeline
-    # -------------------------------------------------------------
+ALL_DIAGRAMS = [
+    # =========================================================================
+    # 1. PERCEPTION SUBSYSTEM (General_Docs/1-Perception/)
+    # =========================================================================
     {
-        "filename": "slam_pipeline.png",
-        "title": "SLAM & State Estimation Architecture Pipeline",
-        "badge": "SLAM Subsystem",
-        "subtitle": "Multi-tier state estimation: wheel tick differential kinematics, slip rejection, 100Hz EKF fusion, and RTAB-Map visual loop closure",
+        "folder": "1-Perception",
+        "filename": "00_perception_master_pipeline.png",
+        "title": "Perception Subsystem Master Pipeline",
+        "badge": "Perception Master",
+        "subtitle": "Dual-stream architecture: 3D terrain geometry point cloud processing and ArUco 6-DoF visual landmark estimation",
+        "mermaid": """flowchart TD
+    classDef sensor fill:#0f172a,stroke:#64748b,stroke-width:2px,color:#f8fafc;
+    classDef pcl fill:#064e3b,stroke:#059669,stroke-width:2px,color:#f8fafc;
+    classDef aruco fill:#1e1b4b,stroke:#6366f1,stroke-width:2px,color:#f8fafc;
+    classDef out fill:#065f46,stroke:#34d399,stroke-width:2px,color:#f8fafc;
+
+    subgraph SENSORS ["📡 SENSOR INPUTS (RealSense D435i)"]
+        S_CLOUD["<b>/camera/depth/color/points</b><br/><i>(sensor_msgs/PointCloud2)</i>"]:::sensor
+        S_RGB["<b>/camera/image_raw</b><br/><i>(sensor_msgs/Image)</i>"]:::sensor
+        S_INFO["<b>/camera/camera_info</b><br/><i>(sensor_msgs/CameraInfo)</i>"]:::sensor
+        S_TF["<b>TF System</b><br/><i>(camera_link ➔ base_link)</i>"]:::sensor
+    end
+
+    subgraph TERRAIN ["🪨 3D TERRAIN GEOMETRY PIPELINE (terrain_geometry)"]
+        T_ROI["<b>1. Forward ROI Spatial Crop</b><br/>Filters points outside rover envelope"]:::pcl
+        T_GND["<b>2. Patchwork++ Ground Removal</b><br/>Separates terrain ground from boulders"]:::pcl
+        T_VOX["<b>3. Voxel Grid Downsampling</b><br/>5cm leaf size balances fidelity and speed"]:::pcl
+        T_ROR["<b>4. Radius Outlier Removal</b><br/>Eliminates floating dust and sunlight noise"]:::pcl
+        T_CLUST["<b>5. DBSCAN Euclidean Clustering</b><br/>Extracts discrete rock centroids & 3D BBoxes"]:::pcl
+        T_MEM["<b>6. Persistent Memory & EMA Tracker</b><br/>Tracks obstacles & retains blind spots"]:::pcl
+    end
+
+    subgraph ARUCO ["🎯 ARUCO LANDMARK POSE ESTIMATION (marker_detection)"]
+        A_DETECT["<b>1. Marker Detector & Corner Refinement</b><br/>Sub-pixel corner detection from dictionary"]:::aruco
+        A_PNP["<b>2. OpenCV solvePnP 6-DoF Solver</b><br/>Projects 2D corners into 3D camera frame"]:::aruco
+        A_KALMAN["<b>3. Kalman Filter & Covariance Gate</b><br/>Smooths jitter and rejects false landmark detections"]:::aruco
+    end
+
+    subgraph OUTPUTS ["📤 PERCEPTION SYSTEM OUTPUTS"]
+        OUT_OBSTACLES["<b>To Nav2 Costmap:</b><br/>• /perception/obstacles_only (3D Bounding Boxes)<br/>• /terrain/costmap (2D Occupancy Grid)"]:::out
+        OUT_ARUCO["<b>To RTAB-Map SLAM:</b><br/>• /perception/aruco_pose (6-DoF Constraint)"]:::out
+        OUT_RVIZ["<b>To RViz Dashboard:</b><br/>• /terrain/obstacle_markers (3D Markers & Telemetry)"]:::out
+    end
+
+    S_CLOUD --> T_ROI
+    S_TF --> T_ROI
+    T_ROI --> T_GND --> T_VOX --> T_ROR --> T_CLUST --> T_MEM
+
+    S_RGB --> A_DETECT
+    S_INFO --> A_PNP
+    A_DETECT --> A_PNP --> A_KALMAN
+
+    T_MEM -->|"<b>/perception/obstacles_only</b>"| OUT_OBSTACLES
+    T_MEM -->|"<b>/terrain/obstacle_markers</b>"| OUT_RVIZ
+    A_KALMAN -->|"<b>/perception/aruco_pose</b>"| OUT_ARUCO
+"""
+    },
+    {
+        "folder": "1-Perception",
+        "filename": "01_terrain_geometry_6stage_pipeline.png",
+        "title": "3D Point Cloud Terrain Geometry 6-Stage Pipeline",
+        "badge": "Perception Block 1",
+        "subtitle": "Complete pipeline: raw point cloud filtering, ground segmentation, downsampling, clustering, and memory",
+        "mermaid": """flowchart TD
+    classDef stage fill:#064e3b,stroke:#059669,stroke-width:2px,color:#f8fafc;
+    classDef io fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+
+    IN_RAW["<b>Raw Depth Point Cloud</b><br/>/camera/depth/color/points (~300,000 points @ 30Hz)"]:::io
+
+    STAGE1["<b>Stage 1: ROI Spatial Crop</b><br/>X [-2.5m, +2.5m], Y [-2.5m, +2.5m], Z [-1.0m, +1.0m]"]:::stage
+    STAGE2["<b>Stage 2: Patchwork++ Ground Removal</b><br/>Concentric zone model fits ground surface and separates boulders"]:::stage
+    STAGE3["<b>Stage 3: Voxel Grid Downsampling</b><br/>5cm voxel leaf size generates uniform density cloud (~8,000 points)"]:::stage
+    STAGE4["<b>Stage 4: Radius Outlier Removal (ROR)</b><br/>Min neighbors = 4 within 0.15m radius to strip dust/sunlight noise"]:::stage
+    STAGE5["<b>Stage 5: DBSCAN Euclidean Clustering</b><br/>Min points = 15, Epsilon = 0.12m &rarr; Clusters segmented into discrete obstacles"]:::stage
+    STAGE6["<b>Stage 6: Persistent Memory & EMA Tracking</b><br/>Tracks obstacle IDs across frames and retains blind-spot memory for Nav2"]:::stage
+
+    OUT_OBST["<b>Published Obstacles & 3D BBoxes</b><br/>/perception/obstacles_only (vision_msgs/Detection3DArray)"]:::io
+
+    IN_RAW --> STAGE1 --> STAGE2 --> STAGE3 --> STAGE4 --> STAGE5 --> STAGE6 --> OUT_OBST
+"""
+    },
+    {
+        "folder": "1-Perception",
+        "filename": "02_roi_and_patchwork_ground_removal.png",
+        "title": "Deep Dive: ROI Spatial Crop & Patchwork++ Ground Separation",
+        "badge": "Perception Block 2",
+        "subtitle": "Camera-to-body coordinate transform crop and concentric zone ground plane fitting",
+        "mermaid": """flowchart LR
+    classDef input fill:#0f172a,stroke:#64748b,stroke-width:2px,color:#f8fafc;
+    classDef proc fill:#064e3b,stroke:#059669,stroke-width:2px,color:#f8fafc;
+    classDef out fill:#065f46,stroke:#34d399,stroke-width:2px,color:#f8fafc;
+
+    subgraph Inputs ["Sensor Inputs"]
+        CLOUD["<b>/camera/depth/color/points</b><br/>sensor_msgs/PointCloud2"]:::input
+        TF["<b>TF: base_link ➔ camera_link</b><br/>Physical extrinsic orientation"]:::input
+    end
+
+    subgraph ROI ["Stage 1: Spatial ROI Box"]
+        CROP["<b>Spatial PassThrough Filter</b><br/>• Drops points behind rover<br/>• Limits range to 4.5m forward<br/>• Filters sky and chassis self-hits"]:::proc
+    end
+
+    subgraph Patchwork ["Stage 2: Patchwork++ Algorithm"]
+        CZM["<b>Concentric Zone Model (CZM)</b><br/>Divides ground into 4 radial rings & sectors"]:::proc
+        RANSAC["<b>Sector Ground Plane Fit</b><br/>Estimates local surface normal vector per bin"]:::proc
+        SEPARATE{"Distance to ground &lt; threshold?"}:::proc
+    end
+
+    subgraph Outputs ["Separated Clouds"]
+        NON_GROUND["<b>Obstacle Candidate Cloud</b><br/>(Sent to Voxel Downsampling)"]:::out
+        GROUND_DEBUG["<b>/terrain/debug/ground_cloud</b><br/>(Visual ground verification)"]:::out
+    end
+
+    CLOUD --> CROP
+    TF --> CROP
+    CROP --> CZM --> RANSAC --> SEPARATE
+    SEPARATE -->|"NO (Protruding Rock)"| NON_GROUND
+    SEPARATE -->|"YES (Ground Plane)"| GROUND_DEBUG
+"""
+    },
+    {
+        "folder": "1-Perception",
+        "filename": "03_voxel_downsampling_and_outlier_removal.png",
+        "title": "Deep Dive: Voxel Grid Downsampling & Outlier Filtering",
+        "badge": "Perception Block 3",
+        "subtitle": "Compute reduction via uniform 5cm voxelization and airborne sensor noise suppression",
+        "mermaid": """flowchart LR
+    classDef inout fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    classDef proc fill:#064e3b,stroke:#059669,stroke-width:2px,color:#f8fafc;
+
+    IN_CLOUD["<b>Non-Ground Candidate Points</b><br/>High density (~80k points)"]:::inout
+
+    subgraph VoxelStage ["Stage 3: Voxel Grid Filter"]
+        LEAF["<b>3D Voxel Leaf = 0.05m</b><br/>Groups points into 5cm cubic centroids"]:::proc
+        NORM["<b>Centroid Normalization</b><br/>Downsamples cloud to ~8k uniform points"]:::proc
+    end
+
+    subgraph RORStage ["Stage 4: Radius Outlier Removal"]
+        SEARCH["<b>kd-Tree Spatial Neighbor Search</b><br/>Search radius = 0.15m"]:::proc
+        GATE{"Neighbor count &gt;= 4?"}:::proc
+        DROP["<b>Discard Noise Point</b><br/>Dust, Sunlight IR artifacts"]:::proc
+        KEEP["<b>Retain Valid Structure Point</b><br/>Solid rock surface point"]:::proc
+    end
+
+    OUT_CLOUD["<b>Cleaned Obstacle Point Cloud</b><br/>Ready for DBSCAN Clustering"]:::inout
+
+    IN_CLOUD --> LEAF --> NORM --> SEARCH --> GATE
+    GATE -->|"NO"| DROP
+    GATE -->|"YES"| KEEP
+    KEEP --> OUT_CLOUD
+"""
+    },
+    {
+        "folder": "1-Perception",
+        "filename": "04_dbscan_clustering_and_bounding_boxes.png",
+        "title": "Deep Dive: DBSCAN Euclidean Clustering & 3D Bounding Boxes",
+        "badge": "Perception Block 4",
+        "subtitle": "Unsupervised density-based obstacle clustering, centroid math, and oriented bounding boxes",
+        "mermaid": """flowchart TD
+    classDef proc fill:#064e3b,stroke:#059669,stroke-width:2px,color:#f8fafc;
+    classDef decision fill:#854d0e,stroke:#facc15,stroke-width:2px,color:#f8fafc;
+    classDef out fill:#065f46,stroke:#34d399,stroke-width:2px,color:#f8fafc;
+
+    IN_FILTERED["<b>Cleaned Point Cloud</b> (Uniform density)"]
+
+    subgraph Clustering ["DBSCAN Density Clustering"]
+        DBSCAN_ALG["<b>kd-Tree Euclidean Cluster Extraction</b><br/>• Epsilon (&epsilon;) = 0.12m<br/>• Minimum Points (MinPts) = 15"]:::proc
+        CLUSTER_EVAL{"Cluster size within [15, 3000] pts?"}:::decision
+        DISCARD["Reject cluster as stray noise"]:::decision
+    end
+
+    subgraph Extraction ["3D Geometry Extraction per Cluster"]
+        CENTROID["<b>Centroid Calculation:</b><br/>C_xyz = &Sigma;(P_i) / N"]:::proc
+        BBOX["<b>3D Bounding Box Dimensions:</b><br/>Width (dx), Length (dy), Height (dz)"]:::proc
+        MSG["<b>Build Detection3D Message</b><br/>geometry_msgs/Pose + Vector3 bbox size"]:::proc
+    end
+
+    OUT_BBOX["<b>/perception/local_bboxes</b><br/>vision_msgs/Detection3DArray"]:::out
+
+    IN_FILTERED --> DBSCAN_ALG --> CLUSTER_EVAL
+    CLUSTER_EVAL -->|"NO"| DISCARD
+    CLUSTER_EVAL -->|"YES"| CENTROID --> BBOX --> MSG --> OUT_BBOX
+"""
+    },
+    {
+        "folder": "1-Perception",
+        "filename": "05_persistent_memory_and_ema_tracker.png",
+        "title": "Deep Dive: Persistent Memory Node & EMA Rock Tracking",
+        "badge": "Perception Block 5",
+        "subtitle": "Inter-frame obstacle tracking, IoU matching, Exponential Moving Average smoothing, and blind-spot retention",
+        "mermaid": """flowchart LR
+    classDef proc fill:#064e3b,stroke:#059669,stroke-width:2px,color:#f8fafc;
+    classDef state fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
+    classDef out fill:#065f46,stroke:#34d399,stroke-width:2px,color:#f8fafc;
+
+    NEW_BBOXES["<b>New Detections:</b><br/>/perception/local_bboxes"]
+    MEMORY_DB[("<b>Persistent Memory DB:</b><br/>Active Tracked Obstacles")]:::state
+
+    subgraph Matcher ["Data Association"]
+        DIST["<b>Euclidean Distance / IoU Gate</b><br/>Matches new bbox with existing tracks"]:::proc
+        BRANCH{"Track Match Found?"}:::proc
+    end
+
+    subgraph Update ["State Filtering"]
+        EMA["<b>EMA Position Update (&alpha;=0.7):</b><br/>P_new = &alpha; &middot; P_meas + (1 - &alpha;) &middot; P_prev"]:::proc
+        NEW_ID["<b>Assign New Obstacle ID</b><br/>Initialize track lifetime = 50 frames"]:::proc
+        DECAY["<b>Blind-Spot Retention Decay</b><br/>Obstacles outside FOV decay gracefully"]:::proc
+    end
+
+    OUT_OBST["<b>/perception/obstacles_only</b><br/>Smoothed persistent obstacles for Nav2"]:::out
+
+    NEW_BBOXES --> DIST
+    MEMORY_DB --> DIST
+    DIST --> BRANCH
+    BRANCH -->|"YES"| EMA --> MEMORY_DB
+    BRANCH -->|"NO"| NEW_ID --> MEMORY_DB
+    MEMORY_DB --> DECAY --> OUT_OBST
+"""
+    },
+    {
+        "folder": "1-Perception",
+        "filename": "06_aruco_detection_and_pnp_block.png",
+        "title": "Deep Dive: ArUco Vision & solvePnP 6-DoF Landmark Tracking",
+        "badge": "Perception Block 6",
+        "subtitle": "Sub-pixel corner detection, perspective-n-point 3D pose extraction, and covariance filtering for SLAM drift reset",
+        "mermaid": """flowchart LR
+    classDef input fill:#0f172a,stroke:#64748b,stroke-width:2px,color:#f8fafc;
+    classDef proc fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
+    classDef out fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc;
+
+    subgraph Inputs ["Camera Feed"]
+        RGB["<b>RGB Image Frame</b><br/>/camera/image_raw (1280x720)"]:::input
+        INFO["<b>Camera Intrinsics Matrix</b><br/>fx, fy, cx, cy & distortion coeffs"]:::input
+    end
+
+    subgraph Detection ["ArUco Detection (marker_detection)"]
+        DICT["<b>1. Dictionary Lookup</b><br/>DICT_4X4_50 / DICT_5X5_100"]:::proc
+        SUBPIX["<b>2. Corner Refinement</b><br/>cv2.cornerSubPix interpolation"]:::proc
+    end
+
+    subgraph Solver ["Pose Estimation"]
+        PNP["<b>3. OpenCV solvePnP</b><br/>Calculates rotation (rvec) & translation (tvec)"]:::proc
+        COV["<b>4. Reprojection Error & Covariance Gate</b><br/>Rejects error &gt; 2.0px & assigns pose covariance"]:::proc
+    end
+
+    subgraph Output ["SLAM Anchor"]
+        ARUCO_OUT["<b>/perception/aruco_pose</b><br/>geometry_msgs/PoseStamped<br/>Global SLAM Loop Closure"]:::out
+    end
+
+    RGB --> DICT --> SUBPIX --> PNP
+    INFO --> PNP
+    PNP --> COV --> ARUCO_OUT
+"""
+    },
+    {
+        "folder": "1-Perception",
+        "filename": "07_terrain_costmap_generation.png",
+        "title": "Deep Dive: Direct 2D Terrain Costmap Generation",
+        "badge": "Perception Block 7",
+        "subtitle": "Projecting 3D persistent obstacle bounding boxes into a 5cm 2D occupancy grid with safety inflation",
+        "mermaid": """flowchart LR
+    classDef inout fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    classDef proc fill:#064e3b,stroke:#059669,stroke-width:2px,color:#f8fafc;
+
+    IN_BBOX["<b>/perception/obstacles_only</b><br/>3D Bounding Boxes"]:::inout
+
+    subgraph GridProject ["Grid Projection & Inflation"]
+        RASTER["<b>2D Grid Rasterization</b><br/>Resolution = 0.05m (5cm per cell)<br/>Origin aligned to base_link"]:::proc
+        FOOTPRINT["<b>Rover Footprint Envelope</b><br/>Marks cells within rock perimeter as LETHAL (100)"]:::proc
+        INFLATE["<b>Exponential Safety Inflation</b><br/>Cost = 100 &middot; exp(-decay &middot; dist)"]:::proc
+    end
+
+    OUT_GRID["<b>/terrain/costmap</b><br/>nav_msgs/OccupancyGrid @ 10Hz"]:::inout
+
+    IN_BBOX --> RASTER --> FOOTPRINT --> INFLATE --> OUT_GRID
+"""
+    },
+
+    # =========================================================================
+    # 2. SLAM SUBSYSTEM (General_Docs/2-SLAM/)
+    # =========================================================================
+    {
+        "folder": "2-SLAM",
+        "filename": "00_slam_master_pipeline.png",
+        "title": "SLAM & State Estimation Master Architecture Pipeline",
+        "badge": "SLAM Master",
+        "subtitle": "Complete 6-block architecture: wheel kinematics, sand slip rejection, 100Hz EKF fusion, and RTAB-Map visual graph SLAM",
         "mermaid": """flowchart TD
     classDef hw fill:#0f172a,stroke:#64748b,stroke-width:2px,color:#f8fafc;
     classDef block fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
@@ -145,11 +421,11 @@ DIAGRAMS = [
     end
 
     IN_TICKS --> NODE_ODOM
-    NODE_ODOM -->|"<b>/wheel/odom_raw</b><br/>(nav_msgs/Odometry)"| NODE_SLIP
-    NODE_ODOM -->|"<b>/wheel/single_wheel_slip</b><br/>(std_msgs/Bool)"| NODE_SLIP
+    NODE_ODOM -->|"<b>/wheel/odom_raw</b>"| NODE_SLIP
+    NODE_ODOM -->|"<b>/wheel/single_wheel_slip</b>"| NODE_SLIP
 
     IN_IMU --> NODE_SLIP
-    NODE_SLIP -->|"<b>/wheel/odom_filtered</b><br/>(cov inflated)"| NODE_EKF
+    NODE_SLIP -->|"<b>/wheel/odom_filtered</b> (cov inflated)"| NODE_EKF
     NODE_SLIP -->|"<b>/wheel/slip_detected</b>"| OUT_SLIP
 
     IN_IMU --> NODE_EKF
@@ -166,71 +442,219 @@ DIAGRAMS = [
     NODE_COSTMAP --> OUT_COSTMAP
 """
     },
-
-    # -------------------------------------------------------------
-    # 2. Perception Full Pipeline
-    # -------------------------------------------------------------
     {
-        "filename": "perception_pipeline.png",
-        "title": "Perception Subsystem Architecture Pipeline",
-        "badge": "Perception Subsystem",
-        "subtitle": "Dual-stream perception: 3D point cloud terrain geometry segmentation and high-precision ArUco solvePnP landmark tracking",
+        "folder": "2-SLAM",
+        "filename": "01_encoder_ticks_to_odom_kinematics.png",
+        "title": "Deep Dive: Wheel Odometry Kinematics (Block 1)",
+        "badge": "SLAM Block 1",
+        "subtitle": "encoder_ticks_to_odom.py: differential skid-steer kinematics and per-wheel slip isolation",
+        "mermaid": """flowchart LR
+    classDef input fill:#0f172a,stroke:#64748b,stroke-width:2px,color:#f8fafc;
+    classDef proc fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
+    classDef out fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc;
+
+    TICKS["<b>/wheel/ticks</b><br/>[std_msgs/Int64MultiArray]<br/>4x wheel encoder counts"]:::input
+
+    subgraph Math ["Kinematics Math"]
+        DELTA["<b>Tick Delta Calculation:</b><br/>&Delta;ticks = ticks_curr - ticks_prev<br/>&Delta;s = (&Delta;ticks / CPR) &middot; 2&pi;R"]:::proc
+        DIFF["<b>Skid-Steer Kinematics:</b><br/>v_x = (v_right + v_left) / 2<br/>&omega;_z = (v_right - v_left) / wheelbase"]:::proc
+        ISOLATE["<b>Single-Wheel Slip Isolation:</b><br/>Compares Front vs Rear speed per side.<br/>Flags individual spinning wheel."]:::proc
+    end
+
+    subgraph Outputs ["Published Topics"]
+        RAW_ODOM["<b>/wheel/odom_raw</b><br/>nav_msgs/Odometry (twist only)"]:::out
+        SLIP_FLAG["<b>/wheel/single_wheel_slip</b><br/>std_msgs/Bool"]:::out
+        SPEEDS["<b>/wheel/per_wheel_speeds</b><br/>std_msgs/Float64MultiArray"]:::out
+    end
+
+    TICKS --> DELTA --> DIFF --> RAW_ODOM
+    DELTA --> ISOLATE --> SLIP_FLAG
+    DELTA --> SPEEDS
+"""
+    },
+    {
+        "folder": "2-SLAM",
+        "filename": "02_heuristic_slip_checker_and_covariance.png",
+        "title": "Deep Dive: Heuristic Slip Checker & Covariance Inflation (Block 2)",
+        "badge": "SLAM Block 2",
+        "subtitle": "heuristic_slip_checker.py: comparing wheel yaw vs IMU gyro, clamping velocity, and dynamically scaling EKF covariance",
         "mermaid": """flowchart TD
-    classDef sensor fill:#0f172a,stroke:#64748b,stroke-width:2px,color:#f8fafc;
-    classDef pcl fill:#064e3b,stroke:#059669,stroke-width:2px,color:#f8fafc;
-    classDef aruco fill:#1e1b4b,stroke:#6366f1,stroke-width:2px,color:#f8fafc;
-    classDef out fill:#065f46,stroke:#34d399,stroke-width:2px,color:#f8fafc;
+    classDef input fill:#0f172a,stroke:#64748b,stroke-width:2px,color:#f8fafc;
+    classDef check fill:#854d0e,stroke:#facc15,stroke-width:2px,color:#f8fafc;
+    classDef proc fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
+    classDef out fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc;
 
-    subgraph SENSORS ["📡 SENSOR INPUTS (RealSense D435i)"]
-        S_CLOUD["<b>/camera/depth/color/points</b><br/><i>(sensor_msgs/PointCloud2)</i>"]:::sensor
-        S_RGB["<b>/camera/image_raw</b><br/><i>(sensor_msgs/Image)</i>"]:::sensor
-        S_INFO["<b>/camera/camera_info</b><br/><i>(sensor_msgs/CameraInfo)</i>"]:::sensor
-        S_TF["<b>TF System</b><br/><i>(camera_link ➔ base_link)</i>"]:::sensor
+    IN_ODOM["<b>/wheel/odom_raw</b> (v_wheel, &omega;_wheel)"]:::input
+    IN_IMU["<b>/imu/data</b> (&omega;_imu_gyro)"]:::input
+
+    subgraph Checks ["Slip Detection Heuristics"]
+        YAW_DIFF["<b>Yaw Rate Divergence:</b><br/>|&omega;_wheel - &omega;_imu| &gt; 0.20 rad/s"]:::check
+        STALL_CHECK["<b>Wheel Spin with Zero Motion:</b><br/>v_wheel &gt; 0.15 m/s while IMU linear accel &approx; 0"]:::check
+        DECISION{"Is Wheel Slipping in Sand?"}:::check
     end
 
-    subgraph TERRAIN ["🪨 3D TERRAIN GEOMETRY PIPELINE (terrain_geometry)"]
-        T_ROI["<b>1. Forward ROI Spatial Crop</b><br/>Filters points outside rover traverse envelope"]:::pcl
-        T_GND["<b>2. Patchwork++ Ground Separation</b><br/>Concentric zone elevation fitting removes surface ground"]:::pcl
-        T_VOX["<b>3. Voxel Grid Downsampling</b><br/>5cm leaf size balances fidelity and real-time compute"]:::pcl
-        T_ROR["<b>4. Radius Outlier Removal</b><br/>Eliminates floating dust and sunlight noise points"]:::pcl
-        T_CLUST["<b>5. DBSCAN Euclidean Clustering</b><br/>Extracts discrete rock centroids & 3D bounding boxes"]:::pcl
-        T_MEM["<b>6. Persistent Memory & EMA Tracker</b><br/>Tracks obstacles across frames & retains blind spots"]:::pcl
+    subgraph Actions ["Adaptive Filtering Action"]
+        NORMAL["<b>Normal Traction Mode:</b><br/>• Pass raw v_x and &omega;_z unaltered<br/>• Normal covariance: cov(v) = 0.05"]:::proc
+        SLIP_ACTIVE["<b>Slip Rejection Mode:</b><br/>• Clamp linear velocity v_x = 0.0 m/s<br/>• Overwrite &omega;_z with IMU gyro reading<br/>• Inflate velocity covariance: cov(v) = 1,000.0"]:::proc
     end
 
-    subgraph ARUCO ["🎯 ARUCO LANDMARK POSE ESTIMATION (marker_detection)"]
-        A_DETECT["<b>1. Marker Detector & Corner Refinement</b><br/>Sub-pixel corner detection from 1000h dictionary"]:::aruco
-        A_PNP["<b>2. OpenCV solvePnP 6-DoF Solver</b><br/>Projects 2D corners into 3D camera coordinates"]:::aruco
-        A_KALMAN["<b>3. Kalman Filter & Covariance Gate</b><br/>Smooths jitter and rejects false landmark detections"]:::aruco
+    subgraph Outputs ["Safe Filtered Output"]
+        OUT_ODOM["<b>/wheel/odom_filtered</b> &rarr; Sent to EKF Node"]:::out
+        OUT_SAFETY["<b>/wheel/slip_detected</b> &rarr; Safety Alert"]:::out
     end
 
-    subgraph OUTPUTS ["📤 PERCEPTION SYSTEM OUTPUTS"]
-        OUT_OBSTACLES["<b>To Nav2 Costmap:</b><br/>• /perception/obstacles_only (3D Bounding Boxes)<br/>• /terrain/costmap (2D Occupancy Grid)"]:::out
-        OUT_ARUCO["<b>To RTAB-Map SLAM:</b><br/>• /perception/aruco_pose (6-DoF Constraint)"]:::out
-        OUT_RVIZ["<b>To RViz Dashboard:</b><br/>• /terrain/obstacle_markers (3D Markers & Telemetry)"]:::out
+    IN_ODOM --> YAW_DIFF
+    IN_IMU --> YAW_DIFF
+    IN_ODOM --> STALL_CHECK
+    IN_IMU --> STALL_CHECK
+    YAW_DIFF --> DECISION
+    STALL_CHECK --> DECISION
+    DECISION -->|"NO"| NORMAL --> OUT_ODOM
+    DECISION -->|"YES"| SLIP_ACTIVE --> OUT_ODOM
+    SLIP_ACTIVE --> OUT_SAFETY
+"""
+    },
+    {
+        "folder": "2-SLAM",
+        "filename": "03_realsense_depth_postprocessing_filters.png",
+        "title": "Deep Dive: RealSense D435 Post-Processing Filters (Block 3)",
+        "badge": "SLAM Block 3",
+        "subtitle": "vision_helper: decimation, spatial smoothing, temporal persistence, and sunlight IR noise suppression",
+        "mermaid": """flowchart LR
+    classDef inout fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    classDef filt fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
+
+    RAW_DEPTH["<b>Raw Depth Stream:</b><br/>/camera/depth/image_raw (848x480 @ 30Hz)"]:::inout
+
+    subgraph Filters ["D435 Filter Chain"]
+        F1["<b>1. Decimation Filter:</b><br/>Downsamples 2x &rarr; reduces compute load"]:::filt
+        F2["<b>2. Spatial Filter:</b><br/>Edge-preserving 1D/2D smoothing"]:::filt
+        F3["<b>3. Temporal Filter:</b><br/>Averages pixel depth over 3 frames to stop flicker"]:::filt
+        F4["<b>4. Hole-Filling Filter:</b><br/>Interpolates missing specular reflection pixels"]:::filt
+        F5["<b>5. Max Range Threshold:</b><br/>Clamps depth values &gt; 4.0m to Infinity"]:::filt
     end
 
-    S_CLOUD --> T_ROI
-    S_TF --> T_ROI
-    T_ROI --> T_GND --> T_VOX --> T_ROR --> T_CLUST --> T_MEM
+    CLEAN_DEPTH["<b>/camera/depth/filtered</b><br/>Input to RTAB-Map SLAM Node"]:::inout
 
-    S_RGB --> A_DETECT
-    S_INFO --> A_PNP
-    A_DETECT --> A_PNP --> A_KALMAN
+    RAW_DEPTH --> F1 --> F2 --> F3 --> F4 --> F5 --> CLEAN_DEPTH
+"""
+    },
+    {
+        "folder": "2-SLAM",
+        "filename": "04_robot_localization_ekf_100hz_fusion.png",
+        "title": "Deep Dive: robot_localization EKF 100Hz Local Fusion (Block 4)",
+        "badge": "SLAM Block 4",
+        "subtitle": "Continuous high-rate sensor fusion of wheel twist and IMU attitude, guaranteeing zero-jump local odometry",
+        "mermaid": """flowchart TD
+    classDef input fill:#0f172a,stroke:#64748b,stroke-width:2px,color:#f8fafc;
+    classDef ekf fill:#581c87,stroke:#c084fc,stroke-width:2px,color:#f8fafc;
+    classDef out fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc;
 
-    T_MEM -->|"<b>/perception/obstacles_only</b>"| OUT_OBSTACLES
-    T_MEM -->|"<b>/terrain/obstacle_markers</b>"| OUT_RVIZ
-    A_KALMAN -->|"<b>/perception/aruco_pose</b>"| OUT_ARUCO
+    subgraph Inputs ["Sensor Inputs @ 50-100Hz"]
+        WHEEL["<b>/wheel/odom_filtered:</b><br/>Linear velocity v_x, angular &omega;_z<br/>Dynamic covariance matrix"]:::input
+        IMU["<b>/imu/data:</b><br/>Orientation (Roll, Pitch, Yaw)<br/>Angular velocity (&omega;_x, &omega;_y, &omega;_z)"]:::input
+    end
+
+    subgraph EKF ["robot_localization EKF Node (ekf_node)"]
+        FUSION["<b>15-State Extended Kalman Filter:</b><br/>• Position (X, Y, Z)<br/>• Orientation (Roll, Pitch, Yaw)<br/>• Velocities (X_dot, Y_dot, Z_dot)<br/>• Angular Velocities (&omega;_x, &omega;_y, &omega;_z)<br/>• Linear Accelerations"]:::ekf
+        REJECT["<b>Automatic Slip Rejection:</b><br/>When wheel cov = 1000, Kalman gain K &rarr; 0<br/>EKF relies exclusively on IMU gyro & attitude"]:::ekf
+    end
+
+    subgraph Outputs ["Smooth Local Trajectory @ 100Hz"]
+        ODOM_FILT["<b>/odometry/filtered</b> (nav_msgs/Odometry)<br/>Sent to MPPI Controller & RTAB-Map"]:::out
+        TF_ODOM["<b>TF Broadcast: odom ➔ base_link</b><br/>Continuous, zero coordinate jump"]:::out
+    end
+
+    WHEEL --> FUSION
+    IMU --> FUSION
+    FUSION --> REJECT
+    REJECT --> ODOM_FILT
+    REJECT --> TF_ODOM
+"""
+    },
+    {
+        "folder": "2-SLAM",
+        "filename": "05_rtabmap_visual_slam_and_loop_closure.png",
+        "title": "Deep Dive: RTAB-Map Visual SLAM & Loop Closures (Block 5)",
+        "badge": "SLAM Block 5",
+        "subtitle": "Visual FAST/GFTT feature tracking, memory management graph, ArUco landmark constraints, and map->odom drift offset",
+        "mermaid": """flowchart TD
+    classDef input fill:#0f172a,stroke:#64748b,stroke-width:2px,color:#f8fafc;
+    classDef slam fill:#581c87,stroke:#c084fc,stroke-width:2px,color:#f8fafc;
+    classDef out fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc;
+
+    subgraph Streams ["RGB-D & Odometry Streams"]
+        RGB["<b>/camera/image_raw</b>"]:::input
+        DEPTH["<b>/camera/depth/filtered</b>"]:::input
+        ODOM["<b>/odometry/filtered</b> (from EKF)"]:::input
+        ARUCO["<b>/perception/aruco_pose</b> (Landmark)"]:::input
+    end
+
+    subgraph RTAB ["RTAB-Map SLAM Core"]
+        FEATURES["<b>Visual Feature Extractor:</b><br/>FAST / GFTT corners + BRIEF descriptors"]:::slam
+        MEMORY["<b>Memory Management:</b><br/>Working Memory (WM) + Long-Term Memory (LTM)"]:::slam
+        LOOP["<b>Bayesian Loop Closure Detection:</b><br/>Identifies previously visited locations"]:::slam
+        GRAPH["<b>Pose Graph Optimization:</b><br/>g2o / GTSAM optimizes camera trajectory<br/>Incorporates 6-DoF ArUco landmark constraints"]:::slam
+    end
+
+    subgraph Outputs ["Global World SLAM Outputs"]
+        MAP_GRID["<b>/map (OccupancyGrid)</b><br/>Static 2D obstacle & free-space grid"]:::out
+        TF_MAP["<b>TF Broadcast: map ➔ odom (1-5 Hz)</b><br/>Absorbs global drift without jerking local controller"]:::out
+    end
+
+    RGB --> FEATURES
+    DEPTH --> FEATURES
+    ODOM --> MEMORY
+    FEATURES --> MEMORY --> LOOP --> GRAPH
+    ARUCO --> GRAPH
+    GRAPH --> MAP_GRID
+    GRAPH --> TF_MAP
+"""
+    },
+    {
+        "folder": "2-SLAM",
+        "filename": "06_nav2_costmap_2d_layering.png",
+        "title": "Deep Dive: Nav2 Costmap 2D Layering & Inflation (Block 6)",
+        "badge": "SLAM Block 6",
+        "subtitle": "nav2_costmap_2d: fusing static SLAM map, dynamic perception rocks, and safety inflation envelopes",
+        "mermaid": """flowchart LR
+    classDef inout fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    classDef layer fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#f8fafc;
+
+    subgraph Ingestion ["Map & Point Cloud Inputs"]
+        MAP_IN["<b>/map:</b> Static OccupancyGrid (RTAB-Map)"]:::inout
+        ROCKS_IN["<b>/bridge/pointcloud:</b> Dynamic rocks (Perception)"]:::inout
+    end
+
+    subgraph Layers ["Costmap Layer Plugin Stack"]
+        L1["<b>1. Static Layer:</b><br/>Projects global SLAM walls/borders"]:::layer
+        L2["<b>2. Obstacle Layer:</b><br/>Ray-traces real-time 3D rock points"]:::layer
+        L3["<b>3. Inflation Layer:</b><br/>Exponential decay around obstacles<br/>Inscribed radius = 0.50m (rover body)"]:::layer
+    end
+
+    subgraph Costmaps ["Planning Grids"]
+        GLOBAL_CM["<b>/global_costmap/costmap:</b><br/>Used by Smac Global Planner"]:::inout
+        LOCAL_CM["<b>/local_costmap/costmap:</b><br/>Used by MPPI Local Controller"]:::inout
+    end
+
+    MAP_IN --> L1
+    ROCKS_IN --> L2
+    L1 --> L3
+    L2 --> L3
+    L3 --> GLOBAL_CM
+    L3 --> LOCAL_CM
 """
     },
 
-    # -------------------------------------------------------------
-    # 3. Path Planning Full Pipeline
-    # -------------------------------------------------------------
+    # =========================================================================
+    # 3. NAV2 & PATH PLANNING (General_Docs/3-Nav2/)
+    # =========================================================================
     {
-        "filename": "path_planning_pipeline.png",
-        "title": "Path Planning & Nav2 Navigation Architecture Pipeline",
-        "badge": "Navigation Subsystem",
-        "subtitle": "Nav2 integration: Smac Hybrid A* Reeds-Shepp global planner, MPPI 2,000 rollout controller, and costmap obstacle bridge",
+        "folder": "3-Nav2",
+        "filename": "00_nav2_master_pipeline.png",
+        "title": "Nav2 Navigation & Path Planning Master Architecture",
+        "badge": "Nav2 Master",
+        "subtitle": "Smac Hybrid A* Reeds-Shepp global planner, MPPI 2,000 rollout controller, and costmap obstacle bridge",
         "mermaid": """flowchart TD
     classDef ext fill:#0f172a,stroke:#64748b,stroke-width:2px,color:#f8fafc;
     classDef bridge fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
@@ -284,15 +708,186 @@ DIAGRAMS = [
     BT -.->|"Trigger Recovery / Replan"| SMAC
 """
     },
-
-    # -------------------------------------------------------------
-    # 4. Hardware & Control Architecture
-    # -------------------------------------------------------------
     {
-        "filename": "hardware_control_pipeline.png",
-        "title": "Hardware Electrical & Computing Architecture",
-        "badge": "Hardware & Electronics",
-        "subtitle": "High-current power distribution, Jetson Orin Nano master compute, STM32 Blackpill ECU, sensors, and 4WD skid-steer actuation",
+        "folder": "3-Nav2",
+        "filename": "01_costmap_bridge_ingestion_block.png",
+        "title": "Deep Dive: Costmap Bridge Ingestion Node (Block 1)",
+        "badge": "Nav2 Block 1",
+        "subtitle": "costmap_bridge_node: converting 3D bounding boxes into dense boundary point clouds for 2D costmaps",
+        "mermaid": """flowchart LR
+    classDef inout fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    classDef proc fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
+
+    IN_BBOX["<b>/perception/obstacles_only</b><br/>vision_msgs/Detection3DArray<br/>3D Bounding Boxes & Centroids"]:::inout
+
+    subgraph Bridge ["costmap_bridge_node (C++)"]
+        PERIM["<b>1. Perimeter Extraction:</b><br/>Calculates 4 ground edges per box"]:::proc
+        SAMPLE["<b>2. Linear Interpolation:</b><br/>Samples synthetic points every 0.04m along edges"]:::proc
+        PC_BUILD["<b>3. PointCloud2 Generation:</b><br/>Packages points with timestamp & frame_id"]:::proc
+    end
+
+    OUT_CLOUD["<b>/bridge/pointcloud</b><br/>sensor_msgs/PointCloud2<br/>Ingested by Global & Local Costmaps"]:::inout
+
+    IN_BBOX --> PERIM --> SAMPLE --> PC_BUILD --> OUT_CLOUD
+"""
+    },
+    {
+        "folder": "3-Nav2",
+        "filename": "02_global_and_local_costmap_servers.png",
+        "title": "Deep Dive: Global vs Local Costmap Servers (Block 2)",
+        "badge": "Nav2 Block 2",
+        "subtitle": "nav2_costmap_2d: comparing global macro cost grid vs 10x10m rolling window local costmap",
+        "mermaid": """flowchart TD
+    classDef map fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#f8fafc;
+    classDef inout fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+
+    subgraph Global ["Global Costmap Server (nav2_costmap_2d)"]
+        GC_SPEC["• Frame: map<br/>• Size: Entire Mars Yard (50x50m)<br/>• Resolution: 0.05m<br/>• Tracks full static world + explored boulders"]:::map
+        GC_LAYERS["Plugins: StaticLayer + ObstacleLayer + InflationLayer"]:::map
+        GC_OUT["<b>/global_costmap/costmap</b> &rarr; Smac Planner"]:::inout
+    end
+
+    subgraph Local ["Local Costmap Server (nav2_costmap_2d)"]
+        LC_SPEC["• Frame: odom (Rolling Window)<br/>• Size: 10x10 meters centered on rover<br/>• Resolution: 0.04m<br/>• Real-time immediate hazard avoidance"]:::map
+        LC_LAYERS["Plugins: ObstacleLayer + InflationLayer (High Decay)"]:::map
+        LC_OUT["<b>/local_costmap/costmap</b> &rarr; MPPI Controller"]:::inout
+    end
+
+    GC_SPEC --> GC_LAYERS --> GC_OUT
+    LC_SPEC --> LC_LAYERS --> LC_OUT
+"""
+    },
+    {
+        "folder": "3-Nav2",
+        "filename": "03_smac_hybrid_a_star_planner_block.png",
+        "title": "Deep Dive: Smac Hybrid A* Global Planner (Block 3)",
+        "badge": "Nav2 Block 3",
+        "subtitle": "nav2_smac_planner: 3D search space (X, Y, &theta;) generating kinematically feasible Reeds-Shepp curves",
+        "mermaid": """flowchart LR
+    classDef inout fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    classDef smac fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#f8fafc;
+
+    subgraph Inputs ["Inputs"]
+        START["Rover Start Pose (X, Y, &theta;)"]:::inout
+        GOAL["Goal Pose (X, Y, &theta;)"]:::inout
+        GRID["Global Costmap Grid"]:::inout
+    end
+
+    subgraph SmacSearch ["Smac Hybrid A* Core"]
+        HEURISTIC["<b>Dual Heuristics:</b><br/>• Non-Holonomic Distance (Dubins/Reeds-Shepp)<br/>• 2D Obstacle Dijkstra BFS"]:::smac
+        EXPAND["<b>Node Expansion:</b><br/>Forward & Reverse primitives<br/>Min Turning Radius = 0.8m"]:::smac
+        ANALYTIC["<b>Analytic Expansion:</b><br/>Direct Reeds-Shepp curve to goal when collision-free"]:::smac
+        SMOOTH["<b>Path Smoother:</b><br/>Conjugate gradient curvature minimization"]:::smac
+    end
+
+    OUT_PATH["<b>/plan (nav_msgs/Path)</b><br/>Continuous smooth waypoints to goal"]:::inout
+
+    START --> HEURISTIC
+    GOAL --> HEURISTIC
+    GRID --> HEURISTIC
+    HEURISTIC --> EXPAND --> ANALYTIC --> SMOOTH --> OUT_PATH
+"""
+    },
+    {
+        "folder": "3-Nav2",
+        "filename": "04_mppi_controller_rollouts_block.png",
+        "title": "Deep Dive: MPPI Controller 2,000 Rollouts @ 20Hz (Block 4)",
+        "badge": "Nav2 Block 4",
+        "subtitle": "nav2_mppi_controller: Model Predictive Path Integral controller optimizing trajectories with multi-criteria critics",
+        "mermaid": """flowchart TD
+    classDef inout fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    classDef mppi fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#f8fafc;
+    classDef critic fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
+
+    INPUTS["<b>Inputs:</b> /plan, /local_costmap/costmap, /odometry/filtered @ 20Hz"]:::inout
+
+    subgraph Sampling ["Trajectory Generation"]
+        ROLLOUTS["<b>Generate 2,000 Stochastic Rollouts:</b><br/>Applies Gaussian noise to control sequences over 2.5s horizon"]:::mppi
+    end
+
+    subgraph Critics ["Cost Function Evaluation"]
+        C1["<b>GoalCritic:</b> Rewards closing distance to goal"]:::critic
+        C2["<b>PathAlignCritic:</b> Penalizes deviation from global route"]:::critic
+        C3["<b>ObstacleCritic:</b> Severe penalty for high-costmap cells"]:::critic
+        C4["<b>ConstraintCritic:</b> Enforces rover max speed & skid limits"]:::critic
+    end
+
+    subgraph Optimization ["Optimal Control Synthesis"]
+        WEIGHT["<b>Softmax Weighting:</b><br/>w_k = exp(-1/&lambda; &middot; Cost_k) / &Sigma;"]:::mppi
+        CMD["<b>Optimal Control Command:</b><br/>u* = &Sigma;(w_k &middot; u_k)"]:::mppi
+    end
+
+    OUT_CMD["<b>/cmd_vel_nav:</b> Optimal linear (v) & angular (&omega;) velocity"]:::inout
+
+    INPUTS --> ROLLOUTS --> C1 & C2 & C3 & C4 --> WEIGHT --> CMD --> OUT_CMD
+"""
+    },
+    {
+        "folder": "3-Nav2",
+        "filename": "05_behavior_tree_replanning_block.png",
+        "title": "Deep Dive: Behavior Tree Replanning & Recovery Escalation (Block 5)",
+        "badge": "Nav2 Block 5",
+        "subtitle": "Central navigation state machine: dynamic obstacle detection, detour replanning, and recovery behaviors",
+        "mermaid": """flowchart TD
+    classDef bt fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
+    classDef mppi fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#f8fafc;
+    classDef decision fill:#854d0e,stroke:#facc15,stroke-width:2px,color:#f8fafc;
+    classDef act fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc;
+
+    BT["<b>Behavior Tree Navigator</b><br/>Orchestrates global route replanning & recovery sequences"]:::bt
+    SMAC["<b>Smac Hybrid A* Global Planner</b><br/>Computes macro route /plan on updated Global Costmap"]:::bt
+    MPPI["<b>MPPI Local Controller (20Hz)</b><br/>Simulates 2,000 trajectory rollouts in parallel"]:::mppi
+
+    BT -->|"ComputePathToPose"| SMAC
+    SMAC -->|"/plan"| BT
+    BT -->|"FollowPath (/plan)"| MPPI
+
+    MPPI -->|"Evaluation Cycle"| EVAL{"Can MPPI swerve safely?"}:::decision
+    EVAL -->|"YES (Path Open)"| DRIVE["<b>Output /cmd_vel</b><br/>Smoothly bypasses obstacle & rejoins global plan"]:::act
+    EVAL -->|"NO (Trapped / Blocked)"| FAIL["<b>Return FAILURE</b><br/>NO_VALID_TRAJECTORY"]:::decision
+
+    FAIL -->|"Trigger Immediate Replan"| BT
+    BT -->|"Compute New Detour"| SMAC
+    SMAC -->|"If Path Blocked Everywhere"| REC["<b>Escalated Recovery Behaviors:</b><br/>1. Clear Costmap (Remove transient sensor noise)<br/>2. BackUp 0.8m safely<br/>3. Spin 360° to scan terrain<br/>4. Re-attempt global planning"]:::mppi
+"""
+    },
+    {
+        "folder": "3-Nav2",
+        "filename": "06_velocity_smoother_and_skid_steer_bridge.png",
+        "title": "Deep Dive: Velocity Smoother & Motor Driver Bridge (Block 6)",
+        "badge": "Nav2 Block 6",
+        "subtitle": "Velocity ramping, acceleration jerk limiting, and differential/skid-steer motor command translation",
+        "mermaid": """flowchart LR
+    classDef inout fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    classDef proc fill:#7c2d12,stroke:#ea580c,stroke-width:2px,color:#f8fafc;
+
+    IN_RAW_CMD["<b>/cmd_vel_nav</b><br/>Raw MPPI velocity command"]:::inout
+
+    subgraph Smoother ["Velocity Smoother & Safety Monitor"]
+        RAMP["<b>Acceleration Limiter:</b><br/>Clamps linear & angular acceleration slopes"]:::proc
+        ENVELOPE["<b>Safety Enclosure:</b><br/>Slows rover near obstacles or on steep pitch angles"]:::proc
+    end
+
+    subgraph MotorBridge ["motor_driver Node"]
+        SKID["<b>Skid-Steer Kinematics:</b><br/>&omega;_left = (v - &omega; &middot; W/2) / R<br/>&omega;_right = (v + &omega; &middot; W/2) / R"]:::proc
+        DEADBAND["<b>Deadband & Slew Rate Compensation</b>"]:::proc
+    end
+
+    OUT_MOTORS["<b>Hardware Motor Commands</b><br/>Left/Right PWM & Direction to ESCs"]:::inout
+
+    IN_RAW_CMD --> RAMP --> ENVELOPE --> SKID --> DEADBAND --> OUT_MOTORS
+"""
+    },
+
+    # =========================================================================
+    # 4. HARDWARE & ELECTRICAL ARCHITECTURE (General_Docs/4-Hardware/)
+    # =========================================================================
+    {
+        "folder": "4-Hardware",
+        "filename": "00_hardware_master_architecture.png",
+        "title": "Hardware Electrical & Computing Master Architecture",
+        "badge": "Hardware Master",
+        "subtitle": "Master power distribution, NVIDIA Jetson Orin Nano compute, STM32 Blackpill ECU, sensors, and 4WD skid-steer actuation",
         "mermaid": """flowchart TD
     classDef compute fill:#1e1b4b,stroke:#6366f1,stroke-width:2px,color:#f8fafc;
     classDef power fill:#854d0e,stroke:#facc15,stroke-width:2px,color:#f8fafc;
@@ -340,205 +935,158 @@ DIAGRAMS = [
     DRIVERS --> MOTORS
 """
     },
-
-    # -------------------------------------------------------------
-    # 5. Block Deep Dive: SLAM Slip & EKF
-    # -------------------------------------------------------------
     {
-        "filename": "slam_slip_and_ekf_block.png",
-        "title": "Deep Dive: Wheel Odometry Kinematics & 100Hz EKF Fusion",
-        "badge": "SLAM Block Deep-Dive",
-        "subtitle": "Isolation of single-wheel sand slip, dynamic covariance scaling (10^3), and high-rate local pose estimation",
+        "folder": "4-Hardware",
+        "filename": "01_power_distribution_block.png",
+        "title": "Deep Dive: Power Distribution & Voltage Regulation (Block 1)",
+        "badge": "Hardware Block 1",
+        "subtitle": "Main battery supply, Power Distribution Board (PDB), buck-boost regulation, and isolated ground domains",
         "mermaid": """flowchart LR
-    classDef hw fill:#0f172a,stroke:#64748b,stroke-width:2px,color:#f8fafc;
-    classDef node fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
-    classDef ekf fill:#581c87,stroke:#c084fc,stroke-width:2px,color:#f8fafc;
-    classDef out fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc;
+    classDef power fill:#854d0e,stroke:#facc15,stroke-width:2px,color:#f8fafc;
+    classDef load fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
 
-    subgraph Inputs ["Hardware Inputs"]
-        TICKS["<b>/wheel/ticks</b><br/>4-wheel encoder counts"]:::hw
-        IMU["<b>/imu/data</b><br/>BNO055 Angular Velocity & Yaw"]:::hw
+    BAT["<b>20V Main Battery Pack</b><br/>LiPo / Li-Ion High Discharge"]:::power
+
+    subgraph PDB ["Custom PDB & Safety Protection"]
+        ESTOP["<b>Emergency Stop (E-Stop)</b><br/>Physical & Wireless Relay Killswitch"]:::power
+        FUSE["<b>Inline Fuse & Reverse Polarity</b><br/>Overcurrent & surge protection"]:::power
     end
 
-    subgraph Block1 ["Block 1: Kinematics"]
-        ENC_NODE["<b>encoder_ticks_to_odom.py</b><br/>• Converts tick deltas to twist (vx, wz)<br/>• Computes per-wheel speeds<br/>• Flags single-wheel slip per side"]:::node
+    subgraph Rails ["Regulated Voltage Rails"]
+        R1["<b>19V / 12V Buck-Boost:</b><br/>Supplies Jetson Orin Nano"]:::power
+        R2["<b>5V / 3A BEC:</b><br/>Supplies STM32 & USB Peripherals"]:::power
+        R3["<b>3.3V LDO:</b><br/>Supplies IMU & Logic Sensors"]:::power
+        R4["<b>20V High-Current Raw Rail:</b><br/>Direct supply to 4x Motor Drivers"]:::power
     end
 
-    subgraph Block2 ["Block 2: Slip Checker"]
-        SLIP_NODE["<b>heuristic_slip_checker.py</b><br/>• Compares wheel yaw vs IMU gyro<br/>• Detects sand spin & rover stall<br/>• If slipping: clamps vx = 0.0 & scales cov to 1000"]:::node
+    subgraph Loads ["Subsystem Loads"]
+        L_JETSON["NVIDIA Jetson Orin Nano"]:::load
+        L_STM32["STM32 Blackpill ECU"]:::load
+        L_SENSORS["BNO055 IMU & RealSense"]:::load
+        L_MOTORS["4x DC Drive Motors"]:::load
     end
 
-    subgraph Block4 ["Block 4: EKF Local Estimator"]
-        EKF_NODE["<b>robot_localization ekf_node</b><br/>• Fuses wheel twist + IMU roll/pitch/yaw<br/>• Continuous 100Hz smooth odometry<br/>• Ignores wheel velocity when cov inflated"]:::ekf
-    end
-
-    subgraph Outputs ["Local Outputs"]
-        ODOM_FILT["<b>/odometry/filtered</b><br/>(100Hz zero-jump pose)"]:::out
-        TF_ODOM["<b>TF: odom ➔ base_link</b><br/>(Local tracking frame)"]:::out
-    end
-
-    TICKS --> ENC_NODE
-    ENC_NODE -->|"<b>/wheel/odom_raw</b>"| SLIP_NODE
-    ENC_NODE -->|"<b>/wheel/single_wheel_slip</b>"| SLIP_NODE
-    IMU --> SLIP_NODE
-    SLIP_NODE -->|"<b>/wheel/odom_filtered</b><br/>(Dynamic covariance)"| EKF_NODE
-    IMU --> EKF_NODE
-    EKF_NODE --> ODOM_FILT
-    EKF_NODE --> TF_ODOM
+    BAT --> ESTOP --> FUSE
+    FUSE --> R1 --> L_JETSON
+    FUSE --> R2 --> L_STM32
+    FUSE --> R3 --> L_SENSORS
+    FUSE --> R4 --> L_MOTORS
 """
     },
-
-    # -------------------------------------------------------------
-    # 6. Block Deep Dive: SLAM RTAB-Map & Costmap
-    # -------------------------------------------------------------
     {
-        "filename": "slam_rtabmap_costmap_block.png",
-        "title": "Deep Dive: RTAB-Map Visual SLAM & Nav2 Costmap Ingestion",
-        "badge": "SLAM Block Deep-Dive",
-        "subtitle": "Visual FAST/GFTT feature tracking, ArUco landmark 6-DoF constraint fusion, and layered occupancy grid generation",
+        "folder": "4-Hardware",
+        "filename": "02_master_compute_and_microcontroller_bridge.png",
+        "title": "Deep Dive: Master Compute & Microcontroller Bridge (Block 2)",
+        "badge": "Hardware Block 2",
+        "subtitle": "Jetson Orin Nano high-level autonomous intelligence communicating with STM32 Blackpill ECU via USB Serial",
         "mermaid": """flowchart LR
-    classDef sens fill:#0f172a,stroke:#64748b,stroke-width:2px,color:#f8fafc;
-    classDef filter fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
-    classDef slam fill:#581c87,stroke:#c084fc,stroke-width:2px,color:#f8fafc;
-    classDef costmap fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#f8fafc;
-    classDef out fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc;
+    classDef compute fill:#1e1b4b,stroke:#6366f1,stroke-width:2px,color:#f8fafc;
+    classDef mcu fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#f8fafc;
+    classDef comm fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
 
-    subgraph Inputs ["Sensor & Landmark Streams"]
-        DEPTH_RAW["Raw Depth Stream<br/><b>/camera/depth/image_raw</b>"]:::sens
-        RGB_RAW["Raw Color Stream<br/><b>/camera/image_raw</b>"]:::sens
-        ARUCO_POSE["ArUco 6-DoF Pose<br/><b>/perception/aruco_pose</b>"]:::sens
-        ROCKS["Terrain Obstacles<br/><b>/bridge/pointcloud</b>"]:::sens
+    subgraph Master ["NVIDIA Jetson Orin Nano (ROS 2 Jazzy)"]
+        ROS_NAV["<b>Nav2 MPPI Controller:</b><br/>Outputs desired /cmd_vel (v, &omega;)"]:::compute
+        SERIAL_NODE["<b>serial_motor_bridge Node:</b><br/>Encodes packet: [START, v_L, v_R, CRC, END]"]:::compute
     end
 
-    subgraph VisionFilter ["Block 3: RealSense Filter"]
-        V_FILTER["<b>vision_helper</b><br/>• Decimation (2x)<br/>• Spatial filter<br/>• Temporal persistence<br/>• Hole filling"]:::filter
+    subgraph SerialLink ["High-Speed USB Serial Link"]
+        USB["<b>USB CDC / UART @ 921,600 baud</b><br/>• Downlink: Motor Speed Setpoints (50 Hz)<br/>• Uplink: Raw Encoder Ticks & Faults (50 Hz)"]:::comm
     end
 
-    subgraph GlobalSLAM ["Block 5: RTAB-Map SLAM"]
-        RTAB["<b>rtabmap_slam Node</b><br/>• FAST/GFTT feature tracking<br/>• Torus graph optimization<br/>• ArUco landmark fusion<br/>• Computes map ➔ odom drift"]:::slam
+    subgraph Slave ["STM32F411 Blackpill ECU (Bare-Metal / FreeRTOS)"]
+        PARSER["<b>Packet Parser & Checksum:</b><br/>Validates CRC & applies PID setpoint"]:::mcu
+        PID["<b>Hardware Timer PWM & PID Loop:</b><br/>Controls H-Bridge drivers @ 20 kHz"]:::mcu
+        ENCODER_TIMER["<b>Hardware Encoder Timers:</b><br/>TIM2, TIM3, TIM4, TIM5 capture ticks"]:::mcu
     end
 
-    subgraph NavCostmap ["Block 6: Nav2 Costmap 2D"]
-        CM["<b>nav2_costmap_2d Server</b><br/>• Static Layer: /map<br/>• Obstacle Layer: PointCloud<br/>• Inflation Layer: Radius"]:::costmap
-    end
-
-    subgraph Outputs ["Planning Targets"]
-        TF_MAP["<b>TF: map ➔ odom</b><br/>(1-5 Hz drift correction)"]:::out
-        OUT_COSTMAP["<b>/global_costmap/costmap</b><br/>(Nav2 Planning Grid)"]:::out
-    end
-
-    DEPTH_RAW --> V_FILTER
-    V_FILTER -->|"Filtered Depth"| RTAB
-    RGB_RAW --> RTAB
-    ARUCO_POSE -->|"6-DoF Landmark"| RTAB
-    RTAB --> TF_MAP
-    RTAB -->|"<b>/map</b> (OccupancyGrid)"| CM
-    ROCKS --> CM
-    CM --> OUT_COSTMAP
+    ROS_NAV --> SERIAL_NODE --> USB --> PARSER --> PID
+    ENCODER_TIMER --> USB
 """
     },
-
-    # -------------------------------------------------------------
-    # 7. Block Deep Dive: Perception Terrain Geometry
-    # -------------------------------------------------------------
     {
-        "filename": "perception_terrain_geometry_block.png",
-        "title": "Deep Dive: 3D Point Cloud Terrain Geometry Pipeline",
-        "badge": "Perception Block Deep-Dive",
-        "subtitle": "8-stage real-time spatial filtering, Patchwork++ ground removal, DBSCAN clustering, and EMA obstacle tracking",
+        "folder": "4-Hardware",
+        "filename": "03_drivetrain_and_actuators_block.png",
+        "title": "Deep Dive: 4WD Skid-Steer Drivetrain & Encoders (Block 3)",
+        "badge": "Hardware Block 3",
+        "subtitle": "4x Planetary DC Motors, H-Bridge Drivers, and optical quadrature encoder feedback",
+        "mermaid": """flowchart LR
+    classDef ctrl fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#f8fafc;
+    classDef driver fill:#7c2d12,stroke:#ea580c,stroke-width:2px,color:#f8fafc;
+    classDef motor fill:#1e1b4b,stroke:#6366f1,stroke-width:2px,color:#f8fafc;
+    classDef sens fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+
+    MCU["<b>STM32 Blackpill ECU</b>"]:::ctrl
+
+    subgraph Drivers ["Motor Drivers"]
+        DRV1["Left-Front Driver (H-Bridge)"]:::driver
+        DRV2["Left-Rear Driver (H-Bridge)"]:::driver
+        DRV3["Right-Front Driver (H-Bridge)"]:::driver
+        DRV4["Right-Rear Driver (H-Bridge)"]:::driver
+    end
+
+    subgraph Actuators ["High-Torque DC Motors"]
+        M1["Left-Front DC Motor"]:::motor
+        M2["Left-Rear DC Motor"]:::motor
+        M3["Right-Front DC Motor"]:::motor
+        M4["Right-Rear DC Motor"]:::motor
+    end
+
+    subgraph Feedback ["Quadrature Optical Encoders"]
+        E1["Encoder LF (Channel A/B)"]:::sens
+        E2["Encoder LR (Channel A/B)"]:::sens
+        E3["Encoder RF (Channel A/B)"]:::sens
+        E4["Encoder RR (Channel A/B)"]:::sens
+    end
+
+    MCU -->|"PWM & DIR"| DRV1 --> M1
+    MCU -->|"PWM & DIR"| DRV2 --> M2
+    MCU -->|"PWM & DIR"| DRV3 --> M3
+    MCU -->|"PWM & DIR"| DRV4 --> M4
+
+    M1 -.-> E1 -->|"Ticks"| MCU
+    M2 -.-> E2 -->|"Ticks"| MCU
+    M3 -.-> E3 -->|"Ticks"| MCU
+    M4 -.-> E4 -->|"Ticks"| MCU
+"""
+    },
+    {
+        "folder": "4-Hardware",
+        "filename": "04_sensor_suite_and_buses_block.png",
+        "title": "Deep Dive: Sensor Suite & Hardware Buses (Block 4)",
+        "badge": "Hardware Block 4",
+        "subtitle": "Complete pinout & communication bus mapping for RealSense D435i, BNO055 IMU, and Wheel Encoders",
         "mermaid": """flowchart TD
-    classDef stage fill:#064e3b,stroke:#059669,stroke-width:2px,color:#f8fafc;
-    classDef inout fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    classDef sens fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    classDef bus fill:#854d0e,stroke:#facc15,stroke-width:2px,color:#f8fafc;
+    classDef host fill:#1e1b4b,stroke:#6366f1,stroke-width:2px,color:#f8fafc;
 
-    IN_RAW["<b>Raw Depth Point Cloud</b><br/>/camera/depth/color/points (~300,000 points @ 30Hz)"]:::inout
-
-    STAGE1["<b>Stage 1: ROI Spatial Crop</b><br/>Crops bounds: X [-2.5m, +2.5m], Y [-2.5m, +2.5m], Z [-1.0m, +1.0m]"]:::stage
-    STAGE2["<b>Stage 2: Patchwork++ Ground Removal</b><br/>Concentric zone model separates ground terrain from protruding boulders"]:::stage
-    STAGE3["<b>Stage 3: Voxel Grid Downsampling</b><br/>5cm voxel leaf size yields uniform density cloud (~8,000 points)"]:::stage
-    STAGE4["<b>Stage 4: Radius Outlier Removal (ROR)</b><br/>Eliminates floating airborne dust and sunlight IR reflections"]:::stage
-    STAGE5["<b>Stage 5: DBSCAN Euclidean Clustering</b><br/>Min points = 15, Epsilon = 0.12m &rarr; Extracts isolated rock clusters"]:::stage
-    STAGE6["<b>Stage 6: Persistent Memory & EMA Tracking</b><br/>Matches cluster IDs across frames & maintains blind-spot retention"]:::stage
-
-    OUT_OBST["<b>Smoothed Obstacles & Bounding Boxes</b><br/>/perception/obstacles_only &rarr; Sent to Nav2 Costmap Server"]:::inout
-
-    IN_RAW --> STAGE1 --> STAGE2 --> STAGE3 --> STAGE4 --> STAGE5 --> STAGE6 --> OUT_OBST
-"""
-    },
-
-    # -------------------------------------------------------------
-    # 8. Block Deep Dive: Perception ArUco Detection
-    # -------------------------------------------------------------
-    {
-        "filename": "perception_aruco_vision_block.png",
-        "title": "Deep Dive: ArUco Landmark 6-DoF solvePnP Pipeline",
-        "badge": "Perception Block Deep-Dive",
-        "subtitle": "Sub-pixel corner detection, perspective-n-point 3D pose extraction, and covariance filtering for SLAM drift reset",
-        "mermaid": """flowchart LR
-    classDef input fill:#0f172a,stroke:#64748b,stroke-width:2px,color:#f8fafc;
-    classDef proc fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
-    classDef out fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc;
-
-    subgraph Inputs ["Camera Streams"]
-        RGB["<b>RGB Image Frame</b><br/>/camera/image_raw (1280x720)"]:::input
-        INFO["<b>Camera Intrinsics</b><br/>fx, fy, cx, cy & distortion"]:::input
+    subgraph Sensors ["Sensors"]
+        CAM["<b>Intel RealSense D435i</b><br/>• RGB Camera (1920x1080)<br/>• Infrared Stereo Depth (848x480)<br/>• Internal 6-DoF IMU"]:::sens
+        IMU["<b>BNO055 / MPU-6050 IMU</b><br/>• 3-Axis Gyroscope (&omega;)<br/>• 3-Axis Accelerometer (a)<br/>• Onboard DMP Fusion"]:::sens
+        ENCS["<b>4x Wheel Encoders</b><br/>• Dual-channel Quadrature (A/B)<br/>• ~1,000 CPR Resolution"]:::sens
     end
 
-    subgraph Stages ["Processing Stages (marker_detection)"]
-        S1["<b>1. Dictionary Match</b><br/>Adaptive threshold & border check<br/>(DICT_4X4_50 / DICT_5X5_100)"]:::proc
-        S2["<b>2. Corner Refinement</b><br/>cv2.cornerSubPix interpolation<br/>Sub-pixel pixel precision"]:::proc
-        S3["<b>3. OpenCV solvePnP</b><br/>Calculates 3D rotation (rvec)<br/>and translation (tvec) in camera frame"]:::proc
-        S4["<b>4. Kalman Filter Gate</b><br/>Rejects reprojection error > 2px<br/>Smooths 6-DoF pose coordinates"]:::proc
+    subgraph Buses ["Communication Protocols"]
+        USB3["<b>USB 3.0 Gen 1 (5 Gbps)</b><br/>Bulk high-throughput image streams"]:::bus
+        I2C["<b>I2C / UART Bus (400 kHz / 115.2 kbps)</b><br/>Orientation, gravity & raw angular rates"]:::bus
+        GPIO["<b>Hardware Timer GPIO Interrupts</b><br/>Direct hardware pulse counting"]:::bus
     end
 
-    subgraph Output ["SLAM Landmark"]
-        ARUCO_OUT["<b>/perception/aruco_pose</b><br/>(geometry_msgs/PoseStamped)<br/>Global loop closure anchor"]:::out
+    subgraph Hosts ["Processing Hosts"]
+        JETSON["<b>NVIDIA Jetson Orin Nano</b>"]:::host
+        STM32["<b>STM32 Blackpill ECU</b>"]:::host
     end
 
-    RGB --> S1 --> S2 --> S3
-    INFO --> S3
-    S3 --> S4 --> ARUCO_OUT
+    CAM --> USB3 --> JETSON
+    IMU --> I2C --> JETSON
+    ENCS --> GPIO --> STM32
 """
     },
-
-    # -------------------------------------------------------------
-    # 9. Block Deep Dive: Nav2 MPPI Dynamic Avoidance
-    # -------------------------------------------------------------
     {
-        "filename": "nav2_mppi_dynamic_avoidance_block.png",
-        "title": "Deep Dive: Nav2 MPPI Controller & Behavior Tree Replanning",
-        "badge": "Nav2 Block Deep-Dive",
-        "subtitle": "2,000 parallel trajectory rollouts @ 20Hz, dynamic obstacle swerving, and autonomous recovery behavior escalation",
-        "mermaid": """flowchart TD
-    classDef bt fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
-    classDef mppi fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#f8fafc;
-    classDef decision fill:#854d0e,stroke:#facc15,stroke-width:2px,color:#f8fafc;
-    classDef act fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc;
-
-    BT["<b>Behavior Tree Navigator</b><br/>Orchestrates global route replanning & recovery sequences"]:::bt
-    SMAC["<b>Smac Hybrid A* Global Planner</b><br/>Computes macro route /plan on updated Global Costmap"]:::bt
-    MPPI["<b>MPPI Local Controller (20Hz)</b><br/>Simulates 2,000 trajectory rollouts in parallel<br/>Critics: GoalCritic, PathAlignCritic, ObstacleCritic"]:::mppi
-
-    BT -->|"ComputePathToPose"| SMAC
-    SMAC -->|"/plan"| BT
-    BT -->|"FollowPath (/plan)"| MPPI
-
-    MPPI -->|"Evaluation Cycle"| EVAL{"Can MPPI swerve safely?"}:::decision
-    EVAL -->|"YES (Path Open)"| DRIVE["<b>Output /cmd_vel</b><br/>Smoothly bypasses obstacle & rejoins global plan"]:::act
-    EVAL -->|"NO (Trapped / Blocked)"| FAIL["<b>Return FAILURE</b><br/>NO_VALID_TRAJECTORY"]:::decision
-
-    FAIL -->|"Trigger Immediate Replan"| BT
-    BT -->|"Compute New Detour"| SMAC
-    SMAC -->|"If Path Blocked Everywhere"| REC["<b>Escalated Recovery Behaviors:</b><br/>1. Clear Costmap (Remove transient sensor noise)<br/>2. BackUp 0.8m safely<br/>3. Spin 360° to scan terrain<br/>4. Re-attempt global planning"]:::mppi
-"""
-    },
-
-    # -------------------------------------------------------------
-    # 10. Coordinate Systems & TF Tree (REP-105)
-    # -------------------------------------------------------------
-    {
-        "filename": "tf_tree_architecture.png",
+        "folder": "4-Hardware",
+        "filename": "05_rep105_coordinate_tf_tree.png",
         "title": "Rover Coordinate Transform Tree (REP-105)",
-        "badge": "System Coordinate Frames",
+        "badge": "System TF Tree",
         "subtitle": "Strict separation between continuous 100Hz local odometry (odom) and discrete global SLAM drift offsets (map)",
         "mermaid": """flowchart TD
     classDef globalFrame fill:#581c87,stroke:#c084fc,stroke-width:2px,color:#f8fafc;
@@ -568,18 +1116,20 @@ DIAGRAMS = [
 ]
 
 def main():
-    docs_dir = os.path.abspath("e:/SHAKR/Autonmous-27/General_Docs")
-    os.makedirs(docs_dir, exist_ok=True)
+    base_docs = os.path.abspath("e:/SHAKR/Autonmous-27/General_Docs")
     
-    print(f"Generating {len(DIAGRAMS)} architecture diagrams into: {docs_dir}")
+    print(f"Generating {len(ALL_DIAGRAMS)} architecture diagrams across General_Docs folders...")
     start_time = time.time()
     
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(device_scale_factor=2)
         
-        for idx, diag in enumerate(DIAGRAMS, 1):
-            out_path = os.path.join(docs_dir, diag["filename"]).replace(os.sep, "/")
+        for idx, diag in enumerate(ALL_DIAGRAMS, 1):
+            folder_path = os.path.join(base_docs, diag["folder"])
+            os.makedirs(folder_path, exist_ok=True)
+            
+            out_path = os.path.join(folder_path, diag["filename"]).replace(os.sep, "/")
             temp_html = out_path.replace(".png", "_temp.html")
             
             html = HTML_TEMPLATE.format(
@@ -595,12 +1145,11 @@ def main():
             try:
                 page.goto(f"file:///{temp_html}")
                 page.wait_for_selector(".mermaid svg", timeout=12000)
-                # Take screenshot of the body
                 body = page.locator("body")
                 body.screenshot(path=out_path)
-                print(f"[{idx}/{len(DIAGRAMS)}] Generated: {diag['filename']}")
+                print(f"[{idx:02d}/{len(ALL_DIAGRAMS):02d}] Generated: {diag['folder']}/{diag['filename']}")
             except Exception as e:
-                print(f"[{idx}/{len(DIAGRAMS)}] ERROR on {diag['filename']}: {e}")
+                print(f"[{idx:02d}/{len(ALL_DIAGRAMS):02d}] ERROR on {diag['filename']}: {e}")
             finally:
                 if os.path.exists(temp_html):
                     os.remove(temp_html)
@@ -608,7 +1157,7 @@ def main():
         browser.close()
         
     elapsed = time.time() - start_time
-    print(f"All diagrams generated successfully in {elapsed:.1f}s.")
+    print(f"\nAll {len(ALL_DIAGRAMS)} diagrams generated successfully in {elapsed:.1f}s.")
 
 if __name__ == "__main__":
     main()

@@ -46,7 +46,7 @@ Perception/
 
 ## 🔄 Subsystem Architecture Pipeline
 
-![Perception Subsystem Architecture Pipeline](../General_Docs/perception_pipeline.png)
+![Perception Subsystem Architecture Pipeline](../General_Docs/1-Perception/00_perception_master_pipeline.png)
 
 ---
 

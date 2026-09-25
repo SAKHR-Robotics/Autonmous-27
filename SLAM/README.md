@@ -42,7 +42,7 @@ graph TD
 
 ## 🔄 2. End-to-End Dataflow: Inputs, Blocks & Outputs
 
-![SLAM Architecture Pipeline](../General_Docs/slam_pipeline.png)
+![SLAM Architecture Pipeline](../General_Docs/2-SLAM/00_slam_master_pipeline.png)
 
 ```mermaid
 flowchart TD
