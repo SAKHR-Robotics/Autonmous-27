@@ -1,19 +1,13 @@
 #!/usr/bin/env python3
-"""
-costmap_test_stub.py
-Publishes simulated rock obstacle point clouds to /perception/obstacles_only
-to verify nav2_costmap_2d inflation output independently without needing Perception module running.
+"""Publish synthetic obstacles for SLAM and costmap integration tests."""
 
-Developer Track: Person 2 / Track B (Task 5B.1)
-"""
-
-import struct
 import numpy as np
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import PointCloud2, PointField
-from geometry_msgs.msg import Point
+from geometry_msgs.msg import Point, Vector3
 from std_msgs.msg import Header
+from vision_msgs.msg import Detection3D, Detection3DArray
 from visualization_msgs.msg import Marker, MarkerArray
 
 
@@ -31,29 +25,54 @@ class CostmapTestStubNode(Node):
         self.frame_id = self.get_parameter('frame_id').get_parameter_value().string_value
         self.num_rocks = self.get_parameter('num_rocks').get_parameter_value().integer_value
 
-        self.publisher_ = self.create_publisher(PointCloud2, '/perception/obstacles_only', 10)
+        # Match the production Perception -> Path Planning contract.
+        self.detection_publisher_ = self.create_publisher(
+            Detection3DArray, '/perception/obstacles_only', 10)
+        # Keep a direct point-cloud output for the standalone SLAM costmap test.
+        self.pointcloud_publisher_ = self.create_publisher(
+            PointCloud2, '/bridge/pointcloud', 10)
         self.marker_publisher_ = self.create_publisher(MarkerArray, '/terrain/obstacle_markers', 10)
         self.timer = self.create_timer(1.0 / self.rate, self.timer_callback)
 
         self.get_logger().info(
-            f"Costmap Test Stub Node Initialized (Publishing synthetic rock obstacles to /perception/obstacles_only and markers to /terrain/obstacle_markers at {self.rate} Hz)."
+            f"Costmap Test Stub Node Initialized (publishing Detection3DArray to "
+            f"/perception/obstacles_only and a direct test cloud to /bridge/pointcloud "
+            f"at {self.rate} Hz)."
         )
 
+    def rock_definitions(self):
+        return [
+            {'id': 1, 'center': (2.0, 0.5, 0.25), 'size': (0.5, 0.5, 0.35)},
+            {'id': 2, 'center': (3.0, -0.8, 0.225), 'size': (0.4, 0.4, 0.25)},
+        ]
+
+    def create_synthetic_detections(self):
+        """Create the 3D bounding-box message produced by Perception."""
+        msg = Detection3DArray()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = self.frame_id
+
+        for rock in self.rock_definitions():
+            detection = Detection3D()
+            detection.bbox.center.position.x = rock['center'][0]
+            detection.bbox.center.position.y = rock['center'][1]
+            detection.bbox.center.position.z = rock['center'][2]
+            detection.bbox.center.orientation.w = 1.0
+            detection.bbox.size = Vector3(
+                x=rock['size'][0], y=rock['size'][1], z=rock['size'][2])
+            msg.detections.append(detection)
+
+        return msg
+
     def create_synthetic_rock_cloud(self):
-        """Generates a binary PointCloud2 message containing 3D clusters representing rocks."""
+        """Create a direct PointCloud2 for the standalone costmap test."""
         points = []
-
-        # Synthetic Rock 1: Centered at (x=2.0m, y=0.5m, z=0.1m)
-        for dx in np.linspace(-0.2, 0.2, 5):
-            for dy in np.linspace(-0.2, 0.2, 5):
-                for dz in np.linspace(0.0, 0.3, 3):
-                    points.append((2.0 + dx, 0.5 + dy, 0.1 + dz))
-
-        # Synthetic Rock 2: Centered at (x=3.0m, y=-0.8m, z=0.1m)
-        for dx in np.linspace(-0.15, 0.15, 4):
-            for dy in np.linspace(-0.15, 0.15, 4):
-                for dz in np.linspace(0.0, 0.2, 3):
-                    points.append((3.0 + dx, -0.8 + dy, 0.1 + dz))
+        for rock in self.rock_definitions():
+            xc, yc, zc = rock['center']
+            sx, sy, sz = rock['size']
+            for x in np.linspace(xc - sx / 2.0, xc + sx / 2.0, 5):
+                for y in np.linspace(yc - sy / 2.0, yc + sy / 2.0, 5):
+                    points.append((x, y, zc - sz / 2.0))
 
         header = Header()
         header.stamp = self.get_clock().now().to_msg()
@@ -65,10 +84,6 @@ class CostmapTestStubNode(Node):
             PointField(name='z', offset=8, datatype=PointField.FLOAT32, count=1),
         ]
 
-        buffer = bytearray()
-        for p in points:
-            buffer.extend(struct.pack('fff', p[0], p[1], p[2]))
-
         cloud_msg = PointCloud2()
         cloud_msg.header = header
         cloud_msg.height = 1
@@ -78,7 +93,7 @@ class CostmapTestStubNode(Node):
         cloud_msg.point_step = 12  # 3 * 4 bytes
         cloud_msg.row_step = cloud_msg.point_step * len(points)
         cloud_msg.is_dense = True
-        cloud_msg.data = bytes(buffer)
+        cloud_msg.data = np.asarray(points, dtype=np.float32).tobytes()
 
         return cloud_msg
 
@@ -167,8 +182,8 @@ class CostmapTestStubNode(Node):
         return marker_array
 
     def timer_callback(self):
-        cloud_msg = self.create_synthetic_rock_cloud()
-        self.publisher_.publish(cloud_msg)
+        self.detection_publisher_.publish(self.create_synthetic_detections())
+        self.pointcloud_publisher_.publish(self.create_synthetic_rock_cloud())
         marker_msg = self.create_synthetic_markers()
         self.marker_publisher_.publish(marker_msg)
 

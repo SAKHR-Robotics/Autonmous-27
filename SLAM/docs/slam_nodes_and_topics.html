@@ -313,7 +313,7 @@
 <div class="container">
     <header>
         <h1>SLAM Nodes & Topics Matrix</h1>
-        <p class="subtitle">Complete Node Responsibilities, Publisher/Subscriber Topics, and TF Breakdown (Option B Architecture)</p>
+        <p class="subtitle">SLAM interfaces, ownership boundaries, publisher/subscriber topics, and TF breakdown</p>
         <div class="badge-container">
             <span class="badge"><i class="fa-solid fa-cube"></i> ROS 2 Jazzy</span>
             <span class="badge"><i class="fa-solid fa-microchip"></i> robot_localization EKF</span>
@@ -329,6 +329,16 @@
             </button>
         </div>
     </header>
+
+    <div class="glass-panel">
+        <h2>Ownership Contract</h2>
+        <p class="subtitle">SLAM estimates state and builds the global map. Perception detects landmarks and obstacles. Path Planning owns the production costmaps and motion commands.</p>
+        <ul>
+            <li><strong>SLAM publishes:</strong> <code>/wheel/odom_raw</code>, <code>/wheel/odom_filtered</code>, <code>/odometry/filtered</code>, <code>/map</code>, and the <code>odom &rarr; base_link</code> and <code>map &rarr; odom</code> transforms.</li>
+            <li><strong>Perception publishes:</strong> camera streams, <code>/perception/aruco_pose</code>, and <code>/perception/obstacles_only</code> as <code>vision_msgs/msg/Detection3DArray</code>.</li>
+            <li><strong>Path Planning consumes:</strong> SLAM and Perception outputs, converts detections to <code>/bridge/pointcloud</code>, and owns global/local Nav2 costmaps.</li>
+        </ul>
+    </div>
 
     <div class="glass-panel">
         <div class="search-box">
@@ -441,7 +451,7 @@
                     <td>
                         <ul class="topic-list">
                             <li class="topic-item">
-                                <span class="topic-name">/camera/depth/filtered</span>
+                                <span class="topic-name">/camera/depth/image_raw</span>
                                 <span class="topic-msg-type">sensor_msgs/msg/Image</span>
                             </li>
                         </ul>
@@ -467,7 +477,7 @@
                         <div class="node-desc">
                             <ul>
                                 <li>Fuses linear velocity ($X, Y$) from wheel odometry (`/wheel/odom_raw`) and orientation (Roll, Pitch, Yaw) + angular velocity from IMU (`/imu/data`).</li>
-                                <li>Runs at high frequency (<span class="highlight-text">100 Hz</span>) with zero latency and no coordinate jumps.</li>
+                                <li>Runs at the configured local-estimation rate (<span class="highlight-text">50 Hz</span>) with smooth local motion.</li>
                                 <li>Provides continuous local state estimation for the MPPI motion controller.</li>
                                 <li>Configured with <code>world_frame: odom</code> and <code>two_d_mode: false</code> for 3D slopes.</li>
                             </ul>
@@ -477,11 +487,11 @@
                         <ul class="topic-list">
                             <li class="topic-item">
                                 <span class="topic-name">/odometry/filtered</span>
-                                <span class="topic-msg-type">nav_msgs/msg/Odometry (100 Hz)</span>
+                                <span class="topic-msg-type">nav_msgs/msg/Odometry (50 Hz)</span>
                             </li>
                             <li class="topic-item">
                                 <span class="topic-name">TF: odom &rarr; base_link</span>
-                                <span class="topic-msg-type">Transform Frame (100 Hz)</span>
+                                <span class="topic-msg-type">Transform Frame (50 Hz)</span>
                             </li>
                         </ul>
                     </td>
@@ -535,11 +545,11 @@
                     <td>
                         <ul class="topic-list">
                             <li class="topic-item">
-                                <span class="topic-name">/camera/color/image_raw</span>
+                                <span class="topic-name">/camera/image_raw</span>
                                 <span class="topic-msg-type">sensor_msgs/msg/Image</span>
                             </li>
                             <li class="topic-item">
-                                <span class="topic-name">/camera/depth/filtered</span>
+                                <span class="topic-name">/camera/depth/image_raw</span>
                                 <span class="topic-msg-type">sensor_msgs/msg/Image</span>
                             </li>
                             <li class="topic-item">
@@ -558,13 +568,13 @@
                 <tr>
                     <td>
                         <div class="node-name"><i class="fa-solid fa-qrcode"></i> ArUco Detector Node</div>
-                        <div class="node-file">aruco_detector_node.py</div>
+                        <div class="node-file">Perception marker_detection package</div>
                         <div><span class="type-tag tag-vision">Landmark Perception</span></div>
                     </td>
                     <td>
                         <div class="node-desc">
                             <ul>
-                                <li>Processes raw camera color stream `/camera/color/image_raw` using OpenCV (`cv2.aruco.detectMarkers()`).</li>
+                                <li>Perception owns the ArUco detector and publishes the landmark interface consumed by RTAB-Map.</li>
                                 <li>Solves Perspective-n-Point math (`cv2.solvePnP()`) using camera calibration matrix to compute exact 3D pose of detected markers.</li>
                                 <li>Publishes 6-DOF marker coordinates relative to camera frame as absolute landmark correction inputs for RTAB-Map.</li>
                             </ul>
@@ -581,7 +591,7 @@
                     <td>
                         <ul class="topic-list">
                             <li class="topic-item">
-                                <span class="topic-name">/camera/color/image_raw</span>
+                                <span class="topic-name">/camera/image_raw</span>
                                 <span class="topic-msg-type">sensor_msgs/msg/Image</span>
                             </li>
                             <li class="topic-item">
@@ -602,9 +612,9 @@
                     <td>
                         <div class="node-desc">
                             <ul>
-                                <li>Creates layered 2D occupancy grid map for global and local path planning.</li>
+                                <li>Path Planning owns the production global and local Nav2 costmaps; this package only provides a standalone test costmap.</li>
                                 <li><strong>Static Layer:</strong> Subscribes to static SLAM map `/map` from RTAB-Map.</li>
-                                <li><strong>Obstacle Layer:</strong> Subscribes to `/perception/obstacles_only` (rock point clouds/bounding boxes).</li>
+                                <li><strong>Obstacle input:</strong> Path Planning converts Perception detections from `/perception/obstacles_only` into `/bridge/pointcloud`.</li>
                                 <li><strong>Inflation Layer:</strong> Inflates rock obstacle boundaries with safety cost gradients according to rover footprint size.</li>
                             </ul>
                         </div>
@@ -628,7 +638,7 @@
                                 <span class="topic-msg-type">nav_msgs/msg/OccupancyGrid</span>
                             </li>
                             <li class="topic-item">
-                                <span class="topic-name">/perception/obstacles_only</span>
+                                <span class="topic-name">/bridge/pointcloud</span>
                                 <span class="topic-msg-type">sensor_msgs/msg/PointCloud2</span>
                             </li>
                             <li class="topic-item">
@@ -684,15 +694,15 @@
                 <tr>
                     <td>
                         <div class="node-name"><i class="fa-solid fa-mountain"></i> Perception Rock / Obstacle Node</div>
-                        <div class="node-file">costmap_test_stub.py (or Perception Module)</div>
+                        <div class="node-file">Perception terrain_geometry package</div>
                         <div><span class="type-tag tag-vision">Perception / Test Stub</span></div>
                     </td>
                     <td>
                         <div class="node-desc">
                             <ul>
-                                <li>Perception module node (or test stub) that processes vision point clouds / stereo images to detect terrain rocks.</li>
-                                <li>Publishes 3D rock obstacle point clouds to feed Nav2 Costmap 2D.</li>
-                                <li><code>costmap_test_stub.py</code> acts as a mock publisher to test costmap inflation without requiring real hardware.</li>
+                                <li>Perception processes point clouds and tracks terrain obstacles.</li>
+                                <li>Publishes 3D obstacle bounding boxes as <code>vision_msgs/msg/Detection3DArray</code>.</li>
+                                <li><code>costmap_test_stub.py</code> is a SLAM-side test publisher only; it is not the production detector.</li>
                             </ul>
                         </div>
                     </td>
@@ -700,14 +710,14 @@
                         <ul class="topic-list">
                             <li class="topic-item">
                                 <span class="topic-name">/perception/obstacles_only</span>
-                                <span class="topic-msg-type">sensor_msgs/msg/PointCloud2</span>
+                                <span class="topic-msg-type">vision_msgs/msg/Detection3DArray</span>
                             </li>
                         </ul>
                     </td>
                     <td>
                         <ul class="topic-list">
                             <li class="topic-item">
-                                <span class="topic-name">Raw PointCloud / Stereo</span>
+                                <span class="topic-name">/camera/depth/color/points</span>
                                 <span class="topic-msg-type">sensor_msgs/msg/PointCloud2</span>
                             </li>
                         </ul>
@@ -740,7 +750,7 @@
                                 <span class="topic-msg-type">sensor_msgs/msg/Imu</span>
                             </li>
                             <li class="topic-item">
-                                <span class="topic-name">/camera/color/image_raw</span>
+                                <span class="topic-name">/camera/image_raw</span>
                                 <span class="topic-msg-type">sensor_msgs/msg/Image</span>
                             </li>
                             <li class="topic-item">

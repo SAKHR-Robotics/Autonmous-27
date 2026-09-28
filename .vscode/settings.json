@@ -13,5 +13,6 @@
         "/home/pavly-saad/mars_rover_ws/src/Autonmous-27/install/terrain_geometry_msgs/lib/python3.12/site-packages",
         "/home/pavly-saad/ros2_ws/install/my_py_pkg/lib/python3.12/site-packages",
         "/opt/ros/jazzy/lib/python3.12/site-packages"
-    ]
+    ],
+    "cmake.sourceDirectory": "/home/pavly-saad/mars_rover_ws/src/Autonmous-27/worlds"
 }

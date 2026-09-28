@@ -72,12 +72,12 @@ def generate_launch_description():
     declare_rgb_topic = DeclareLaunchArgument(
         'rgb_topic',
         default_value='/camera/image_raw',
-        description='RGB Image topic name'
+        description='RGB Image topic from the RealSense driver'
     )
     declare_depth_topic = DeclareLaunchArgument(
         'depth_topic',
         default_value='/camera/depth/image_raw',
-        description='Depth Image topic name'
+        description='Depth Image topic from the RealSense driver; filters are enabled in the driver config'
     )
     declare_camera_info_topic = DeclareLaunchArgument(
         'camera_info_topic',

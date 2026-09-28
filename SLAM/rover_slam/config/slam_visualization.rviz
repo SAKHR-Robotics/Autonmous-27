@@ -99,7 +99,7 @@ Visualization Manager:
         left_rear_wheel_link:
           Alpha: 1
           Show Axes: false
-          Show Trail: false
+            Value: /bridge/pointcloud
           Value: true
         my_robot/camera_link/camera:
           Alpha: 1

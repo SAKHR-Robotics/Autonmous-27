@@ -23,7 +23,7 @@ costmap:
       transform_tolerance: 10.0
       observation_sources: rock_obstacles
       rock_obstacles:
-        topic: /perception/obstacles_only
+        topic: /bridge/pointcloud
         max_obstacle_height: 2.0
         clearing: true
         marking: true

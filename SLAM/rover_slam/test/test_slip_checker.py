@@ -369,6 +369,8 @@ def test_ekf_configuration_uses_filtered_odometry():
     assert ekf_params["odom0"] == "/wheel/odom_filtered", (
         f"Expected odom0 to be '/wheel/odom_filtered', but got '{ekf_params['odom0']}'"
     )
+    assert ekf_params["frequency"] == pytest.approx(50.0)
+    assert ekf_params["two_d_mode"] is False
 
 
 def test_single_wheel_slip_flags_slip():

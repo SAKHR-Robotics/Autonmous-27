@@ -1,10 +1,10 @@
 # 🚀 rover_slam: ERC Mars Rover SLAM & State Estimation Package
 
 This ROS 2 package implements **Option B Architecture** for the ERC Autonomous Mars Rover:
-* **Local State Estimator:** `robot_localization` EKF node publishing smooth `odom -> base_link` pose at 100 Hz.
-* **Pre-Filtering:** RealSense D435 post-processing depth filters + `heuristic_slip_checker.py` dynamically scaling wheel covariance during sand slippage.
+* **Local State Estimator:** `robot_localization` EKF node publishing smooth 3D `odom -> base_link` pose at 50 Hz.
+* **Pre-Filtering:** RealSense D435 post-processing depth filters + `heuristic_slip_checker.py` dynamically scaling wheel covariance during sand slippage (50 Hz).
 * **Global Mapping Backend:** `rtabmap_ros` publishing static `/map` grid and `map -> odom` transform offset (1-5 Hz), incorporating ArUco landmark 6-DOF poses.
-* **Costmap Server:** `nav2_costmap_2d` server fusing static map & dynamic rock obstacle point clouds into `/global_costmap/costmap`.
+* **Costmap Test:** optional standalone `nav2_costmap_2d` test; production global/local costmaps are owned by Path Planning.
 
 ```mermaid
 graph TD
@@ -15,14 +15,14 @@ graph TD
         Cam_raw["RealSense D435 Raw Depth"] --> VisionHelper["vision_helper (Depth Filters)"]
     end
 
-    subgraph LocalFusion ["2. Local State Estimation (High Rate ~50-100Hz)"]
+    subgraph LocalFusion ["2. Local State Estimation (50Hz, 3D EKF)"]
         SlipChecker -->|/wheel/odom_filtered| EKF["robot_localization (EKF)"]
         IMU_raw --> EKF
-        EKF -->|TF: odom -> base_link| OdomFiltered["/odometry/filtered"]
+        EKF -->|TF: odom -> base_link| OdomFiltered["/odometry/filtered (50Hz)"]
     end
 
     subgraph GlobalSLAM ["3. Global SLAM & Loop Closure (1-5Hz)"]
-        VisionHelper -->|/camera/depth/filtered| RTAB["RTAB-Map (rtabmap_slam)"]
+        VisionHelper -->|/camera/depth/image_raw| RTAB["RTAB-Map (rtabmap_slam)"]
         Cam_RGB["RealSense RGB + CameraInfo"] --> RTAB
         OdomFiltered --> RTAB
         ArUco["ArUco Markers (/perception/aruco_pose)"] --> RTAB
@@ -32,7 +32,7 @@ graph TD
     subgraph NavigationLayer ["4. Navigation Costmap Layer"]
         GlobalMap --> Costmap["Nav2 Costmap 2D"]
         Rocks["Terrain Obstacles (/bridge/pointcloud)"] --> Costmap
-        Costmap --> OutCostmap["/global_costmap/costmap & /local_costmap"]
+        Costmap --> OutCostmap["Path Planning global/local costmaps"]
     end
 ```
 
@@ -80,6 +80,25 @@ sudo apt update && sudo apt install -y \
 colcon build --symlink-install --packages-select rover_slam
 source install/setup.bash
 ```
+
+## 🚀 Production Core SLAM Launch
+
+Start only the SLAM state-estimation and mapping pipeline. This launch does not
+start Nav2 costmaps, RViz, validators, or synthetic test publishers:
+
+```bash
+source install/setup.bash
+ros2 launch rover_slam slam_core.launch.py
+```
+
+For simulation with the RealSense driver replaced by external simulator topics:
+
+```bash
+ros2 launch rover_slam slam_core.launch.py use_sim_time:=true launch_camera:=false
+```
+
+Use `standalone_tf:=true publish_optical_tf:=true` only when
+`robot_state_publisher` is not running.
 
 ---
 
@@ -165,14 +184,14 @@ Verify that camera depth post-processing filters (decimation, spatial, temporal,
 ros2 launch rover_slam vision_helper.launch.py
 
 # Terminal 2:
-ros2 topic hz /camera/depth/filtered
+ros2 topic hz /camera/depth/image_raw
 ```
-*Expected Result:* Filtered depth images publish smoothly on `/camera/depth/filtered`.
+*Expected Result:* RealSense depth images publish on `/camera/depth/image_raw`; filtering is enabled in the RealSense driver configuration.
 
 ---
 
 ### 3️⃣ Test 3: Standalone Nav2 Costmap 2D + Synthetic Obstacle Test (Checkpoint 4B)
-Verify that `nav2_costmap_2d` ingests 3D point cloud rocks from `/perception/obstacles_only` and outputs an inflated safety costmap grid:
+Verify that the standalone costmap ingests the test bridge cloud from `/bridge/pointcloud` and outputs an inflated safety costmap grid:
 ```bash
 # Terminal 1: Launch Costmap 2D Server
 ros2 launch rover_slam costmap.launch.py

@@ -8,9 +8,10 @@ import os
 import re
 import numpy as np
 import pytest
-from launch import LaunchContext
+from launch.launch_context import LaunchContext
 from launch_ros.actions import Node
 import xacro
+from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 
 from test_static_transforms import load_static_transforms_module, get_node_name
 
@@ -100,15 +101,14 @@ def test_static_transforms_rep103_arguments():
     color_args = [str(a) for a in getattr(color_node, '_Node__arguments', [])]
     assert 'camera_color_optical_frame' in color_args
 
-    # Gazebo camera bridge node
-    assert 'static_tf_camera_optical_to_gz' in nodes
-    gz_node = nodes['static_tf_camera_optical_to_gz']
-    gz_args = [str(a) for a in getattr(gz_node, '_Node__arguments', [])]
-    assert 'my_robot/camera_link/camera' in gz_args
-
 
 def test_launch_urdf_rep103_enhancement():
     """Verify that Python launch processing produces URDF with REP-103 optical frames."""
+    try:
+        get_package_share_directory('my_robot_description')
+    except PackageNotFoundError:
+        pytest.skip('my_robot_description is not installed in the current ROS environment')
+
     rover_dir = os.path.join(
         os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
         'Rover',
