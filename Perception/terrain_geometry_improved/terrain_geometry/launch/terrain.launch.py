@@ -15,10 +15,12 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description() -> LaunchDescription:
     args = [
+        DeclareLaunchArgument("use_sim_time", default_value="false"),
         DeclareLaunchArgument("input_pointcloud_topic", default_value="/camera/depth/color/points"),
         DeclareLaunchArgument("target_frame", default_value="base_link"),
         DeclareLaunchArgument("tf_timeout_sec", default_value="0.2"),
@@ -120,7 +122,9 @@ def generate_launch_description() -> LaunchDescription:
         name="terrain_node",
         output="screen",
         emulate_tty=True,
-        parameters=[{name: LaunchConfiguration(name) for name in param_names}],
+        parameters=[{name: LaunchConfiguration(name) for name in param_names}, {
+            "use_sim_time": ParameterValue(LaunchConfiguration("use_sim_time"), value_type=bool),
+        }],
     )
 
     return LaunchDescription(args + [terrain_node])

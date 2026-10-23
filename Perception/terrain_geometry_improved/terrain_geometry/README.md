@@ -4,6 +4,42 @@ Single-node ROS 2 Jazzy terrain/obstacle perception pipeline for a rover
 carrying an Intel RealSense D435, from raw `PointCloud2` to a costmap ready
 for a planner.
 
+## Current launch and testing boundary (Jazzy)
+
+Build from the repository root using `colcon build --base-paths Perception
+--symlink-install` after sourcing `/opt/ros/jazzy/setup.bash`. See the
+[parent README](../../README.md) for dependencies and the incompatible duplicate
+`terrain_geometry_msgs` package outside Perception; unrestricted root builds
+remain blocked by that conflict.
+
+```bash
+# Terrain's complete tuning interface, real time:
+ros2 launch terrain_geometry terrain.launch.py --show-args
+ros2 launch terrain_geometry terrain.launch.py
+# Existing Gazebo camera and clock:
+ros2 launch terrain_geometry terrain.launch.py use_sim_time:=true
+# Combined terrain + markers, with optional per-node selection:
+ros2 launch perception_bringup perception_core.launch.py use_sim_time:=true
+```
+
+`use_sim_time` defaults to `false` and is passed as a boolean. The aggregate
+launch exposes `input_pointcloud_topic` and `target_frame`; use the individual
+terrain launch for the full processing parameter surface. Gazebo, camera
+hardware drivers, static robot TF and RViz are started separately.
+
+`terrain_node.py` is the ROS adapter around implemented processing helpers.
+Patchwork++ and the NumPy fallback are both real ground-segmentation backends.
+Some helpers import ROS message/TF classes; separating computation from node
+wiring does not make the entire library independent of ROS.
+
+No runtime stubs belong here. Synthetic clouds and fake obstacle outputs are
+reserved for top-level `testing/` and the later tester/benchmarker work.
+The current costmap is local to `target_frame`; it is not automatically wired
+into SLAM or the planner. Before driving, read the
+[integration review](../../INTEGRATION_REVIEW.md): invalid-data paths can publish
+apparently clear maps, grid coverage is smaller than the configured ROI, and
+TF caching assumes a rigid camera-to-target transform.
+
 ## 1. Pipeline architecture
 
 ```
@@ -45,14 +81,13 @@ sensor_msgs/PointCloud2  (camera optical frame, e.g. camera_depth_optical_frame)
 [11] Costmap inflation (distance transform + exponential decay)    (costmap_inflation.py)
         |
         v
-nav_msgs/OccupancyGrid  ->  /terrain/costmap  ->  SLAM / Planner
+nav_msgs/OccupancyGrid  ->  /terrain/costmap  (local output; integration pending)
 ```
 
-Every stage above `terrain_node.py` is a pure computational module with
-**zero rclpy/ROS dependency** -- each is independently importable and
-unit-testable (see `PERFORMANCE NOTES` / module docstrings in each file).
-`terrain_node.py` is only the ROS wiring: parameters, subscriptions,
-publishers, and the per-frame call sequence.
+Most filtering, clustering and tracking helpers separate computation from
+node wiring. Grid/visualization helpers import ROS message types and the TF
+helper imports rclpy, so testing those helpers still requires ROS dependencies.
+`terrain_node.py` owns parameters, subscriptions, publishers and sequencing.
 
 ## 2. Coordinate frames
 
@@ -63,12 +98,13 @@ publishers, and the per-frame call sequence.
 - The D435 -> `base_link` transform is expected to be a static/rigid
   transform (URDF `<joint type="fixed">` or a `static_transform_publisher`).
   `CloudFrameTransformer` caches the resolved 4x4 matrix and only re-queries
-  TF on lookup failure or after a configurable staleness window -- it does
+  TF on an initial lookup failure or a frame-pair change -- it does
   **not** perform a fresh `lookup_transform()` call on every single frame.
 - If the transform isn't available yet (e.g. at startup, before
   `robot_state_publisher` / static TF broadcasters come up), the frame is
-  safely skipped (logged as a warning) and retried on the next message --
-  the node never processes data against a stale or invalid transform.
+  skipped (logged as a warning) and retried on the next message. Once cached,
+  the transform is reused for that frame pair; moving-camera or map/odom target
+  frames need a future timestamp-aware lookup change.
 
 ## 3. Ground-removal backend selection
 
@@ -101,8 +137,9 @@ D435 on a ground rover:
 
 Tune these to your rover's actual footprint and the D435's realistic depth
 range/FOV. Bounds are validated at startup (`min < max` on every axis);
-an empty ROI intersection is handled safely (empty output published, no
-crash) rather than treated as an error.
+an empty ROI intersection publishes empty outputs without crashing. This can
+look like clear terrain under the default free-space policy; see the integration
+review before interpreting that output as safe traversal.
 
 ## 5. Voxel downsampling
 

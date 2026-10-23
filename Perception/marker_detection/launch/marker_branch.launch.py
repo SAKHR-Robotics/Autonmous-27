@@ -1,55 +1,46 @@
-"""Launch the complete six-stage Marker Detection Branch as one system.
+"""Launch the complete real marker branch; camera and localization are external.
 
-Composes the three existing per-stage launch files rather than duplicating
-their node definitions:
-
-    marker_detection.launch.py  -> Steps 1-4 (detection, 3D position, pose, tracking)
-    marker_tf.launch.py         -> Step 5 (camera -> marker TF)
-    marker_mapping.launch.py    -> Step 6 (global marker map)
-    marker_action_interface.launch.py -> clean downstream manipulation/planning interface
-
-The RealSense driver is intentionally NOT started here; the project assumes
-the camera is already running (see README.md).
+This existing entry point retains global mapping by default. Use
+perception_bringup for selectable nodes and mapping off by default.
 """
 import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, GroupAction, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 
 
 def generate_launch_description() -> LaunchDescription:
     share = get_package_share_directory("marker_detection")
-
-    rgb_topic_arg = DeclareLaunchArgument("rgb_topic", default_value="/camera/image_raw")
-    depth_topic_arg = DeclareLaunchArgument(
-        "depth_topic", default_value="/camera/depth/image_raw")
-    camera_info_topic_arg = DeclareLaunchArgument(
-        "camera_info_topic", default_value="/camera/camera_info")
-
-    detection = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(os.path.join(share, "launch", "marker_detection.launch.py")),
-        launch_arguments={
-            "rgb_topic": LaunchConfiguration("rgb_topic"),
-            "depth_topic": LaunchConfiguration("depth_topic"),
-            "camera_info_topic": LaunchConfiguration("camera_info_topic"),
-        }.items())
-
-    marker_tf = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(os.path.join(share, "launch", "marker_tf.launch.py")),
-        launch_arguments={"params_file": os.path.join(share, "config", "marker_tf.yaml")}.items())
-
-    marker_mapping = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(os.path.join(share, "launch", "marker_mapping.launch.py")),
-        launch_arguments={"params_file": os.path.join(share, "config", "marker_mapping.yaml")}.items())
-
-    marker_action_interface = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(os.path.join(share, "launch", "marker_action_interface.launch.py")),
-        launch_arguments={"params_file": os.path.join(share, "config", "marker_action_interface.yaml")}.items())
-
-    return LaunchDescription([
-        rgb_topic_arg, depth_topic_arg, camera_info_topic_arg,
-        detection, marker_tf, marker_mapping, marker_action_interface,
-    ])
+    arguments = [
+        DeclareLaunchArgument("use_sim_time", default_value="false"),
+        DeclareLaunchArgument("rgb_topic", default_value="/camera/image_raw"),
+        DeclareLaunchArgument("depth_topic", default_value="/camera/depth/image_raw"),
+        DeclareLaunchArgument("camera_info_topic", default_value="/camera/camera_info"),
+    ]
+    stages = [
+        ("detection", "marker_detection"),
+        ("tf", "marker_tf"),
+        ("mapping", "marker_mapping"),
+        ("action", "marker_action_interface"),
+    ]
+    groups = []
+    for stage, stem in stages:
+        argument = f"{stage}_params_file"
+        arguments.append(DeclareLaunchArgument(
+            argument, default_value=os.path.join(share, "config", f"{stem}.yaml")))
+        forwarded = {
+            "use_sim_time": LaunchConfiguration("use_sim_time"),
+            "params_file": LaunchConfiguration(argument),
+        }
+        if stage == "detection":
+            forwarded.update({name: LaunchConfiguration(name) for name in (
+                "rgb_topic", "depth_topic", "camera_info_topic")})
+        # Every child declares params_file. Scope prevents sibling leakage.
+        groups.append(GroupAction(scoped=True, actions=[IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(os.path.join(share, "launch", f"{stem}.launch.py")),
+            launch_arguments=forwarded.items(),
+        )]))
+    return LaunchDescription(arguments + groups)
