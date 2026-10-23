@@ -71,9 +71,43 @@ file arguments are `detection_params_file`, `tf_params_file`,
 `mapping_params_file`, and `action_params_file`. Each individual marker launch
 retains its existing `params_file` argument and now accepts `use_sim_time`.
 
-Camera drivers, Gazebo, localization, robot static TF, RViz, synthetic data and
-benchmarks are external. Future synthetic publishers belong in top-level
+Camera drivers, Gazebo, localization, robot static TF, synthetic data and
+benchmarks are external. RViz is optional and off by default. Future synthetic publishers belong in top-level
 `testing/`; do not add them to this production launch.
+
+## Master and separate RViz views
+
+Start the combined view with the master core launch:
+
+```bash
+ros2 launch perception_bringup perception_core.launch.py use_sim_time:=true use_rviz:=true
+```
+
+| Argument | Default / effect |
+| --- | --- |
+| `use_rviz` | `false`; start exactly one combined viewer when true |
+| `rviz_fixed_frame` | Follows `target_frame`, normally `base_link` |
+| `rviz_config` | Installed `perception_view.rviz`; can be replaced with a custom file |
+
+The combined viewer follows the core launch's RGB/point-cloud topic overrides
+and clock. It displays terrain costmap/boxes, raw cloud, annotated marker image
+and TF. Optional debug clouds and global marker map are disabled initially;
+enable them only when their producers and required TF are running.
+
+Open a view independently of processing (pick one):
+
+```bash
+ros2 launch perception_bringup rviz.launch.py use_sim_time:=true
+ros2 launch terrain_geometry rviz.launch.py use_sim_time:=true
+ros2 launch marker_detection rviz.launch.py use_sim_time:=true
+```
+
+Standalone viewers accept `fixed_frame`, `input_pointcloud_topic`, `rviz_config`
+and `use_sim_time` (default false); marker/master viewers also accept `rgb_topic`.
+All views default to `base_link` and use Best Effort for sensor clouds/images.
+The core launch still starts no viewer unless `use_rviz:=true` is supplied.
+See the [complete workflows](../README.md#4-complete-gazebo-and-real-camera-workflows)
+for simulation clock bridging, real camera mounting TF, and expected results.
 
 ## Tests
 
@@ -88,5 +122,7 @@ colcon test-result --verbose
 The tests execute real launch expansion with process creation intercepted.
 They check default selection, all five independent switches, clock/topic/frame
 forwarding, isolated parameter files, and legacy marker-branch mapping.
-On a machine without ROS launch dependencies they skip explicitly. Algorithm,
+On a machine without ROS launch dependencies, launch-expansion tests skip
+explicitly. Three YAML checks can run with pytest and PyYAML alone and validate
+view topics, fixed frames, sensor QoS and disabled global-map displays. Algorithm,
 TF transport and sensor integration still require live Jazzy verification.

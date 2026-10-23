@@ -10,7 +10,7 @@ on Ubuntu 24.04 / ROS 2 Jazzy.
 
 | Finding | Evidence | Impact and recommended follow-up |
 | --- | --- | --- |
-| Duplicate message package, incompatible schema | `terrain_geometry_improved/terrain_geometry_msgs/msg/ObstacleFeature.msg` versus `../PathPlaning/src/terrain_geometry_msgs/msg/ObstacleFeature.msg` | Both packages are named `terrain_geometry_msgs`. Perception uses signed `id`, `num_points`, AABB bounds, width/depth and distance; planning's version uses unsigned `id`, radius, classification and confidence. Root colcon discovery cannot select both. Agree on one shared contract and migrate consumers/fixtures together; do not silently delete one version. |
+| Duplicate message package, incompatible schema | `terrain_geometry/terrain_geometry_msgs/msg/ObstacleFeature.msg` versus `../PathPlaning/src/terrain_geometry_msgs/msg/ObstacleFeature.msg` | Both packages are named `terrain_geometry_msgs`. Perception uses signed `id`, `num_points`, AABB bounds, width/depth and distance; planning's version uses unsigned `id`, radius, classification and confidence. Root colcon discovery cannot select both. Agree on one shared contract and migrate consumers/fixtures together; do not silently delete one version. |
 | SLAM obstacle input is disconnected | `../SLAM/rover_slam/config/costmap_params.yaml` subscribes to `/perception/obstacles_only` (`PointCloud2`); `terrain_node.py` publishes costmap, features, markers and optional debug clouds | Real terrain does not supply that production topic. Decide on a timestamped obstacle-cloud interface or a deliberate grid integration. Debug clustered clouds are not a substitute production contract. |
 | Planner bridge drops geometry and is not started by planner bringup | `../PathPlaning/src/erc_path_planner/src/costmap_bridge_node.cpp` emits one centroid per obstacle on `/bridge/pointcloud`; its `launch/path_planning.launch.py` starts Nav2 without this bridge | Local costmap expects `/bridge/pointcloud`, but its producer needs an explicit launch. Even then, a centroid represents less than the obstacle footprint. Use obstacle geometry/dense observations and define marking/clearing semantics; verify with large rocks and occlusions. |
 | Marker outputs do not match the older SLAM landmark interface | Perception publishes custom `/marker_poses` and `/marker_map`; SLAM's `mock_aruco_publisher.py` publishes `PoseWithCovarianceStamped` on `/perception/aruco_pose` | Synthetic SLAM landmark output is not an adapter from real marker observations. Define marker ID, frame, covariance and landmark semantics with the SLAM consumer before adding a bridge. The mock's existence does not prove RTAB-Map is wired to consume it. |
@@ -25,7 +25,7 @@ its package; relocation to top-level `testing/` is a later SLAM/testing change.
 ## 2. Terrain correctness and observability
 
 **Invalid input can appear clear (high priority).** In
-`terrain_geometry_improved/terrain_geometry/terrain_geometry/terrain_node.py`,
+`terrain_geometry/terrain_geometry/terrain_geometry/terrain_node.py`,
 `_cloud_callback` calls `_publish_empty` when no finite points remain, ROI is
 empty, or `GroundNotFoundError` occurs. `_publish_empty` generates a grid without
 obstacles; with `use_unknown_space=false` it becomes free space. For the
@@ -78,7 +78,10 @@ per transform; inspect the actual Gazebo optical frame in its image headers.
 Core perception intentionally owns neither robot static TF nor camera drivers.
 
 The changed perception launches now propagate `use_sim_time` to all selected
-nodes. SLAM/planner configuration still contains `false` clock settings and
+nodes and the optional master RViz. The existing rover Gazebo launch does not
+bridge `/clock`; the perception README includes a separate clock bridge command.
+Per-module and master RViz views default to `base_link`, so standalone perception
+does not need odometry solely to visualize local outputs. SLAM/planner configuration still contains `false` clock settings and
 planner configuration includes a Humble-specific behavior-tree path. Those
 are remaining Jazzy/Gazebo integration issues outside this patch. For clocked
 bags, the bag must publish `/clock` and matching TF; changing perception's clock
@@ -121,7 +124,7 @@ not be mislabeled as placeholder/stub logic.
    outputs onto the same production topics unintentionally.
 
 The Windows editing environment lacks ROS 2 launch/rclpy, colcon, NumPy,
-OpenCV, SciPy and scikit-learn. Syntax/XML/package-path checks can run here;
+OpenCV, SciPy and scikit-learn. Syntax/XML/package-path and RViz YAML checks can run here;
 live Jazzy launch, DDS, TF, camera and algorithm verification cannot. The new
 launch tests intercept process creation, so even a passing Jazzy test run is
 not evidence of working sensor transport or obstacle detection accuracy.

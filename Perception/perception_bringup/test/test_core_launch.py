@@ -17,11 +17,13 @@ def expand(monkeypatch):
     ros_utilities = pytest.importorskip("launch_ros.utilities")
     packages = pytest.importorskip("ament_index_python.packages")
     from launch.launch_description_sources import PythonLaunchDescriptionSource
+    from launch.utilities import normalize_to_list_of_substitutions, perform_substitutions
 
     perception = Path(__file__).resolve().parents[2]
     shares = {
         "marker_detection": perception / "marker_detection",
-        "terrain_geometry": perception / "terrain_geometry_improved" / "terrain_geometry",
+        "terrain_geometry": perception / "terrain_geometry" / "terrain_geometry",
+        "perception_bringup": perception / "perception_bringup",
     }
     monkeypatch.setattr(packages, "get_package_share_directory", lambda name: str(shares[name]))
     captured = []
@@ -32,6 +34,8 @@ def expand(monkeypatch):
             self.package = package
             self.executable = executable
             self.parameters = parameters
+            self.arguments = kwargs.get("arguments", [])
+            self.remappings = kwargs.get("remappings", [])
 
         def execute(self, context):
             parameters = ros_utilities.evaluate_parameters(
@@ -43,14 +47,23 @@ def expand(monkeypatch):
                     merged.update(parameter)
                 else:
                     files.append(Path(parameter))
+
+            def resolve(value):
+                return perform_substitutions(context, normalize_to_list_of_substitutions(value))
+
+            merged["_arguments"] = [resolve(value) for value in self.arguments]
+            merged["_remappings"] = [(resolve(source), resolve(target))
+                                     for source, target in self.remappings]
             captured.append((self.package, self.executable, merged, files))
 
     monkeypatch.setattr(ros_actions, "Node", CaptureNode)
 
-    def run(overrides=None, *, branch=False):
+    def run(overrides=None, *, branch=False, viewer=None):
         captured.clear()
         service = launch.LaunchService()
-        if branch:
+        if viewer:
+            path = shares[viewer] / "launch" / "rviz.launch.py"
+        elif branch:
             path = shares["marker_detection"] / "launch" / "marker_branch.launch.py"
         else:
             path = perception / "perception_bringup" / "launch" / "perception_core.launch.py"
@@ -143,3 +156,47 @@ def test_legacy_branch_still_includes_mapping(expand):
         "marker_detection_node", "marker_tf_broadcaster", "marker_map_node",
         "marker_action_interface_node",
     }
+
+
+def test_master_viewer_follows_processing_topics_clock_and_frame(expand):
+    nodes = expand({
+        "use_rviz": "true", "use_sim_time": "true", "target_frame": "test_base",
+        "rgb_topic": "/test/rgb", "input_pointcloud_topic": "/test/points",
+    })
+    assert len(nodes) == 5
+    package, parameters, _ = nodes["rviz2"]
+    assert package == "rviz2"
+    assert parameters["use_sim_time"] is True
+    assert parameters["_arguments"][-2:] == ["-f", "test_base"]
+    assert ("/camera/image_raw", "/test/rgb") in parameters["_remappings"]
+    assert ("/camera/depth/color/points", "/test/points") in parameters["_remappings"]
+
+
+@pytest.mark.parametrize("package", ["marker_detection", "terrain_geometry", "perception_bringup"])
+def test_standalone_viewer_starts_only_rviz(expand, package):
+    nodes = expand({"use_sim_time": "true", "fixed_frame": "test_base"}, viewer=package)
+    assert set(nodes) == {"rviz2"}
+    parameters = nodes["rviz2"][1]
+    assert parameters["use_sim_time"] is True
+    assert parameters["_arguments"][-2:] == ["-f", "test_base"]
+
+
+@pytest.mark.parametrize("package,filename,required_topics", [
+    ("marker_detection", "marker_view.rviz", {"/marker_detection/debug_image"}),
+    ("terrain_geometry/terrain_geometry", "terrain_view.rviz",
+     {"/terrain/costmap", "/terrain/obstacle_markers"}),
+    ("perception_bringup", "perception_view.rviz",
+     {"/terrain/costmap", "/terrain/obstacle_markers", "/marker_detection/debug_image"}),
+])
+def test_viewer_configs_have_standalone_frames_and_expected_topics(package, filename, required_topics):
+    yaml = pytest.importorskip("yaml")
+    path = Path(__file__).resolve().parents[2] / package / "rviz" / filename
+    manager = yaml.safe_load(path.read_text())["Visualization Manager"]
+    assert manager["Global Options"]["Fixed Frame"] == "base_link"
+    topics = {display["Topic"]["Value"] for display in manager["Displays"] if "Topic" in display}
+    assert required_topics <= topics
+    for display in manager["Displays"]:
+        if display["Class"] == "rviz_default_plugins/PointCloud2":
+            assert display["Topic"]["Reliability Policy"] == "Best Effort"
+        if display["Name"] == "Global Marker Map":
+            assert display["Enabled"] is False

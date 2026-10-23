@@ -1,5 +1,7 @@
 # 🧠 Perception AI Implementation Guide & Roadmap (`PerceptionAiGuide.md`)
 
+> Historical implementation roadmap: planned node names and commands below are not the current runtime interface. Use the [current perception README](README.md) for launch, RViz and validation instructions.
+
 > 💡 **AI Maintenance Directive:** This document is the master roadmap for AI assistants and human engineers implementing the Perception Subsystem. When completing a task or updating code, **mark the task checkbox (`- [x]`) and update the Document Status Log.**
 
 ---
@@ -85,7 +87,7 @@ Autonmous_Ws/Perception/
 │   └── perception.html                      # Interactive Glassmorphism Architecture Report
 ├── ros dataset/                             # Recorded RealSense D435 bag files for testing
 │
-└── terrain_geometry_improved/               # Core Perception ROS 2 Package Root
+└── terrain_geometry/               # Core Perception ROS 2 Package Root
     ├── terrain_geometry_msgs/               # Custom ROS 2 Interface Package
     │   ├── CMakeLists.txt
     │   ├── package.xml
@@ -174,7 +176,7 @@ git pull origin main
 git checkout -b perception/task-1a-vision-msgs
 
 # 3. Commit changes (after implementing)
-git add Perception/terrain_geometry_improved/
+git add Perception/terrain_geometry/
 git commit -m "feat(perception): add vision_msgs Detection3DArray publisher to terrain_node"
 
 # 4. Push branch and open Pull Request
@@ -249,7 +251,7 @@ Design and implement a spatial tracking database (`persistent_database.py`) that
 ```bash
 git checkout main
 git checkout -b perception/task-2a-ema-database
-git add Perception/terrain_geometry_improved/
+git add Perception/terrain_geometry/
 git commit -m "feat(perception): implement persistent database spatial association and EMA smoothing"
 git push -u origin perception/task-2a-ema-database
 ```
@@ -287,7 +289,7 @@ Build `persistent_memory_node.py` to ingest raw bounding boxes (`/perception/loc
 ```bash
 git checkout main
 git checkout -b perception/task-2a-memory-node
-git add Perception/terrain_geometry_improved/
+git add Perception/terrain_geometry/
 git commit -m "feat(perception): add persistent_memory_node with TTL blind spot retention"
 git push -u origin perception/task-2a-memory-node
 ```
@@ -353,7 +355,7 @@ Implement `aruco_pnp_solver.py` utilizing OpenCV ArUco detection and Perspective
 ```bash
 git checkout main
 git checkout -b perception/task-3a-aruco-solver
-git add Perception/terrain_geometry_improved/
+git add Perception/terrain_geometry/
 git commit -m "feat(perception): implement ArUco corner extraction and SolvePnP 3D pose math"
 git push -u origin perception/task-3a-aruco-solver
 ```
@@ -390,7 +392,7 @@ Construct `aruco_detector_node.py` subscribing to `/camera/color/image_raw` and 
 ```bash
 git checkout main
 git checkout -b perception/task-3a-aruco-node
-git add Perception/terrain_geometry_improved/
+git add Perception/terrain_geometry/
 git commit -m "feat(perception): implement aruco_detector_node and pose publisher"
 git push -u origin perception/task-3a-aruco-node
 ```
@@ -454,7 +456,7 @@ Create `config/perception_params.yaml` and `launch/perception_system.launch.py` 
 ```bash
 git checkout main
 git checkout -b perception/task-4a-launcher
-git add Perception/terrain_geometry_improved/
+git add Perception/terrain_geometry/
 git commit -m "feat(perception): add centralized parameters and perception_system.launch.py"
 git push -u origin perception/task-4a-launcher
 ```
@@ -517,7 +519,7 @@ Perform end-to-end integration testing in Gazebo Mars Yard simulation, verifying
 ```bash
 git checkout main
 git checkout -b perception/task-5a-integration
-git add Perception/terrain_geometry_improved/
+git add Perception/terrain_geometry/
 git commit -m "test(perception): complete end-to-end Nav2 integration and performance benchmarking"
 git push -u origin perception/task-5a-integration
 ```
