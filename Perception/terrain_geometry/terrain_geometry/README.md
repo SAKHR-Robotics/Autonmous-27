@@ -40,6 +40,21 @@ into SLAM or the planner. Before driving, read the
 apparently clear maps, grid coverage is smaller than the configured ROI, and
 TF caching assumes a rigid camera-to-target transform.
 
+### Separate terrain RViz view
+
+```bash
+ros2 launch terrain_geometry rviz.launch.py use_sim_time:=true
+```
+
+For hardware omit `use_sim_time:=true`; set `input_pointcloud_topic` to the
+actual driver topic. The terrain view shows raw cloud, costmap, obstacle boxes
+and TF in `base_link`, with `fixed_frame` / `rviz_config` overrides. Debug cloud
+displays start disabled and require `publish_debug_topics:=true` on terrain.
+This viewer starts no processing nodes. For the master terrain+marker view,
+add `use_rviz:=true` to `perception_core.launch.py`.
+See the [parent runbook](../../README.md#4-complete-gazebo-and-real-camera-workflows)
+for complete Gazebo/real-camera startup and validation.
+
 ## 1. Pipeline architecture
 
 ```

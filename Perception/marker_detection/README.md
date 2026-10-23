@@ -49,6 +49,21 @@ tests are not runtime publishers. Future tester/benchmarker tools are deferred.
 See the [integration review](../INTEGRATION_REVIEW.md) for the global-map TF
 arrival race, SLAM landmark-interface mismatch, and verification limits.
 
+### Separate marker RViz view
+
+```bash
+ros2 launch marker_detection rviz.launch.py use_sim_time:=true
+```
+
+For hardware omit `use_sim_time:=true` and pass `rgb_topic` /
+`input_pointcloud_topic` to match the real driver. The viewer defaults to
+`base_link` (no odometry/localization dependency), accepts `fixed_frame` and
+`rviz_config`, and opens only RViz. The optional global marker-map display is
+disabled until mapping/localization are running. To open the combined view with
+processing, add `use_rviz:=true` to `perception_core.launch.py`.
+See the [parent runbook](../README.md#4-complete-gazebo-and-real-camera-workflows)
+for complete Gazebo/real-camera startup and validation.
+
 ## Architecture / data flow
 
 ```

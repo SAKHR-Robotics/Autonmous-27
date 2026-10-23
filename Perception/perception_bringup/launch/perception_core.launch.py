@@ -12,6 +12,7 @@ from launch.substitutions import LaunchConfiguration
 def generate_launch_description() -> LaunchDescription:
     marker_share = get_package_share_directory("marker_detection")
     terrain_share = get_package_share_directory("terrain_geometry")
+    bringup_share = get_package_share_directory("perception_bringup")
     arguments = [
         DeclareLaunchArgument("use_sim_time", default_value="false"),
         DeclareLaunchArgument("rgb_topic", default_value="/camera/image_raw"),
@@ -19,6 +20,10 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument("camera_info_topic", default_value="/camera/camera_info"),
         DeclareLaunchArgument("input_pointcloud_topic", default_value="/camera/depth/color/points"),
         DeclareLaunchArgument("target_frame", default_value="base_link"),
+        DeclareLaunchArgument("use_rviz", default_value="false", choices=["true", "false"]),
+        DeclareLaunchArgument("rviz_fixed_frame", default_value=LaunchConfiguration("target_frame")),
+        DeclareLaunchArgument("rviz_config", default_value=os.path.join(
+            bringup_share, "rviz", "perception_view.rviz")),
     ]
     stages = [
         ("terrain", terrain_share, "terrain", "true"),
@@ -50,4 +55,17 @@ def generate_launch_description() -> LaunchDescription:
                 launch_arguments=forwarded.items(),
             )],
         ))
+    groups.append(GroupAction(
+        scoped=True, condition=IfCondition(LaunchConfiguration("use_rviz")),
+        actions=[IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(os.path.join(bringup_share, "launch", "rviz.launch.py")),
+            launch_arguments={
+                "use_sim_time": LaunchConfiguration("use_sim_time"),
+                "fixed_frame": LaunchConfiguration("rviz_fixed_frame"),
+                "rviz_config": LaunchConfiguration("rviz_config"),
+                "rgb_topic": LaunchConfiguration("rgb_topic"),
+                "input_pointcloud_topic": LaunchConfiguration("input_pointcloud_topic"),
+            }.items(),
+        )],
+    ))
     return LaunchDescription(arguments + groups)
