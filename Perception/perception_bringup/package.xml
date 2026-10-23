@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>perception_bringup</name>
+  <version>0.1.0</version>
+  <description>Selectable launch orchestration for the rover's real perception nodes.</description>
+  <maintainer email="maintainer@example.com">perception maintainers</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>marker_detection</exec_depend>
+  <exec_depend>terrain_geometry</exec_depend>
+  <test_depend>ament_cmake_pytest</test_depend>
+  <test_depend>python3-pytest</test_depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>

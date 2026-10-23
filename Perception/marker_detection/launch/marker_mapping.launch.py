@@ -5,12 +5,16 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description() -> LaunchDescription:
     default_params = os.path.join(get_package_share_directory("marker_detection"), "config", "marker_mapping.yaml")
     return LaunchDescription([
         DeclareLaunchArgument("params_file", default_value=default_params),
+        DeclareLaunchArgument("use_sim_time", default_value="false"),
         Node(package="marker_detection", executable="marker_map_node", name="marker_map", output="screen",
-             parameters=[LaunchConfiguration("params_file")]),
+             parameters=[LaunchConfiguration("params_file"), {
+                 "use_sim_time": ParameterValue(LaunchConfiguration("use_sim_time"), value_type=bool),
+             }]),
     ])

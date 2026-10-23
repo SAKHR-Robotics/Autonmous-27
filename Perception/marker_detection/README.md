@@ -7,6 +7,48 @@ split confidence scores, a measurement covariance, and explicit quality flags
 so a navigation/mission layer can make its own risk decisions instead of
 trusting a single opaque number.
 
+## Current launch and testing boundary (Jazzy)
+
+For the repository-wide perception launch, use:
+
+```bash
+ros2 launch perception_bringup perception_core.launch.py enable_terrain:=false
+# Gazebo / clocked bags:
+ros2 launch perception_bringup perception_core.launch.py enable_terrain:=false use_sim_time:=true
+```
+
+The aggregate launch defaults to detection/tracking, marker TF and action
+targets. Global mapping is opt-in (`enable_marker_mapping:=true`) and requires
+localization TF. Each node has an independent switch and YAML path; see
+[bringup options](../perception_bringup/README.md).
+
+All existing individual launch files accept `use_sim_time` (default `false`)
+and retain `params_file`. `marker_branch.launch.py` still starts **all four**
+marker nodes, including mapping, and now accepts `detection_params_file`,
+`tf_params_file`, `mapping_params_file`, and `action_params_file`. Child launch
+configuration is scoped, so YAML settings cannot leak between siblings.
+Camera topics and `use_sim_time` supplied by launch override YAML values.
+
+Build from the repository root with `colcon build --base-paths Perception
+--symlink-install` after sourcing `/opt/ros/jazzy/setup.bash`; see the
+[parent README](../README.md) for dependencies and the duplicate-message-package
+build restriction. Do not build the whole repository until that conflict is
+resolved.
+
+The RGB image, its CameraInfo and RGB-aligned depth must describe the same
+image geometry. Launch defaults match simulation-style topic names; inspect
+the real driver topics before use. Camera drivers and base/camera static TF
+are external. Do not start SLAM's hard-coded camera TF beside a conflicting
+URDF/driver transform. This package only broadcasts the observed marker frames.
+
+Every current processing stage is implemented; node wrappers are real ROS
+adapters. Synthetic images and fake marker outputs belong in top-level
+`testing/`, not this production launch. Embedded synthetic fixtures in unit
+tests are not runtime publishers. Future tester/benchmarker tools are deferred.
+
+See the [integration review](../INTEGRATION_REVIEW.md) for the global-map TF
+arrival race, SLAM landmark-interface mismatch, and verification limits.
+
 ## Architecture / data flow
 
 ```
@@ -254,15 +296,14 @@ tracking parameters) are called out under **Migration notes** below.
 
 ## Build and run on Ubuntu 24.04 / ROS 2 Jazzy
 
-Place this directory in `<workspace>/src/marker_detection`, then run:
+From the repository root (keep both message packages beside the processing packages):
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-cd <workspace>
-rosdep install --from-paths src --ignore-src -r -y
-colcon build --packages-select marker_detection
+rosdep install --from-paths Perception --ignore-src -r -y --rosdistro jazzy
+colcon build --base-paths Perception --symlink-install
 source install/setup.bash
-pytest src/marker_detection/test
+pytest Perception/marker_detection/test
 ros2 launch realsense2_camera rs_launch.py enable_color:=true enable_depth:=true enable_sync:=true align_depth.enable:=true
 ```
 
@@ -274,13 +315,17 @@ ros2 topic hz /camera/color/image_raw
 ros2 topic hz /camera/aligned_depth_to_color/image_raw
 ros2 topic echo --once /camera/color/camera_info
 
-# Recommended: launch all six stages (detection+tracking, TF, global mapping) together.
-ros2 launch marker_detection marker_branch.launch.py
+# Default marker processing; localization/global mapping is optional.
+ros2 launch perception_bringup perception_core.launch.py enable_terrain:=false \
+  rgb_topic:=/camera/color/image_raw \
+  depth_topic:=/camera/aligned_depth_to_color/image_raw \
+  camera_info_topic:=/camera/color/camera_info
 
 ros2 topic echo /marker_detections
 ros2 topic echo /marker_3d_detections
 ros2 topic echo /marker_poses
 ros2 topic echo /marker_poses_raw
+# Only when enable_marker_mapping:=true and localization is running:
 ros2 topic echo /marker_map
 ros2 topic echo /marker_detection/targets
 ros2 topic echo /marker_detection/diagnostics
@@ -290,7 +335,7 @@ rqt_image_view /marker_detection/pose_debug_image
 rqt_image_view /marker_tracking/debug_image
 ```
 
-`marker_branch.launch.py` composes the three per-stage launch files below (it
+`marker_branch.launch.py` composes the four per-stage launch files below (it
 does not start the RealSense driver). Launch stages individually only if you
 need to run a subset, e.g. while iterating on one stage in isolation.
 
@@ -319,8 +364,8 @@ merge the two YAML files into one before the run, or pass the merged result):
 ```bash
 python3 - <<'PY'
 import yaml
-base = yaml.safe_load(open("src/marker_detection/config/marker_detection.yaml"))
-override = yaml.safe_load(open("src/marker_detection/config/marker_detection_competition.yaml"))
+base = yaml.safe_load(open("Perception/marker_detection/config/marker_detection.yaml"))
+override = yaml.safe_load(open("Perception/marker_detection/config/marker_detection_competition.yaml"))
 base["marker_detection"]["ros__parameters"].update(override["marker_detection"]["ros__parameters"])
 yaml.safe_dump(base, open("/tmp/marker_detection_competition_merged.yaml", "w"))
 PY
@@ -454,13 +499,13 @@ composition -> `usable_for_action`), TF construction/rejection, and
 global-map fusion/outlier rejection (see `test/`). Run them either directly:
 
 ```bash
-pytest src/marker_detection/test
+pytest Perception/marker_detection/test
 ```
 
 or as part of the package build:
 
 ```bash
-colcon test --packages-select marker_detection
+colcon test --base-paths Perception --packages-select marker_detection
 colcon test-result --verbose
 ```
 
@@ -475,7 +520,11 @@ environment.
 
 ### What was actually executed in this environment
 
-This sandbox has no ROS 2 install (`rclpy`, `sensor_msgs`, `diagnostic_msgs`,
+The following is a historical report from an earlier marker implementation;
+its recorded test runs were not repeated for this launch/documentation change.
+For current verification limits, see [the integration review](../INTEGRATION_REVIEW.md).
+
+That earlier sandbox had no ROS 2 install (`rclpy`, `sensor_msgs`, `diagnostic_msgs`,
 `tf2_ros`, and the `marker_detection.msg` generated classes are all
 unavailable), so `colcon build`/`colcon test` could not run. What *was*
 executed and passed:
