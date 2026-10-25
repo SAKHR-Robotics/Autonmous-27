@@ -1,8 +1,9 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.actions import Node
 
 def generate_launch_description():
@@ -36,7 +37,7 @@ def generate_launch_description():
     )
     declare_delete_db_on_start = DeclareLaunchArgument(
         'delete_db_on_start',
-        default_value='true',
+        default_value='false',
         description='Delete previous database on startup if true'
     )
 
@@ -46,12 +47,12 @@ def generate_launch_description():
         declare_rgb_topic,
         declare_depth_topic,
         declare_camera_info_topic,
-        Node(
+        OpaqueFunction(function=lambda context: [Node(
             package='rtabmap_slam',
             executable='rtabmap',
             name='rtabmap',
             output='screen',
-            arguments=['-d'],
+            arguments=['-d'] if LaunchConfiguration('delete_db_on_start').perform(context).lower() == 'true' else [],
             parameters=[
                 rtabmap_config_path,
                 {'use_sim_time': use_sim_time}
@@ -64,5 +65,5 @@ def generate_launch_description():
                 ('landmark_detections', '/perception/landmark_detections'),
                 ('landmark_detection', '/perception/landmark_detection')
             ]
-        )
+        )])
     ])
