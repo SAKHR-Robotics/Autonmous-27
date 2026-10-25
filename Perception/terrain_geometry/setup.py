@@ -44,6 +44,7 @@ setup(
     entry_points={
         "console_scripts": [
             "terrain_node = terrain_geometry.terrain_node:main",
+            "obstacle_memory = terrain_geometry.obstacle_memory:main",
         ],
     },
 )
