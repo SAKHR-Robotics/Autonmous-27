@@ -8,6 +8,7 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
   <buildtool_depend>ament_cmake_python</buildtool_depend>
   <depend>rclpy</depend>
+  <exec_depend>rtabmap_msgs</exec_depend>
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
   <depend>geometry_msgs</depend>
