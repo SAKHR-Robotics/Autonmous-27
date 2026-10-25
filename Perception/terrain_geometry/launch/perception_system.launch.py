@@ -1,120 +1,59 @@
-"""
-perception_system.launch.py
-
-Unified Perception Subsystem Launcher.
-Spins up both core perception pipelines concurrently:
-  1. terrain_geometry (terrain_node): TF transform, ground segmentation,
-     voxel downsampling, DBSCAN rock clustering, 2D costmap inflation.
-  2. marker_detection (marker_branch): 2D ArUco detection, SolvePnP 3D pose,
-     Kalman tracking, marker TF broadcaster, and global marker mapping.
-  3. Optional: RViz2 visualization.
-"""
+"""Production orchestration only: no camera drivers, synthetic inputs or fake TF."""
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.conditions import IfCondition
+from launch.actions import DeclareLaunchArgument,GroupAction,IncludeLaunchDescription,OpaqueFunction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node
 
 
-def generate_launch_description() -> LaunchDescription:
-    terrain_share = get_package_share_directory("terrain_geometry")
-    marker_share = get_package_share_directory("marker_detection")
+def setup(context):
+    def value(name):return LaunchConfiguration(name).perform(context)
+    def enabled(name):return value(name)=='true'
+    if enabled('launch_memory') and not enabled('launch_terrain'):
+        raise ValueError('Memory requires terrain observations in this master; use its standalone launch for an external producer')
+    def include(package,filename,arguments):
+        return GroupAction(scoped=True,actions=[IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(os.path.join(get_package_share_directory(package),'launch',filename)),
+            launch_arguments=arguments.items())])
+    nodes=[]
+    clock={'use_sim_time':value('use_sim_time')}
+    if enabled('launch_terrain'):
+        arguments={**clock,**{key:value(key) for key in ('input_pointcloud_topic','target_frame','enable_costmap',
+            'enable_terrain_risk','gravity_frame','max_slope_deg','max_step_m','max_roughness_m')},
+            'publish_to_obstacles_only':'false' if enabled('launch_memory') else 'true',
+            'publish_debug_topics':value('publish_debug_topics')}
+        nodes.append(include('terrain_geometry','terrain.launch.py',arguments))
+    if enabled('launch_memory'):
+        nodes.append(include('terrain_geometry','obstacle_memory.launch.py',clock))
+    if enabled('launch_marker_branch'):
+        arguments={**clock,**{key:value(key) for key in ('rgb_topic','depth_topic','camera_info_topic',
+            'launch_marker_detection','launch_marker_tf','launch_marker_mapping','launch_marker_action','launch_landmark_adapter',
+            'detection_params_file','tf_params_file','mapping_params_file','action_params_file')}}
+        nodes.append(include('marker_detection','marker_branch.launch.py',arguments))
+    if enabled('launch_rviz'):
+        nodes.append(include('terrain_geometry','rviz.launch.py',{**clock,
+            'rviz_config':value('rviz_config'),'fixed_frame':value('rviz_fixed_frame'),
+            'rgb_topic':value('rgb_topic'),'input_pointcloud_topic':value('input_pointcloud_topic')}))
+    return nodes
 
-    # Launch Arguments
-    use_sim_time_arg = DeclareLaunchArgument(
-        "use_sim_time",
-        default_value="true",
-        description="Use simulation (Gazebo) clock if true.",
-    )
-    launch_rviz_arg = DeclareLaunchArgument(
-        "launch_rviz",
-        default_value="false",
-        description="Launch RViz2 visualizer if true.",
-    )
-    launch_marker_branch_arg = DeclareLaunchArgument(
-        "launch_marker_branch",
-        default_value="true",
-        description="Launch complete marker branch (detection + TF + map + action).",
-    )
 
-    # Unified Camera & Sensor Topics
-    input_pointcloud_topic_arg = DeclareLaunchArgument(
-        "input_pointcloud_topic",
-        default_value="/camera/depth/color/points",
-        description="Raw 3D PointCloud2 input topic for terrain geometry.",
-    )
-    rgb_topic_arg = DeclareLaunchArgument(
-        "rgb_topic",
-        default_value="/camera/image_raw",
-        description="RGB image topic for ArUco marker detection.",
-    )
-    depth_topic_arg = DeclareLaunchArgument(
-        "depth_topic",
-        default_value="/camera/depth/image_raw",
-        description="Depth image topic for marker 3D position estimation.",
-    )
-    camera_info_topic_arg = DeclareLaunchArgument(
-        "camera_info_topic",
-        default_value="/camera/camera_info",
-        description="Camera calibration CameraInfo topic.",
-    )
-    enable_costmap_arg = DeclareLaunchArgument(
-        "enable_costmap",
-        default_value="false",
-        description="Generate and inflate 2D costmap on /terrain/costmap if true (default false to save CPU).",
-    )
-
-    # 1. Terrain Geometry Pipeline
-    terrain_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(terrain_share, "launch", "terrain.launch.py")
-        ),
-        launch_arguments={
-            "use_sim_time": LaunchConfiguration("use_sim_time"),
-            "input_pointcloud_topic": LaunchConfiguration("input_pointcloud_topic"),
-            "enable_costmap": LaunchConfiguration("enable_costmap"),
-        }.items(),
-    )
-
-    # 2. Marker Detection & Tracking Pipeline
-    marker_branch_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(marker_share, "launch", "marker_branch.launch.py")
-        ),
-        condition=IfCondition(LaunchConfiguration("launch_marker_branch")),
-        launch_arguments={
-            "use_sim_time": LaunchConfiguration("use_sim_time"),
-            "rgb_topic": LaunchConfiguration("rgb_topic"),
-            "depth_topic": LaunchConfiguration("depth_topic"),
-            "camera_info_topic": LaunchConfiguration("camera_info_topic"),
-        }.items(),
-    )
-
-    # 3. Optional RViz2
-    rviz_config = os.path.join(terrain_share, "rviz", "terrain_geometry_view.rviz")
-    rviz_node = Node(
-        package="rviz2",
-        executable="rviz2",
-        name="rviz2_perception",
-        arguments=["-d", rviz_config],
-        parameters=[{"use_sim_time": LaunchConfiguration("use_sim_time")}],
-        condition=IfCondition(LaunchConfiguration("launch_rviz")),
-        output="screen",
-    )
-
-    return LaunchDescription([
-        use_sim_time_arg,
-        launch_rviz_arg,
-        launch_marker_branch_arg,
-        input_pointcloud_topic_arg,
-        rgb_topic_arg,
-        depth_topic_arg,
-        camera_info_topic_arg,
-        enable_costmap_arg,
-        terrain_launch,
-        marker_branch_launch,
-        rviz_node,
-    ])
+def generate_launch_description():
+    marker=get_package_share_directory('marker_detection')
+    terrain=get_package_share_directory('terrain_geometry')
+    defaults={'use_sim_time':'true','launch_terrain':'true','launch_marker_branch':'true',
+        'launch_marker_detection':'true','launch_marker_tf':'true','launch_marker_mapping':'false',
+        'launch_marker_action':'true','launch_landmark_adapter':'false','launch_memory':'false',
+        'launch_rviz':'false','enable_costmap':'false','enable_terrain_risk':'false','publish_debug_topics':'false',
+        'target_frame':'base_link','rviz_fixed_frame':'base_link','gravity_frame':'odom',
+        'max_slope_deg':'0.0','max_step_m':'0.0','max_roughness_m':'0.0',
+        'input_pointcloud_topic':'/camera/depth/color/points','rgb_topic':'/camera/image_raw',
+        'depth_topic':'/camera/depth/image_raw','camera_info_topic':'/camera/camera_info',
+        'rviz_config':os.path.join(terrain,'rviz','perception_system_view.rviz')}
+    for stage,stem in [('detection','marker_detection'),('tf','marker_tf'),('mapping','marker_mapping'),('action','marker_action_interface')]:
+        defaults[stage+'_params_file']=os.path.join(marker,'config',stem+'.yaml')
+    actions=[]
+    for key,default in defaults.items():
+        choices=['true','false'] if key.startswith(('launch_','enable_','publish_')) or key=='use_sim_time' else None
+        actions.append(DeclareLaunchArgument(key,default_value=default,choices=choices))
+    return LaunchDescription(actions+[OpaqueFunction(function=setup)])
