@@ -60,3 +60,13 @@ def test_failure_grid_uses_target_frame_and_unknown(node):
     node._unavailable(cloud, 'invalid test input')
     assert grids[0].header.frame_id == 'base_link'
     assert set(grids[0].data) == {-1}
+
+
+def test_healthy_diagnostics_do_not_replace_map_with_unknown(node):
+    unknown = []
+    node._publish_unknown = unknown.append
+    node._enable_costmap = True
+    node._last_input_time = node._last_processing_time = node.get_clock().now().nanoseconds*1e-9
+    node._health_ok = True
+    node._publish_health()
+    assert unknown == []

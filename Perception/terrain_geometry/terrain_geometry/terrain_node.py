@@ -708,7 +708,8 @@ class TerrainGeometryNode(Node):
         processing_fresh = self._last_processing_time is not None and 0 <= now - self._last_processing_time <= timeout
         status = DiagnosticStatus()
         status.name = "terrain/perception"
-        status.level = DiagnosticStatus.OK if fresh and processing_fresh and self._health_ok else DiagnosticStatus.ERROR
+        healthy = fresh and processing_fresh and self._health_ok
+        status.level = DiagnosticStatus.OK if healthy else DiagnosticStatus.ERROR
         status.message = self._health_reason if fresh else "point cloud unavailable or stale"
         status.values = [KeyValue(key="input_fresh", value=str(fresh)),
                          KeyValue(key="processing_fresh", value=str(processing_fresh))]
@@ -716,7 +717,7 @@ class TerrainGeometryNode(Node):
         output.header.stamp = self.get_clock().now().to_msg()
         output.status = [status]
         self._diagnostics_pub.publish(output)
-        if status.level != DiagnosticStatus.OK and self._enable_costmap:
+        if not healthy and self._enable_costmap:
             self._publish_unknown(output.header.stamp)
 
     def _publish_unknown(self, stamp) -> None:
