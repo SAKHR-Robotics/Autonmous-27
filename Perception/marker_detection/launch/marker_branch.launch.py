@@ -22,7 +22,7 @@ def generate_launch_description():
         ('landmark','landmark_adapter','launch_landmark_adapter','false')]:
         actions.append(DeclareLaunchArgument(switch,default_value=default,choices=['true','false']))
         forwarded={'use_sim_time':LaunchConfiguration('use_sim_time')}
-        if stage!='landmark':
+        if stage in ('detection','tf','mapping','action','landmark'):
             name=stage+'_params_file'
             actions.append(DeclareLaunchArgument(name,default_value=os.path.join(share,'config',stem+'.yaml')))
             forwarded['params_file']=LaunchConfiguration(name)

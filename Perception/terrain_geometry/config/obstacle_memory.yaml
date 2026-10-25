@@ -1,0 +1,8 @@
+obstacle_memory:
+  ros__parameters:
+    memory_frame: odom
+    ttl_sec: 5.0
+    association_distance: 0.5
+    input_timeout_sec: 1.0
+    # Requires valid debug ground clouds; enable only after local validation.
+    clear_observed_ground: false
