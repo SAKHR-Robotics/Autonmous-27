@@ -229,7 +229,7 @@ class OccupancyGridGenerator:
     # ------------------------------------------------------------------ #
 
     def generate(
-        self, obstacles: Sequence[object], header: Header
+        self, obstacles: Sequence[object], header: Header, observed_ground: np.ndarray | None = None
     ) -> Tuple[OccupancyGrid, GenerationStats]:
         """
         Generate a complete OccupancyGrid message from a list of obstacles.
@@ -259,7 +259,15 @@ class OccupancyGridGenerator:
             # filter's footprint) is stamped FREE below, before obstacle
             # footprints are rasterized on top of it.
             grid.fill(self.UNKNOWN)
-            self._stamp_known_region_free(grid)
+            # A crop rectangle is not a visibility measurement. Only ground
+            # returns observed in this frame establish free cells.
+            if observed_ground is not None and len(observed_ground):
+                points = np.asarray(observed_ground)
+                points = points[np.isfinite(points[:, :2]).all(axis=1)]
+                cols = np.floor((points[:, 0] - self.origin_x) / self.resolution).astype(int)
+                rows = np.floor((points[:, 1] - self.origin_y) / self.resolution).astype(int)
+                valid = (rows >= 0) & (rows < self.height) & (cols >= 0) & (cols < self.width)
+                grid[rows[valid], cols[valid]] = self.FREE
         else:
             # Prior behavior, preserved: grid starts fully FREE. Treats
             # the sensed local footprint as "known clear unless proven
