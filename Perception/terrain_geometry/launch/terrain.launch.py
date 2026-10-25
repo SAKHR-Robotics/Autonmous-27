@@ -19,6 +19,7 @@ from launch_ros.actions import Node
 
 def generate_launch_description() -> LaunchDescription:
     args = [
+        DeclareLaunchArgument("publish_to_obstacles_only", default_value="true"),
         DeclareLaunchArgument("enable_terrain_risk", default_value="false"),
         DeclareLaunchArgument("gravity_frame", default_value="odom"),
         DeclareLaunchArgument("max_slope_deg", default_value="0.0"),
@@ -103,6 +104,7 @@ def generate_launch_description() -> LaunchDescription:
     ]
 
     param_names = [
+        "publish_to_obstacles_only",
         "enable_terrain_risk", "gravity_frame", "max_slope_deg", "max_step_m", "max_roughness_m",
         "cache_static_transform", "input_timeout_sec",
         "use_sim_time",
