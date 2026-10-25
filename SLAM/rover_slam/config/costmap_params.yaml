@@ -21,13 +21,22 @@ costmap:
       plugin: "nav2_costmap_2d::ObstacleLayer"
       enabled: true
       transform_tolerance: 10.0
-      observation_sources: rock_obstacles
+      observation_sources: rock_obstacles clearing_depth
       rock_obstacles:
-        topic: /perception/obstacles_only
+        topic: /bridge/pointcloud
         max_obstacle_height: 2.0
-        clearing: true
+        clearing: false
         marking: true
         data_type: "PointCloud2"
+
+      clearing_depth:
+        topic: /camera/depth/color/points
+        data_type: PointCloud2
+        marking: false
+        clearing: true
+        observation_persistence: 0.0
+        raytrace_max_range: 8.0
+        raytrace_min_range: 0.2
 
     inflation_layer:
       plugin: "nav2_costmap_2d::InflationLayer"
