@@ -19,6 +19,11 @@ from launch_ros.actions import Node
 
 def generate_launch_description() -> LaunchDescription:
     args = [
+        DeclareLaunchArgument("enable_terrain_risk", default_value="false"),
+        DeclareLaunchArgument("gravity_frame", default_value="odom"),
+        DeclareLaunchArgument("max_slope_deg", default_value="0.0"),
+        DeclareLaunchArgument("max_step_m", default_value="0.0"),
+        DeclareLaunchArgument("max_roughness_m", default_value="0.0"),
         DeclareLaunchArgument("cache_static_transform", default_value="false"),
         DeclareLaunchArgument("input_timeout_sec", default_value="1.0"),
         DeclareLaunchArgument("use_sim_time", default_value="true", description="Use simulation clock if true"),
@@ -98,6 +103,7 @@ def generate_launch_description() -> LaunchDescription:
     ]
 
     param_names = [
+        "enable_terrain_risk", "gravity_frame", "max_slope_deg", "max_step_m", "max_roughness_m",
         "cache_static_transform", "input_timeout_sec",
         "use_sim_time",
         "input_pointcloud_topic", "target_frame", "tf_timeout_sec", "input_qos_depth",
