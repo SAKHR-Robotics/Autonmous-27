@@ -3,6 +3,7 @@
 #include <vector>
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 
 #include "rclcpp/rclcpp.hpp"
 
@@ -17,10 +18,18 @@ public:
   CostmapBridgeNode()
   : Node("costmap_bridge_node")
   {
+    declare_parameter("input_topic", "/perception/obstacles_only");
+    declare_parameter("output_topic", "/bridge/pointcloud");
+    declare_parameter("sample_spacing", 0.05);
+    declare_parameter("max_points", 200000);
+    if (!std::isfinite(get_parameter("sample_spacing").as_double()) ||
+        get_parameter("sample_spacing").as_double() <= 0.0 || get_parameter("max_points").as_int() < 1) {
+      throw std::invalid_argument("Positive sampling limits required");
+    }
     // Subscriber: Subscribes to 3D obstacle bounding boxes from Perception (/perception/obstacles_only)
     obstacle_subscriber_ =
       this->create_subscription<vision_msgs::msg::Detection3DArray>(
-        "/perception/obstacles_only",
+        get_parameter("input_topic").as_string(),
         10,
         std::bind(
           &CostmapBridgeNode::obstacle_callback,
@@ -30,7 +39,7 @@ public:
     // Publisher: Publishes point cloud for Nav2 native ObstacleLayer
     pointcloud_publisher_ =
       this->create_publisher<sensor_msgs::msg::PointCloud2>(
-        "/bridge/pointcloud",
+        get_parameter("output_topic").as_string(),
         10);
 
     RCLCPP_INFO(
@@ -50,9 +59,10 @@ private:
     const vision_msgs::msg::Detection3DArray::SharedPtr msg)
   {
     std::vector<Point3D> sampled_points;
-    const float step = 0.05f;      // 5cm grid resolution matching costmap resolution
+    const float step = static_cast<float>(get_parameter("sample_spacing").as_double());      // 5cm grid resolution matching costmap resolution
     const float epsilon = 1e-4f;
 
+    const auto max_points = static_cast<std::size_t>(get_parameter("max_points").as_int());
     for (const auto & detection : msg->detections)
     {
       const auto & center = detection.bbox.center.position;
@@ -60,14 +70,20 @@ private:
       const auto & orient = detection.bbox.center.orientation;
 
       // Ignore detections with invalid / non-positive footprint dimensions
-      if (size.x <= 0.0f || size.y <= 0.0f)
+      if (!std::isfinite(center.x) || !std::isfinite(center.y) || !std::isfinite(center.z) ||
+          !std::isfinite(size.x) || !std::isfinite(size.y) || !std::isfinite(size.z) ||
+          !std::isfinite(orient.x) || !std::isfinite(orient.y) || !std::isfinite(orient.z) || !std::isfinite(orient.w) ||
+          size.x <= 0.0 || size.y <= 0.0 || size.z <= 0.0 || size.x > 100.0 || size.y > 100.0 ||
+          sampled_points.size() >= max_points)
       {
         continue;
       }
 
       // Compute yaw from quaternion: atan2(2*(w*z + x*y), 1 - 2*(y*y + z*z))
-      double siny_cosp = 2.0 * (orient.w * orient.z + orient.x * orient.y);
-      double cosy_cosp = 1.0 - 2.0 * (orient.y * orient.y + orient.z * orient.z);
+      const double norm2 = orient.x*orient.x + orient.y*orient.y + orient.z*orient.z + orient.w*orient.w;
+      if (norm2 < 1e-12) { continue; }
+      double siny_cosp = 2.0 * (orient.w * orient.z + orient.x * orient.y) / norm2;
+      double cosy_cosp = 1.0 - 2.0 * (orient.y * orient.y + orient.z * orient.z) / norm2;
       double yaw = std::atan2(siny_cosp, cosy_cosp);
 
       bool has_rotation = (std::abs(yaw) > 1e-3);
@@ -78,9 +94,9 @@ private:
       float half_y = static_cast<float>(size.y / 2.0);
 
       // Sample 3D bounding box footprint at 5cm grid resolution
-      for (float dx = -half_x; dx <= half_x + epsilon; dx += step)
+      for (float dx = -half_x; dx <= half_x + epsilon && sampled_points.size() < max_points; dx += step)
       {
-        for (float dy = -half_y; dy <= half_y + epsilon; dy += step)
+        for (float dy = -half_y; dy <= half_y + epsilon && sampled_points.size() < max_points; dy += step)
         {
           float x, y;
           if (has_rotation)
@@ -103,10 +119,7 @@ private:
       }
     }
 
-    if (sampled_points.empty())
-    {
-      return;
-    }
+    // Empty is a valid observation update; do not retain a stale cloud.
 
     // Prepare PointCloud2 message
     sensor_msgs::msg::PointCloud2 pointcloud;
