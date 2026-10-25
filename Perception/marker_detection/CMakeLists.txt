@@ -28,4 +28,8 @@ if(BUILD_TESTING)
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 endif()
 
+install(PROGRAMS marker_detection/landmark_adapter.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME marker_landmark_adapter)
+
 ament_package()
