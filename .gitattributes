@@ -1,0 +1,4 @@
+
+# ROS scripts are executed directly inside Linux/Jazzy, including symlink builds.
+*.py text eol=lf
+*.sh text eol=lf
