@@ -61,7 +61,8 @@ def generate_launch_description():
                 ('rgb/image', rgb_topic),
                 ('depth/image', depth_topic),
                 ('rgb/camera_info', camera_info_topic),
-                ('landmark', '/perception/aruco_pose')
+                ('landmark_detections', '/perception/landmark_detections'),
+                ('landmark_detection', '/perception/landmark_detection')
             ]
         )
     ])
