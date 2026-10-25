@@ -83,6 +83,7 @@ from terrain_geometry_msgs.msg import ObstacleFeature as ObstacleFeatureMsg
 from terrain_geometry_msgs.msg import ObstacleFeatureArray
 
 from terrain_geometry.tf_transform import CloudFrameTransformer, pointcloud2_to_xyz_array
+from terrain_geometry.surface_risk import assess_surface
 from terrain_geometry.roi_filter import ROIFilter, ROIFilterError
 from terrain_geometry.ground_removal import (
     GroundRemoval,
@@ -201,6 +202,17 @@ class TerrainGeometryNode(Node):
         super().__init__("terrain_node")
 
         self._declare_parameters()
+        self.declare_parameter("enable_terrain_risk", False)
+        self.declare_parameter("gravity_frame", "odom")
+        self.declare_parameter("max_slope_deg", 0.0)
+        self.declare_parameter("max_step_m", 0.0)
+        self.declare_parameter("max_roughness_m", 0.0)
+        if self.get_parameter("enable_terrain_risk").value:
+            assess_surface(np.empty((0, 3)), [0, 0, 1], cell_size=0.25,
+                max_slope_deg=self.get_parameter("max_slope_deg").value,
+                max_step_m=self.get_parameter("max_step_m").value,
+                max_roughness_m=self.get_parameter("max_roughness_m").value)
+        self._surface_hazards = []
         self.declare_parameter("cache_static_transform", False)
         self.declare_parameter("input_timeout_sec", 1.0)
         self._last_input_time = None
@@ -793,6 +805,19 @@ class TerrainGeometryNode(Node):
             self._unavailable(msg, "no points in configured ROI")
             return
 
+        self._surface_hazards = []
+        if self.get_parameter("enable_terrain_risk").value:
+            gravity = self._tf.lookup_transform(self._target_frame, self.get_parameter("gravity_frame").value, stamp)
+            if gravity is None:
+                self._unavailable(msg, "terrain-risk gravity reference unavailable")
+                return
+            q = gravity.transform.rotation
+            up = self._tf._quaternion_to_rotation_matrix(q.x, q.y, q.z, q.w)[:, 2]
+            self._surface_hazards = assess_surface(roi_xyz, up, cell_size=0.25,
+                max_slope_deg=self.get_parameter("max_slope_deg").value,
+                max_step_m=self.get_parameter("max_step_m").value,
+                max_roughness_m=self.get_parameter("max_roughness_m").value)
+
         # --- Ground removal ------------------------------------------------
         try:
             ground_xyz, obstacle_xyz = self._ground_removal.segment(roi_xyz)
@@ -802,7 +827,7 @@ class TerrainGeometryNode(Node):
             return
         profiler.mark("ground")
 
-        if obstacle_xyz.shape[0] == 0:
+        if obstacle_xyz.shape[0] == 0 and not self._surface_hazards:
             self._publish_empty(header, ground_xyz)
             if self._publish_debug_topics:
                 self._ground_cloud_pub.publish(xyz_array_to_pointcloud2(ground_xyz, header))
@@ -810,20 +835,20 @@ class TerrainGeometryNode(Node):
 
         # --- Voxel downsampling --------------------------------------------
         try:
-            voxel_xyz = self._voxel_filter.filter(obstacle_xyz)
+            voxel_xyz = self._voxel_filter.filter(obstacle_xyz) if len(obstacle_xyz) else obstacle_xyz
         except VoxelFilterError as exc:
             self._unavailable(msg, f"voxel downsampling failed: {exc}")
             return
         profiler.mark("voxel")
 
         # --- Radius outlier removal ------------------------------------------
-        if self._enable_radius_outlier_removal:
+        if self._enable_radius_outlier_removal and len(voxel_xyz):
             inlier_xyz, _outlier_xyz = self._outlier_filter.filter(voxel_xyz)
         else:
             inlier_xyz = voxel_xyz
         profiler.mark("outlier")
 
-        if inlier_xyz.shape[0] == 0:
+        if inlier_xyz.shape[0] == 0 and not self._surface_hazards:
             self._publish_empty(header, ground_xyz)
             if self._publish_debug_topics:
                 self._ground_cloud_pub.publish(xyz_array_to_pointcloud2(ground_xyz, header))
@@ -831,7 +856,7 @@ class TerrainGeometryNode(Node):
             return
 
         # --- DBSCAN clustering ------------------------------------------------
-        if self._enable_clustering:
+        if self._enable_clustering and len(inlier_xyz):
             labels, colors, _summaries = self._clusterer.cluster(inlier_xyz)
         else:
             # Clustering disabled: treat every surviving point as noise (no
@@ -847,6 +872,12 @@ class TerrainGeometryNode(Node):
         features = self._extractor.extract_all(clusters) if clusters else []
         profiler.mark("features")
 
+        for index, (center, size) in enumerate(self._surface_hazards):
+            features.append(ObstacleFeature(
+                id=1000000 + index, num_points=0, centroid=center,
+                min_point=center - size / 2, max_point=center + size / 2,
+                width=float(size[1]), height=float(size[2]), depth=float(size[0]),
+                distance=float(np.linalg.norm(center))))
         # --- Temporal obstacle tracking (optional) ------------------------------
         # Only ever returns detections matched THIS frame (see
         # obstacle_tracking.py) -- a missed detection never lingers on as
