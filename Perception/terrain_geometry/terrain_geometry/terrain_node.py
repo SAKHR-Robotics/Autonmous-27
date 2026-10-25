@@ -67,6 +67,7 @@ import numpy as np
 
 import rclpy
 from rclpy.node import Node
+from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from rclpy.qos import qos_profile_sensor_data, QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
 from rclpy.time import Time
 from rcl_interfaces.msg import SetParametersResult
@@ -200,6 +201,12 @@ class TerrainGeometryNode(Node):
         super().__init__("terrain_node")
 
         self._declare_parameters()
+        self.declare_parameter("cache_static_transform", False)
+        self.declare_parameter("input_timeout_sec", 1.0)
+        self._last_input_time = None
+        self._last_processing_time = None
+        self._health_reason = "waiting for point cloud"
+        self._health_ok = False
         self._read_parameters()
         self._validate_parameters()
 
@@ -225,6 +232,7 @@ class TerrainGeometryNode(Node):
         # GroundRemovalConfigError, which propagates out of __init__ and
         # aborts node startup rather than silently running with a
         # weaker, unrequested backend.
+        self._tf.cache_static_transform = bool(self.get_parameter("cache_static_transform").value)
         self._ground_removal = GroundRemoval(
             sensor_height=self._ground_sensor_height,
             num_zones=self._ground_num_zones,
@@ -304,6 +312,10 @@ class TerrainGeometryNode(Node):
         self._profiler = PipelineProfiler()
         self._frame_counter = 0
 
+        self._diagnostics_pub = self.create_publisher(DiagnosticArray, "/terrain/diagnostics", 5)
+        self.create_timer(0.5, self._publish_health)
+        if self._grid_origin_x + self._grid_width_cells * self._grid_resolution < self._roi_max_x:
+            self.get_logger().warning("Costmap clips forward ROI; increase grid width or change origin")
         self.add_on_set_parameters_callback(self._on_parameters_set)
 
         # --- Subscriber: single PointCloud2 input, sensor QoS ---------
@@ -447,14 +459,14 @@ class TerrainGeometryNode(Node):
         self.declare_parameter("grid_resolution", 0.05)
         self.declare_parameter("grid_width_cells", 200)
         self.declare_parameter("grid_height_cells", 200)
-        self.declare_parameter("grid_origin_x", -5.0)
+        self.declare_parameter("grid_origin_x", 0.0)
         self.declare_parameter("grid_origin_y", -5.0)
         self.declare_parameter("grid_origin_z", 0.0)
         # If True: grid starts UNKNOWN (-1) everywhere except the
         # actively-sensed region (see terrain_node.py's known-region
         # derivation above _grid_generator's construction). If False
         # (default, preserves prior behavior): grid starts fully FREE.
-        self.declare_parameter("use_unknown_space", False)
+        self.declare_parameter("use_unknown_space", True)
 
         # Step 8: costmap inflation
         self.declare_parameter("robot_radius", 0.3)
@@ -677,13 +689,63 @@ class TerrainGeometryNode(Node):
     # ------------------------------------------------------------------ #
     # Main callback: the entire pipeline, one message in/out
     # ------------------------------------------------------------------ #
+    def _publish_health(self) -> None:
+        now = self.get_clock().now().nanoseconds * 1e-9
+        timeout = float(self.get_parameter("input_timeout_sec").value)
+        fresh = self._last_input_time is not None and 0 <= now - self._last_input_time <= timeout
+        processing_fresh = self._last_processing_time is not None and 0 <= now - self._last_processing_time <= timeout
+        status = DiagnosticStatus()
+        status.name = "terrain/perception"
+        status.level = DiagnosticStatus.OK if fresh and processing_fresh and self._health_ok else DiagnosticStatus.ERROR
+        status.message = self._health_reason if fresh else "point cloud unavailable or stale"
+        status.values = [KeyValue(key="input_fresh", value=str(fresh)),
+                         KeyValue(key="processing_fresh", value=str(processing_fresh))]
+        output = DiagnosticArray()
+        output.header.stamp = self.get_clock().now().to_msg()
+        output.status = [status]
+        self._diagnostics_pub.publish(output)
+        if status.level != DiagnosticStatus.OK and self._enable_costmap:
+            self._publish_unknown(output.header.stamp)
+
+    def _publish_unknown(self, stamp) -> None:
+        header = Header(stamp=stamp, frame_id=self._target_frame)
+        grid, _ = self._grid_generator.generate([], header)
+        grid.data = [-1] * (grid.info.width * grid.info.height)
+        self._costmap_pub.publish(grid)
+
+    def _unavailable(self, msg: PointCloud2, reason: str) -> None:
+        self._health_ok, self._health_reason = False, reason
+        self.get_logger().warning(reason)
+        if self._enable_costmap:
+            self._publish_unknown(msg.header.stamp)
+
     def _cloud_callback(self, msg: PointCloud2) -> None:
+        now = self.get_clock().now().nanoseconds * 1e-9
+        if self._last_input_time is not None and now < self._last_input_time:
+            self._tf.transform_matrix = None
+            if self._tracker is not None:
+                self._tracker = ObstacleTracker(
+                    max_association_distance=self._tracking_max_association_distance,
+                    max_missed_frames=self._tracking_max_missed_frames,
+                    position_smoothing=self._tracking_position_smoothing)
+        self._last_input_time = now
+        stamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+        if now - stamp > float(self.get_parameter("input_timeout_sec").value) or stamp > now + 0.1:
+            self._unavailable(msg, "point cloud timestamp is stale or in the future")
+            return
+        self._health_ok, self._health_reason = False, "processing point cloud"
+        try:
+            self._process_cloud(msg)
+        except (ValueError, TypeError, RuntimeError) as error:
+            self._unavailable(msg, f"point cloud processing failed: {error}")
+
+    def _process_cloud(self, msg: PointCloud2) -> None:
         self._frame_counter += 1
         profiler = self._profiler
         profiler.start()
 
         if msg.width * msg.height == 0 or not msg.data:
-            self.get_logger().warn("Received empty PointCloud2 -- skipping frame.")
+            self._unavailable(msg, "empty PointCloud2")
             return
 
         # --- Decode: PointCloud2 -> raw (N, 3) float32 array, zero-copy
@@ -693,7 +755,7 @@ class TerrainGeometryNode(Node):
         profiler.mark("decode")
         if xyz_sensor.shape[0] == 0:
             self.get_logger().warn("No valid (finite) points in this frame -- skipping.")
-            self._publish_empty(msg.header)
+            self._unavailable(msg, "point cloud has no finite points")
             return
 
         # --- TF transform (sensor frame -> target_frame) -----------------
@@ -703,6 +765,7 @@ class TerrainGeometryNode(Node):
         )
         profiler.mark("tf")
         if xyz_base is None:
+            self._unavailable(msg, "camera-to-target TF unavailable")
             self.get_logger().warn(
                 f"TF transform '{msg.header.frame_id}' -> '{self._target_frame}' "
                 "not yet available -- skipping frame (will retry next message)."
@@ -727,7 +790,7 @@ class TerrainGeometryNode(Node):
                 f"No points remain after ROI filtering (in={xyz_sensor.shape[0]}) "
                 "-- skipping frame."
             )
-            self._publish_empty(header)
+            self._unavailable(msg, "no points in configured ROI")
             return
 
         # --- Ground removal ------------------------------------------------
@@ -735,12 +798,12 @@ class TerrainGeometryNode(Node):
             ground_xyz, obstacle_xyz = self._ground_removal.segment(roi_xyz)
         except GroundNotFoundError as exc:
             self.get_logger().warn(f"Ground segmentation skipped: {exc}")
-            self._publish_empty(header)
+            self._unavailable(msg, f"ground segmentation failed: {exc}")
             return
         profiler.mark("ground")
 
         if obstacle_xyz.shape[0] == 0:
-            self._publish_empty(header)
+            self._publish_empty(header, ground_xyz)
             if self._publish_debug_topics:
                 self._ground_cloud_pub.publish(xyz_array_to_pointcloud2(ground_xyz, header))
             return
@@ -749,7 +812,7 @@ class TerrainGeometryNode(Node):
         try:
             voxel_xyz = self._voxel_filter.filter(obstacle_xyz)
         except VoxelFilterError as exc:
-            self.get_logger().error(f"Voxel downsampling failed: {exc}")
+            self._unavailable(msg, f"voxel downsampling failed: {exc}")
             return
         profiler.mark("voxel")
 
@@ -761,7 +824,7 @@ class TerrainGeometryNode(Node):
         profiler.mark("outlier")
 
         if inlier_xyz.shape[0] == 0:
-            self._publish_empty(header)
+            self._publish_empty(header, ground_xyz)
             if self._publish_debug_topics:
                 self._ground_cloud_pub.publish(xyz_array_to_pointcloud2(ground_xyz, header))
                 self._voxel_cloud_pub.publish(xyz_array_to_pointcloud2(inlier_xyz, header))
@@ -812,7 +875,7 @@ class TerrainGeometryNode(Node):
         # --- Occupancy grid rasterization & Costmap inflation (optional) ------
         if self._enable_costmap:
             grid_obstacles = [_feature_to_grid_obstacle(f) for f in features]
-            occupancy_msg, _grid_stats = self._grid_generator.generate(grid_obstacles, header)
+            occupancy_msg, _grid_stats = self._grid_generator.generate(grid_obstacles, header, ground_xyz)
             profiler.mark("occupancy")
 
             # --- Costmap inflation (distance transform + exp decay) ----------------
@@ -828,6 +891,8 @@ class TerrainGeometryNode(Node):
                 xyz_and_colors_to_pointcloud2(inlier_xyz, colors, header)
             )
 
+        self._health_ok, self._health_reason = True, "valid obstacle observation"
+        self._last_processing_time = self.get_clock().now().nanoseconds * 1e-9
         total_ms = profiler.total_ms()
         self.get_logger().info(
             f"Frame processed | in={xyz_sensor.shape[0]} pts, "
@@ -877,10 +942,12 @@ class TerrainGeometryNode(Node):
         stage_breakdown = self._profiler.format_stage_breakdown()
         self.get_logger().info(f"{summary}\nstages: {stage_breakdown}")
 
-    def _publish_empty(self, header: Header) -> None:
+    def _publish_empty(self, header: Header, ground_xyz=None) -> None:
         """Publish empty-but-valid outputs so downstream consumers and
         RViz2 both reflect "nothing detected" instead of keeping stale
         data from the previous frame."""
+        self._health_ok, self._health_reason = True, "valid observation: no obstacles"
+        self._last_processing_time = self.get_clock().now().nanoseconds * 1e-9
         empty_features = ObstacleFeatureArray()
         empty_features.header = header
         self._feature_pub.publish(empty_features)
@@ -895,7 +962,7 @@ class TerrainGeometryNode(Node):
         self._marker_pub.publish(empty_markers)
 
         if self._enable_costmap:
-            empty_grid_msg, _stats = self._grid_generator.generate([], header)
+            empty_grid_msg, _stats = self._grid_generator.generate([], header, ground_xyz)
             empty_costmap_msg, _inflation_stats = self._inflator.inflate(empty_grid_msg)
             self._costmap_pub.publish(empty_costmap_msg)
 
