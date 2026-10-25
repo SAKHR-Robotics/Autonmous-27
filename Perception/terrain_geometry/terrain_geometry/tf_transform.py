@@ -177,6 +177,7 @@ class CloudFrameTransformer:
         # `tf_buffer.lookup_transform()` entirely and just reuses this
         # matrix. If TF isn't ready yet on early frames, each incoming
         # message naturally acts as a retry until the lookup succeeds.
+        self.cache_static_transform = False
         self.transform_matrix: np.ndarray | None = None
         self._cached_source_frame: str | None = None
         self._cached_target_frame: str | None = None
@@ -283,7 +284,8 @@ class CloudFrameTransformer:
         available" without blocking the executor.
         """
         if (
-            self.transform_matrix is not None
+            self.cache_static_transform
+            and self.transform_matrix is not None
             and source_frame == self._cached_source_frame
             and target_frame == self._cached_target_frame
         ):
@@ -296,8 +298,8 @@ class CloudFrameTransformer:
         self.transform_matrix = self._transform_to_matrix(transform)
         self._cached_source_frame = source_frame
         self._cached_target_frame = target_frame
-        self._logger.info(
-            f"Cached static transform '{source_frame}' -> '{target_frame}'. "
+        self._logger.debug(
+            f"Resolved transform '{source_frame}' -> '{target_frame}'. "
             "Future point clouds will reuse this matrix directly, without "
             "further tf_buffer.lookup_transform() calls."
         )
