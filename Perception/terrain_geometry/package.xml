@@ -32,6 +32,7 @@
   <depend>vision_msgs</depend>
   <depend>diagnostic_msgs</depend>
   <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>marker_detection</exec_depend>
 
   <!--
     NumPy, scikit-learn, and scipy are Python (pip) dependencies for

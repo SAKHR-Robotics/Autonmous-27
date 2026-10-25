@@ -25,11 +25,11 @@ def setup(context):
             'publish_debug_topics':value('publish_debug_topics')}
         nodes.append(include('terrain_geometry','terrain.launch.py',arguments))
     if enabled('launch_memory'):
-        nodes.append(include('terrain_geometry','obstacle_memory.launch.py',clock))
+        nodes.append(include('terrain_geometry','obstacle_memory.launch.py',{**clock,'params_file':value('memory_params_file')}))
     if enabled('launch_marker_branch'):
         arguments={**clock,**{key:value(key) for key in ('rgb_topic','depth_topic','camera_info_topic',
             'launch_marker_detection','launch_marker_tf','launch_marker_mapping','launch_marker_action','launch_landmark_adapter',
-            'detection_params_file','tf_params_file','mapping_params_file','action_params_file')}}
+            'detection_params_file','tf_params_file','mapping_params_file','action_params_file','landmark_params_file')}}
         nodes.append(include('marker_detection','marker_branch.launch.py',arguments))
     if enabled('launch_rviz'):
         nodes.append(include('terrain_geometry','rviz.launch.py',{**clock,
@@ -49,8 +49,9 @@ def generate_launch_description():
         'max_slope_deg':'0.0','max_step_m':'0.0','max_roughness_m':'0.0',
         'input_pointcloud_topic':'/camera/depth/color/points','rgb_topic':'/camera/image_raw',
         'depth_topic':'/camera/depth/image_raw','camera_info_topic':'/camera/camera_info',
-        'rviz_config':os.path.join(terrain,'rviz','perception_system_view.rviz')}
-    for stage,stem in [('detection','marker_detection'),('tf','marker_tf'),('mapping','marker_mapping'),('action','marker_action_interface')]:
+        'rviz_config':os.path.join(terrain,'rviz','perception_system_view.rviz'),
+        'memory_params_file':os.path.join(terrain,'config','obstacle_memory.yaml')}
+    for stage,stem in [('detection','marker_detection'),('tf','marker_tf'),('mapping','marker_mapping'),('action','marker_action_interface'),('landmark','landmark_adapter')]:
         defaults[stage+'_params_file']=os.path.join(marker,'config',stem+'.yaml')
     actions=[]
     for key,default in defaults.items():
