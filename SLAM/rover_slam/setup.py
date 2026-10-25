@@ -26,8 +26,6 @@ setup(
             'encoder_ticks_to_odom = rover_slam.encoder_ticks_to_odom:main',
             'heuristic_slip_checker = rover_slam.heuristic_slip_checker:main',
             'ekf_validator = rover_slam.ekf_validator:main',
-            'costmap_test_stub = rover_slam.costmap_test_stub:main',
-            'mock_aruco_publisher = rover_slam.mock_aruco_publisher:main',
         ],
     },
 

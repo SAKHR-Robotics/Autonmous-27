@@ -31,7 +31,7 @@ class CostmapTestStubNode(Node):
         self.frame_id = self.get_parameter('frame_id').get_parameter_value().string_value
         self.num_rocks = self.get_parameter('num_rocks').get_parameter_value().integer_value
 
-        self.publisher_ = self.create_publisher(PointCloud2, '/perception/obstacles_only', 10)
+        self.publisher_ = self.create_publisher(PointCloud2, '/bridge/pointcloud', 10)
         self.marker_publisher_ = self.create_publisher(MarkerArray, '/terrain/obstacle_markers', 10)
         self.timer = self.create_timer(1.0 / self.rate, self.timer_callback)
 
