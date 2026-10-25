@@ -9,7 +9,7 @@ Developer Track: Person 2 / Track B (Task 3B.1 & Task 3B.2)
 
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import PoseStamped
+from rtabmap_msgs.msg import LandmarkDetection
 
 
 class MockArucoPublisherNode(Node):
@@ -30,7 +30,7 @@ class MockArucoPublisherNode(Node):
         self.pos_y = self.get_parameter('pos_y').get_parameter_value().double_value
         self.pos_z = self.get_parameter('pos_z').get_parameter_value().double_value
 
-        self.publisher_ = self.create_publisher(PoseStamped, '/perception/aruco_pose', 10)
+        self.publisher_ = self.create_publisher(LandmarkDetection, '/perception/landmark_detection', 10)
         self.timer = self.create_timer(1.0 / self.rate, self.timer_callback)
 
         self.get_logger().info(
@@ -38,19 +38,20 @@ class MockArucoPublisherNode(Node):
         )
 
     def timer_callback(self):
-        msg = PoseStamped()
+        msg = LandmarkDetection()
+        msg.id = 1
         # Use Time(0) so RViz immediately displays using latest available transform
         msg.header.stamp = rclpy.time.Time().to_msg()
         msg.header.frame_id = self.target_frame
 
-        msg.pose.position.x = self.pos_x
-        msg.pose.position.y = self.pos_y
-        msg.pose.position.z = self.pos_z
+        msg.pose.pose.position.x = self.pos_x
+        msg.pose.pose.position.y = self.pos_y
+        msg.pose.pose.position.z = self.pos_z
 
-        msg.pose.orientation.x = 0.0
-        msg.pose.orientation.y = 0.0
-        msg.pose.orientation.z = 0.0
-        msg.pose.orientation.w = 1.0
+        msg.pose.pose.orientation.x = 0.0
+        msg.pose.pose.orientation.y = 0.0
+        msg.pose.pose.orientation.z = 0.0
+        msg.pose.pose.orientation.w = 1.0
 
         self.publisher_.publish(msg)
         self.get_logger().debug(f"Published mock ArUco pose on /perception/aruco_pose: x={self.pos_x}, y={self.pos_y}")

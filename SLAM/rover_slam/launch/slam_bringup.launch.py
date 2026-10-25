@@ -16,8 +16,6 @@ def generate_launch_description():
     launch_static_tf = LaunchConfiguration('launch_static_tf')
     standalone_tf = LaunchConfiguration('standalone_tf')
     launch_costmap = LaunchConfiguration('launch_costmap')
-    launch_costmap_stub = LaunchConfiguration('launch_costmap_stub')
-    launch_aruco_stub = LaunchConfiguration('launch_aruco_stub')
     launch_rviz = LaunchConfiguration('launch_rviz')
     rgb_topic = LaunchConfiguration('rgb_topic')
     depth_topic = LaunchConfiguration('depth_topic')
@@ -54,16 +52,8 @@ def generate_launch_description():
         default_value='false',
         description='Whether to launch standalone Nav2 costmap (set false when running with full nav2/erc_path_planner)'
     )
-    declare_launch_costmap_stub = DeclareLaunchArgument(
-        'launch_costmap_stub',
-        default_value='false',
-        description='Whether to run costmap_test_stub node to simulate obstacle points for costmap verification'
-    )
-    declare_launch_aruco_stub = DeclareLaunchArgument(
-        'launch_aruco_stub',
-        default_value='false',
-        description='Whether to run mock_aruco_publisher to simulate ArUco landmark detection'
-    )
+
+
     declare_launch_rviz = DeclareLaunchArgument(
         'launch_rviz',
         default_value='false',
@@ -127,22 +117,8 @@ def generate_launch_description():
         }.items(),
         condition=IfCondition(launch_costmap)
     )
-    costmap_stub_node = Node(
-        package='rover_slam',
-        executable='costmap_test_stub',
-        name='costmap_test_stub',
-        output='screen',
-        parameters=[{'use_sim_time': use_sim_time}],
-        condition=IfCondition(launch_costmap_stub)
-    )
-    aruco_stub_node = Node(
-        package='rover_slam',
-        executable='mock_aruco_publisher',
-        name='mock_aruco_publisher',
-        output='screen',
-        parameters=[{'use_sim_time': use_sim_time}],
-        condition=IfCondition(launch_aruco_stub)
-    )
+
+
     rviz_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(pkg_share, 'launch', 'rviz.launch.py')),
         launch_arguments={'use_sim_time': use_sim_time}.items(),
@@ -161,8 +137,6 @@ def generate_launch_description():
         declare_launch_static_tf,
         declare_standalone_tf,
         declare_launch_costmap,
-        declare_launch_costmap_stub,
-        declare_launch_aruco_stub,
         declare_launch_rviz,
         declare_rgb_topic,
         declare_depth_topic,
@@ -173,7 +147,6 @@ def generate_launch_description():
         vision_launch,
         rtabmap_launch,
         delayed_costmap_actions,
-        aruco_stub_node,
         rviz_launch
     ])
 

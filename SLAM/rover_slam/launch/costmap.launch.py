@@ -29,16 +29,7 @@ def generate_launch_description():
     declare_standalone = DeclareLaunchArgument(
         'standalone',
         default_value='false',
-        description='Whether to publish standalone test TF (map -> base_link)'
-    )
-
-    # Static TF Publisher (map -> base_link) ONLY for standalone testing
-    standalone_tf_node = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
-        name='costmap_test_tf_map_to_base',
-        arguments=['--frame-id', 'map', '--child-frame-id', 'base_link'],
-        condition=IfCondition(standalone)
+        choices=['false'], description='Deprecated: test TF belongs to slam_test_tools'
     )
 
     # Nav2 Costmap 2D Lifecycle Node
@@ -77,7 +68,6 @@ def generate_launch_description():
         declare_use_sim_time,
         declare_autostart,
         declare_standalone,
-        standalone_tf_node,
         costmap_node,
         lifecycle_manager_node
     ])
