@@ -12,6 +12,7 @@ from std_srvs.srv import Empty
 from tf2_ros import Buffer, TransformException, TransformListener
 from visualization_msgs.msg import Marker, MarkerArray
 from marker_detection_msgs.msg import MarkerMap, MarkerMapEntry, MarkerTrackedPoseArray
+from marker_detection.frame_transform import transform_to_base_link
 from marker_detection.marker_map_manager import GlobalObservation, MarkerMapManager
 
 
@@ -40,6 +41,7 @@ class MarkerMapNode(Node):
                                                  self._poses_callback, QoSProfile(depth=10))
         self.reset_service = self.create_service(Empty, "/marker_map/reset", self._reset)
         self._last_tf_warning = 0.0
+        self._last_clock = self.get_clock().now().nanoseconds
         self.create_timer(1.0, self._maintenance)
 
     def _declare_parameters(self) -> None:
@@ -64,22 +66,30 @@ class MarkerMapNode(Node):
         for pose in message.markers:
             if not (pose.detection_valid and pose.tracking_valid):
                 continue
-            transform = self._lookup_global_marker(pose.id, stamp)
+            pose_stamp = Time.from_msg(pose.header.stamp)
+            transform = self._lookup_global_marker(pose.header.frame_id, pose_stamp)
             if transform is None:
                 continue
             translation, rotation = transform.transform.translation, transform.transform.rotation
+            resolved = transform_to_base_link(
+                transform_translation=np.array([translation.x, translation.y, translation.z]),
+                transform_rotation=np.array([rotation.x, rotation.y, rotation.z, rotation.w]),
+                camera_position=np.array([pose.position.x, pose.position.y, pose.position.z]),
+                camera_orientation=np.array([pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w]),
+                camera_position_covariance=np.array(pose.position_covariance).reshape(3, 3))
+            if resolved is None:
+                continue
             observation = GlobalObservation(
-                pose.id, np.array([translation.x, translation.y, translation.z]),
-                np.array([rotation.x, rotation.y, rotation.z, rotation.w]), pose.tracking_confidence,
-                pose.reprojection_error_px, timestamp)
+                pose.id, resolved.position, resolved.orientation, pose.tracking_confidence,
+                pose.reprojection_error_px, pose.header.stamp.sec + pose.header.stamp.nanosec * 1e-9)
             self.manager.update(observation)
         self._publish_map()
 
-    def _lookup_global_marker(self, marker_id: int, stamp: Time):
-        """Use TF2's composed map->marker transform at the original observation stamp."""
+    def _lookup_global_marker(self, camera_frame: str, stamp: Time):
+        """Resolve map<-camera; no dependency on marker broadcaster arrival order."""
         try:
             return self.tf_buffer.lookup_transform(
-                self.map_frame, f"{self.marker_frame_prefix}{marker_id}", stamp,
+                self.map_frame, camera_frame, stamp,
                 timeout=Duration(seconds=float(self.get_parameter("tf_lookup_timeout_seconds").value)))
         except TransformException as error:
             now = time.monotonic()
@@ -91,6 +101,10 @@ class MarkerMapNode(Node):
 
     def _maintenance(self) -> None:
         now = self.get_clock().now()
+        if now.nanoseconds < self._last_clock:
+            self.manager.clear()
+            self._delete_visuals()
+        self._last_clock = now.nanoseconds
         self.manager.update_staleness(now.nanoseconds * 1e-9)
         self._publish_map()
 
@@ -132,8 +146,15 @@ class MarkerMapNode(Node):
             output.markers.extend([axis, text])
         return output
 
+    def _delete_visuals(self) -> None:
+        marker = Marker()
+        marker.action = Marker.DELETEALL
+        marker.header.frame_id = self.map_frame
+        self.rviz_pub.publish(MarkerArray(markers=[marker]))
+
     def _reset(self, _request: Empty.Request, response: Empty.Response) -> Empty.Response:
         self.manager.clear()
+        self._delete_visuals()
         self._publish_map()
         self.get_logger().info("Marker map reset; tracking was not affected.")
         return response
