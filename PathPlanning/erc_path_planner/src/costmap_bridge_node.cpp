@@ -81,7 +81,7 @@ private:
 
       // Compute yaw from quaternion: atan2(2*(w*z + x*y), 1 - 2*(y*y + z*z))
       const double norm2 = orient.x*orient.x + orient.y*orient.y + orient.z*orient.z + orient.w*orient.w;
-      if (norm2 < 1e-12) { continue; }
+      if (!std::isfinite(norm2) || norm2 < 1e-12) { continue; }
       double siny_cosp = 2.0 * (orient.w * orient.z + orient.x * orient.y) / norm2;
       double cosy_cosp = 1.0 - 2.0 * (orient.y * orient.y + orient.z * orient.z) / norm2;
       double yaw = std::atan2(siny_cosp, cosy_cosp);
@@ -92,6 +92,20 @@ private:
 
       float half_x = static_cast<float>(size.x / 2.0);
       float half_y = static_cast<float>(size.y / 2.0);
+      if ((std::abs(orient.x) + std::abs(orient.y)) / std::sqrt(norm2) > 1e-3) {
+        // Memory may express a tilted box in odom. Include vertical extent
+        // in its conservative XY projection instead of silently dropping tilt.
+        const double hx = size.x / 2.0, hy = size.y / 2.0, hz = size.z / 2.0;
+        half_x = static_cast<float>(
+          std::abs(1 - 2*(orient.y*orient.y + orient.z*orient.z)/norm2)*hx +
+          std::abs(2*(orient.x*orient.y - orient.z*orient.w)/norm2)*hy +
+          std::abs(2*(orient.x*orient.z + orient.y*orient.w)/norm2)*hz);
+        half_y = static_cast<float>(
+          std::abs(2*(orient.x*orient.y + orient.z*orient.w)/norm2)*hx +
+          std::abs(1 - 2*(orient.x*orient.x + orient.z*orient.z)/norm2)*hy +
+          std::abs(2*(orient.y*orient.z - orient.x*orient.w)/norm2)*hz);
+        has_rotation = false;
+      }
 
       // Sample 3D bounding box footprint at 5cm grid resolution
       for (float dx = -half_x; dx <= half_x + epsilon && sampled_points.size() < max_points; dx += step)

@@ -1,5 +1,7 @@
 # Perception Subsystem: Problems, Status Audit & Comprehensive Solutions (`PerPro&Solu.md`)
 
+> Historical audit/proposals. Current implemented behavior, interfaces and remaining limits are in [INTEGRATION_REVIEW.md](INTEGRATION_REVIEW.md) and the [Linux runbook](RUNBOOK.md). In particular, PoseStamped alone is not RTAB-Map landmark ingestion, and ROI bounds are not observed free space.
+
 This document provides a complete technical audit of the **Perception Subsystem**, detailing:
 1. **Problems that have been SOLVED in the current codebase.**
 2. **Current ACTIVE PROBLEMS & GAPS that remain to be implemented.**

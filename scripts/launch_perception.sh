@@ -54,10 +54,10 @@ if [ -z "$MODE" ] && [ "$NODE" = "full" ]; then
     echo "========================================================================"
     echo "Select Operating Mode or Specific Pipeline:"
     echo "  [1] Production (Unified Terrain & ArUco, costmap bypass ON for Nav2)"
-    echo "  [2] Standalone Testing (Static map anchor ON, 2D costmap ON, RViz ON)"
+    echo "  [2] Standalone Testing (Synthetic inputs, real processing, 2D costmap and RViz)"
     echo "  [3] Terrain Geometry Only (Rock clustering & bounding boxes)"
     echo "  [4] ArUco Marker Detection & Tracking Only"
-    echo "  [5] ArUco Action Interface Node Only (/perception/aruco_pose publisher)"
+    echo "  [5] ArUco Action Interface Node Only (/marker_detection/targets)"
     read -p "Choose option [1-5] (default 1): " choice
     case "$choice" in
         2) MODE="test" ;;
@@ -79,12 +79,12 @@ case "$NODE" in
         ;;
     action)
         echo "🎯 Starting Marker Action Interface Node only..."
-        ros2 run marker_detection marker_action_interface --ros-args -p use_sim_time:=true
+        ros2 launch marker_detection marker_action_interface.launch.py use_sim_time:=true
         ;;
     full|*)
         if [ "$MODE" = "test" ]; then
             echo "👁️ Launching Perception in STANDALONE TESTING mode..."
-            ros2 launch terrain_geometry test_perception_standalone.launch.py use_sim_time:=true
+            ros2 launch perception_test_tools test_stack.launch.py pipeline:=all
         else
             echo "👁️ Launching Perception in PRODUCTION mode (Clean defaults for Nav2)..."
             ros2 launch terrain_geometry perception_system.launch.py \
