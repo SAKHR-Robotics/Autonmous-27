@@ -88,7 +88,7 @@ controller_server:
       CostCritic:
         enabled: true
         cost_power: 1
-        cost_weight: 3.81
+        cost_weight: 8.0
         critical_cost: 300.0
         collision_cost: 1000000.0
         near_goal_distance: 0.5
@@ -149,7 +149,7 @@ global_costmap:
   global_costmap:
     ros__parameters:
       use_sim_time: false
-      update_frequency: 1.0
+      update_frequency: 3.0
       publish_frequency: 1.0
       always_send_full_costmap: true
       global_frame: map
@@ -195,7 +195,7 @@ local_costmap:
   local_costmap:
     ros__parameters:
       use_sim_time: false
-      update_frequency: 5.0
+      update_frequency: 10.0
       publish_frequency: 2.0
       always_send_full_costmap: true
       global_frame: odom
