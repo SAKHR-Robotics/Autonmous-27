@@ -1,6 +1,6 @@
 # Perception — ROS 2 Jazzy / Linux
 
-**Start with the [current runbook](RUNBOOK.md).** It contains build steps,
+**Start with the [current runbook](RUNBOOK.md) or the [Linux Testing & Validation Guide](TESTING_GUIDE.md).** It contains build steps,
 independent modules, the master launch, testing inputs, Gazebo/real-camera
 workflows, RViz, expected outputs and troubleshooting.
 
