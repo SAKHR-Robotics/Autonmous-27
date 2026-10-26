@@ -98,22 +98,12 @@ class OccupancyGridGenerator:
             frame_id: TF frame the published grid is expressed in (e.g.
                 "base_link" for a robot-centric rolling window, or "odom"
                 for a frame that doesn't jump when the robot moves).
-            use_unknown_space: If False (default, preserves prior
-                behavior), the grid starts entirely FREE and only
-                obstacle footprints are marked OCCUPIED -- i.e. "no
-                detected obstacle" is treated as "known free". If True,
-                the grid instead starts entirely UNKNOWN (-1); only the
-                axis-aligned box given by `known_region_*` (the sensor's
-                actual coverage footprint -- typically the same box as
-                the ROI filter) is marked FREE before obstacles are
-                rasterized on top. This correctly distinguishes "sensed
-                and clear" from "never observed" -- important because
-                missing depth data can mean occlusion, out-of-range, or
-                an invalid return, not necessarily clear terrain.
+            use_unknown_space: If True, start UNKNOWN and mark only supplied
+                observed_ground returns FREE. Missing depth/occlusion is not free.
+                False explicitly selects the legacy fully-FREE initialization.
             known_region_min_x, known_region_max_x, known_region_min_y,
-                known_region_max_y: Bounds (meters, in `frame_id`) of the
-                region considered "actively sensed" this frame. Required
-                if `use_unknown_space` is True; ignored otherwise.
+                known_region_max_y: Legacy bounds accepted/validated for API
+                compatibility, not evidence that the rectangle was observed.
             logger: Optional object exposing .warn()/.error()/.debug()
                 (e.g. an rclpy node logger). If None, issues are silently
                 tolerated (useful for unit tests).
@@ -238,7 +228,9 @@ class OccupancyGridGenerator:
             obstacles: Sequence of obstacle objects, each expected to expose
                 .centroid (geometry_msgs/Point-like, with .x/.y), .width,
                 .height, .depth (all floats). An empty sequence is valid
-                and produces an all-free grid.
+                and produces unknown or observed-ground-free cells according to policy.
+            observed_ground: Optional finite XYZ ground returns establishing free cells.
+                Missing observations never establish free space in unknown mode.
             header: The std_msgs/Header from the incoming ObstacleArray.
                 Its stamp is preserved; frame_id is forced to
                 `self.frame_id`.
@@ -255,9 +247,8 @@ class OccupancyGridGenerator:
         if self.use_unknown_space:
             # Grid starts entirely UNKNOWN: "no detected obstacle" no
             # longer silently means "free" everywhere -- only the
-            # actively-sensed region (known_region, typically the ROI
-            # filter's footprint) is stamped FREE below, before obstacle
-            # footprints are rasterized on top of it.
+            # actual ground-return cells establish free space below, before
+            # obstacle footprints are rasterized on top of them.
             grid.fill(self.UNKNOWN)
             # A crop rectangle is not a visibility measurement. Only ground
             # returns observed in this frame establish free cells.

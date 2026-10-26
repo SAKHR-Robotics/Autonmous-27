@@ -4,6 +4,35 @@ Single-node ROS 2 Jazzy terrain/obstacle perception pipeline for a rover
 carrying an Intel RealSense D435, from raw `PointCloud2` to a costmap ready
 for a planner.
 
+## Current Jazzy launch and validation
+
+```bash
+ros2 launch terrain_geometry terrain.launch.py use_sim_time:=true enable_costmap:=true
+ros2 launch terrain_geometry rviz.launch.py use_sim_time:=true
+```
+
+The master remains `ros2 launch terrain_geometry perception_system.launch.py`.
+It starts real processing only; its independent switches and testing prerequisites
+are listed in the [runbook](../RUNBOOK.md). Runtime stubs and artificial map
+anchors are installed only from top-level `testing/`.
+
+Changes: unknown space is the default; only valid observed ground establishes
+free cells. Invalid or stale processing produces diagnostics and an unknown
+optional costmap. The default grid now covers the forward ROI. TF is resolved at
+observation time; `cache_static_transform:=true` is only for verified rigid mounts.
+Some parameters require restarting the node; do not assume every runtime parameter
+update rebuilds the pipeline.
+
+Optional `obstacle_memory.launch.py` uses odom-frame observations. Its separate
+`params_file` selects TTL and optional observed-ground clearing. The terrain
+publisher must have `publish_to_obstacles_only:=false` when memory owns that topic.
+The master enforces ownership automatically. Memory and surface-risk processing
+are off until explicitly enabled and locally validated.
+
+`enable_terrain_risk:=true` requires positive measured `max_slope_deg`,
+`max_step_m`, `max_roughness_m` and TF from a gravity-aligned `gravity_frame`.
+This is a geometric observed-surface check, not guaranteed negative-obstacle detection.
+
 ## 1. Pipeline architecture
 
 ```

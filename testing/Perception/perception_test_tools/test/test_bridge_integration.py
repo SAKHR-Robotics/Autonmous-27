@@ -35,6 +35,15 @@ def test_bridge_empty_invalid_and_bounded_geometry():
             cloud=observe(message)
             assert 0<cloud.width<=100
             assert cloud.header.frame_id=='test_frame'
+            box.bbox.center.orientation.w=1e308
+            message.detections=[box];message.header.stamp.sec=104
+            assert observe(message).width==0
+            box.bbox.center.orientation.w=box.bbox.center.orientation.x=2**-.5
+            box.bbox.size.x=box.bbox.size.y=.2;box.bbox.size.z=2.
+            message.detections=[box];message.header.stamp.sec=105
+            from sensor_msgs_py import point_cloud2
+            cloud=observe(message)
+            assert max(float(row[1]) for row in point_cloud2.read_points(cloud,field_names=('x','y','z'))) > .8
         finally:
             if process.poll() is None:os.killpg(process.pid,signal.SIGINT)
             process.wait(timeout=10);node.destroy_node();rclpy.shutdown()

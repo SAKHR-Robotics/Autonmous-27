@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 import pytest
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import get_package_share_directory,PackageNotFoundError
 from launch import Action,LaunchDescription,LaunchService
 from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -50,14 +50,16 @@ def test_clock_topic_and_exclusive_memory_ownership(expand):
     assert terrain['use_sim_time'] is False
     assert terrain['publish_to_obstacles_only'] is False
     assert 'obstacle_memory' in nodes
+    assert Path(nodes['obstacle_memory'][1][0]).name=='obstacle_memory.yaml'
     detector={k:v for entry in nodes['marker_detection_node'][1] if isinstance(entry,dict) for k,v in entry.items()}
     assert detector['rgb_topic']=='/test/rgb'
 
 
 def test_parameter_files_do_not_leak_between_stages(expand):
-    nodes=expand({'launch_marker_mapping':'true'})
+    nodes=expand({'launch_marker_mapping':'true','launch_landmark_adapter':'true'})
     for executable,stem in [('marker_detection_node','marker_detection'),('marker_tf_broadcaster','marker_tf'),
-        ('marker_map_node','marker_mapping'),('marker_action_interface_node','marker_action_interface')]:
+        ('marker_map_node','marker_mapping'),('marker_action_interface_node','marker_action_interface'),
+        ('marker_landmark_adapter','landmark_adapter')]:
         assert Path(nodes[executable][1][0]).name==stem+'.yaml'
 
 
@@ -69,6 +71,10 @@ def test_master_uses_combined_rviz_and_standalone_frame(expand):
 
 
 def test_testing_launch_selects_isolated_sensor_topics(expand):
+    try:
+        get_package_share_directory('perception_test_tools')
+    except PackageNotFoundError:
+        pytest.skip('Optional test-only package was not built')
     nodes=expand({'pipeline':'terrain','launch_rviz':'false'},'perception_test_tools','test_stack.launch.py')
     assert set(nodes)=={'sensor_inputs','terrain_node'}
     terrain={k:v for entry in nodes['terrain_node'][1] if isinstance(entry,dict) for k,v in entry.items()}

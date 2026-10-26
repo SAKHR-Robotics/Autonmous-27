@@ -1,5 +1,25 @@
 # 🚀 rover_slam: ERC Mars Rover SLAM & State Estimation Package
 
+## Perception integration update
+
+The perception landmark adapter now uses RTAB-Map's native landmark messages.
+`rtabmap.launch.py` subscribes to `/perception/landmark_detections` (real arrays)
+and `/perception/landmark_detection` (explicit test singleton). The old generic
+`landmark -> PoseStamped` remap is not a supported RTAB-Map contract.
+Database deletion is off by default; `delete_db_on_start:=true` explicitly enables it.
+
+Costmap obstacle marking consumes `/bridge/pointcloud` from the real planner
+bridge. The planner normally owns that bridge; for SLAM-only operation start
+`ros2 launch erc_path_planner obstacle_bridge.launch.py use_sim_time:=true`.
+Do not start a duplicate bridge. Real depth is a separate clearing source;
+update its topic in the costmap YAML for the active camera.
+
+Runtime mock publishers and standalone mock orchestration moved to
+`testing/SLAM/slam_test_tools`. Build/run them explicitly in an isolated domain;
+production SLAM does not install or start them. This change does not repair or
+validate the separate SLAM wheel-odometry/slip algorithms.
+
+
 This ROS 2 package implements **Option B Architecture** for the ERC Autonomous Mars Rover:
 * **Local State Estimator:** `robot_localization` EKF node publishing smooth `odom -> base_link` pose at 100 Hz.
 * **Pre-Filtering:** RealSense D435 post-processing depth filters + `heuristic_slip_checker.py` dynamically scaling wheel covariance during sand slippage.

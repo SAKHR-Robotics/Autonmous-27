@@ -1,28 +1,9 @@
-"""TF2 transformation helper for sensor_msgs/PointCloud2 messages.
+"""Timestamped TF2 transformations for sensor point clouds.
 
-This module isolates all TF2-related logic (buffer, listener, lookup,
-and the actual cloud transformation) behind a single class,
-`CloudFrameTransformer`, so that the ROS 2 node itself stays thin and
-easy to read.
-
-Only the coordinate-transformation responsibility lives here. No
-filtering, clustering, ground removal, or navigation logic is performed.
-
-PERFORMANCE NOTES (RealSense D435, rigidly mounted sensor):
-    1. Static Transform Caching - the TF lookup is only ever performed
-       until it succeeds *once*. After that, the resulting 4x4 NumPy
-       matrix is cached on `self.transform_matrix` and reused for every
-       subsequent point cloud, completely skipping
-       `tf_buffer.lookup_transform()` in steady-state operation.
-    2. NumPy Vectorization - point transformation is a single batched
-       `P_out = P_in @ R.T + t` matrix multiply. There is no Python
-       loop over individual points.
-    3. Memory Efficiency - the incoming PointCloud2 byte buffer is
-       viewed (not copied) via `np.frombuffer` for reading, and only
-       one copy of the raw bytes is made to build the outgoing
-       message (unavoidable, since a new message must own its data).
-       No extra per-field temporary arrays or full-precision (float64)
-       upcasts are created.
+Dynamic lookup is the default. Set cache_static_transform explicitly only for
+verified rigid source/target pairs. Camera-to-odom/map transforms must resolve
+at each observation timestamp. NumPy vectorization and dtype caching remain
+independent of transform caching.
 """
 
 from __future__ import annotations
@@ -271,18 +252,7 @@ class CloudFrameTransformer:
         source_frame: str,
         stamp: Time,
     ) -> np.ndarray | None:
-        """Returns the cached static transform, looking it up only once.
-
-        Fast path (steady-state, every frame after the first): returns
-        the already-cached 4x4 matrix with no TF2 call at all.
-
-        Slow path (only until the first success): performs a normal
-        `lookup_transform`, which itself already retries/waits up to
-        `self.timeout`; if TF isn't published yet, this method simply
-        returns None and the *next* incoming point cloud will try again,
-        naturally implementing "retry until dynamic TF becomes
-        available" without blocking the executor.
-        """
+        """Resolve observation-time TF, reusing matrices only in explicit static mode."""
         if (
             self.cache_static_transform
             and self.transform_matrix is not None
@@ -300,8 +270,7 @@ class CloudFrameTransformer:
         self._cached_target_frame = target_frame
         self._logger.debug(
             f"Resolved transform '{source_frame}' -> '{target_frame}'. "
-            "Future point clouds will reuse this matrix directly, without "
-            "further tf_buffer.lookup_transform() calls."
+            f"static cache enabled={self.cache_static_transform}."
         )
         return self.transform_matrix
 

@@ -1,5 +1,20 @@
 # ERC Path Planner (`erc_path_planner`)
 
+## Perception bridge update
+
+The existing box-footprint bridge still consumes Detection3DArray on
+`/perception/obstacles_only` and publishes PointCloud2 on `/bridge/pointcloud`.
+It validates finite geometry/orientation, limits sampling and publishes valid
+empty updates. Parameters: `input_topic`, `output_topic`, `sample_spacing` and
+`max_points`. The planner already starts this bridge; the separate
+`obstacle_bridge.launch.py` is for consumers running without planner bringup.
+
+Bounding-box samples are marking-only. A separate actual camera cloud supplies
+clearing rays; adapt its topic and validate its sensor origin before operation.
+Synthetic input feeds and output mocks belong only in top-level `testing/`.
+See the [perception runbook](../../Perception/RUNBOOK.md).
+
+
 ROS 2 Jazzy navigation and path planning package for the 4-wheel skid-steer autonomous rover in the European Rover Challenge (ERC) Mars Yard simulation.
 
 ---

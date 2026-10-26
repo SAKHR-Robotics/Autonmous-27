@@ -7,6 +7,30 @@ split confidence scores, a measurement covariance, and explicit quality flags
 so a navigation/mission layer can make its own risk decisions instead of
 trusting a single opaque number.
 
+## Current Jazzy launch and validation
+
+```bash
+ros2 launch marker_detection marker_detection.launch.py use_sim_time:=true
+ros2 launch marker_detection rviz.launch.py use_sim_time:=true
+```
+
+TF, global mapping, action targets and the optional landmark adapter have separate
+launches. The branch launch has independent stage switches and scoped parameter
+files. The master is `terrain_geometry perception_system.launch.py`; it leaves
+global mapping and landmarks off unless requested. See the
+[runbook](../RUNBOOK.md) for complete camera, Gazebo, test-input and RViz commands.
+
+Marker mapping now composes map<-camera with the tracked observation at its own
+timestamp, avoiding the separate broadcaster arrival race. Reset removes prior
+RViz map markers. The existing action interface and Jazzy calibration/quality
+improvements are preserved. `landmark_adapter.launch.py` publishes native
+RTAB-Map arrays with positive IDs and quality/freshness gates; configured angular
+variance is not a measured orientation covariance.
+
+Standalone RViz defaults to `base_link`. Global map displays are optional and need
+actual localization. Synthetic inputs and artificial localization fixtures are
+only under top-level `testing/`; they are not part of production marker startup.
+
 ## Architecture / data flow
 
 ```
