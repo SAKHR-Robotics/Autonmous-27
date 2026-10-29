@@ -4,6 +4,7 @@ from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 def generate_launch_description():
     standalone = LaunchConfiguration('standalone')
@@ -30,6 +31,7 @@ def generate_launch_description():
         declare_publish_optical_tf,
 
         Node(package='tf2_ros', executable='static_transform_publisher',
+            parameters=[{'use_sim_time':ParameterValue(LaunchConfiguration('use_sim_time'),value_type=bool)}],
             name='static_tf_camera_optical_to_gz',
             arguments=['--frame-id','camera_depth_optical_frame',
                        '--child-frame-id','my_robot/camera_link/camera'],
@@ -39,6 +41,7 @@ def generate_launch_description():
         Node(
             package='tf2_ros',
             executable='static_transform_publisher',
+            parameters=[{'use_sim_time':ParameterValue(LaunchConfiguration('use_sim_time'),value_type=bool)}],
             name='static_tf_base_to_camera',
             arguments=[
                 '--x', '0.2', '--y', '0.0', '--z', '0.3',
@@ -53,6 +56,7 @@ def generate_launch_description():
         Node(
             package='tf2_ros',
             executable='static_transform_publisher',
+            parameters=[{'use_sim_time':ParameterValue(LaunchConfiguration('use_sim_time'),value_type=bool)}],
             name='static_tf_base_to_imu',
             arguments=[
                 '--x', '0.0', '--y', '0.0', '--z', '0.1',
@@ -67,6 +71,7 @@ def generate_launch_description():
         Node(
             package='tf2_ros',
             executable='static_transform_publisher',
+            parameters=[{'use_sim_time':ParameterValue(LaunchConfiguration('use_sim_time'),value_type=bool)}],
             name='static_tf_camera_to_optical',
             arguments=[
                 '--x', '0.0', '--y', '0.0', '--z', '0.0',
@@ -81,6 +86,7 @@ def generate_launch_description():
         Node(
             package='tf2_ros',
             executable='static_transform_publisher',
+            parameters=[{'use_sim_time':ParameterValue(LaunchConfiguration('use_sim_time'),value_type=bool)}],
             name='static_tf_camera_to_color_optical',
             arguments=[
                 '--x', '0.0', '--y', '0.0', '--z', '0.0',
