@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 costmap_test_stub.py
-Publishes simulated rock obstacle point clouds to /perception/obstacles_only
+Publishes simulated rock obstacle point clouds to /bridge/pointcloud
 to verify nav2_costmap_2d inflation output independently without needing Perception module running.
 
 Developer Track: Person 2 / Track B (Task 5B.1)
@@ -36,7 +36,7 @@ class CostmapTestStubNode(Node):
         self.timer = self.create_timer(1.0 / self.rate, self.timer_callback)
 
         self.get_logger().info(
-            f"Costmap Test Stub Node Initialized (Publishing synthetic rock obstacles to /perception/obstacles_only and markers to /terrain/obstacle_markers at {self.rate} Hz)."
+            f"Costmap Test Stub Node Initialized (Publishing synthetic rock obstacles to /bridge/pointcloud and markers to /terrain/obstacle_markers at {self.rate} Hz)."
         )
 
     def create_synthetic_rock_cloud(self):
