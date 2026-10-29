@@ -29,7 +29,7 @@ class WheelOdometry:
         if set(counts) != set(self.names) or not math.isfinite(stamp):
             self.reason = 'incomplete or invalid wheel sample'
             return None
-        if not all(math.isfinite(c) for c in counts.values()):
+        if not all(isinstance(c, (int,float)) and math.isfinite(c) for c in counts.values()):
             self.reason = 'non-finite wheel sample'
             return None
         if self.stamp is None:
