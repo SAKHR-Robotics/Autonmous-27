@@ -2,7 +2,18 @@
 rtabmap:
   ros__parameters:
     frame_id: base_link
-    odom_frame_id: odom
+    # Empty selects nav_msgs/Odometry rather than TF, preserving EKF covariance.
+    odom_frame_id: ""
+    subscribe_odom: true
+    subscribe_depth: true
+    subscribe_rgb: true
+    approx_sync: true
+    approx_sync_max_interval: 0.05
+    topic_queue_size: 10
+    sync_queue_size: 20
+    qos_image: 2             # Best effort: compatible with sensor-data publishers
+    qos_camera_info: 2
+    qos_odom: 1              # Reliable EKF output
     map_frame_id: map
     publish_tf: true
     database_path: "~/.ros/rtabmap.db"
@@ -15,6 +26,6 @@ rtabmap:
     Grid/MaxObstacleHeight: "2.0"
     Grid/MaxGroundHeight: "0.1"
     Grid/RayTracing: "true"
-    Optimizer/Strategy: "1"       # GTSAM Graph Optimizer
+    Optimizer/Strategy: "1"       # g2o; 2 selects GTSAM if built with that backend
     Reg/Force3DoF: "true"         # Force 3-DOF SLAM (x, y, yaw) for ground rover (prevents pitch/roll tilt)
     Optimizer/Slam2D: "true"      # Optimize graph in 2D plane

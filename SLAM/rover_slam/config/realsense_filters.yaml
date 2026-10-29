@@ -1,33 +1,22 @@
-# RealSense D435 / D435i Depth & IMU Post-Processing Filter Parameters
-# Optimized for NVIDIA Jetson Orin Nano & RTAB-Map Visual SLAM Pipeline
-
+# ROS 2 RealSense wrapper settings; verify supported profiles on your device.
+# One physical driver serves both SLAM and Perception. External /imu/data is
+# independent; D435 has no IMU. Do not silently change the fusion IMU source.
 /**:
   ros__parameters:
-    # Sensor Streams Configuration
+    camera_name: camera
     enable_depth: true
     enable_color: true
     enable_sync: true
     align_depth.enable: true
-
-    # Intel RealSense D435i Internal IMU (BMI055 Accel + Gyro 6-DOF)
-    enable_accel: true
-    enable_gyro: true
-    unite_imu_method: 2  # 2 = linear interpolation into fused /camera/imu topic
-
-    # Resolution & Frame Rate (424x240 @ 30 FPS minimizes USB bandwidth & compute load on Jetson Orin Nano)
-    depth_module:
-      profile: "424x240x30"
-    rgb_camera:
-      profile: "424x240x30"
-
-    # Post-Processing Depth Filters Pipeline
-    # 1. decimation: downsamples depth grid for high throughput
-    # 2. spatial: 2D edge-preserving smoothing filter
-    # 3. temporal: frame-to-frame persistence filter
-    # 4. hole_filling: interpolates missing depth pixels
-    filters: "decimation,spatial,temporal,hole_filling"
-
-    # Max depth clipping range (4.0m) to reject noisy distant terrain
+    enable_accel: false
+    enable_gyro: false
+    depth_module.depth_profile: "640x480x30"
+    rgb_camera.color_profile: "640x480x30"
+    pointcloud.enable: true
+    pointcloud.ordered_pc: false
+    spatial_filter.enable: true
+    temporal_filter.enable: true
+    decimation_filter.enable: false
+    # Interpolated depth is unsuitable as direct evidence of free space.
+    hole_filling_filter.enable: false
     clip_distance: 4.0
-
-

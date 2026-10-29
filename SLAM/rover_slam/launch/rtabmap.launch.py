@@ -1,69 +1,36 @@
+"""RGB-D mapping with covariance-bearing local odometry and native landmarks."""
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
-from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.actions import Node
 
+
+def setup(context):
+    def value(key): return LaunchConfiguration(key).perform(context)
+    path = os.path.expanduser(value('database_path'))
+    if not os.path.isabs(path):
+        raise ValueError('database_path must be absolute (or begin with ~/); use a distinct path per test run')
+    return [Node(package='rtabmap_slam', executable='rtabmap', name='rtabmap', output='screen',
+        arguments=['-d'] if value('delete_db_on_start')=='true' else [],
+        parameters=[value('params_file'), {'use_sim_time':value('use_sim_time')=='true',
+            'database_path':path, 'odom_frame_id':'', 'subscribe_odom':True}],
+        remappings=[('odom',value('odom_topic')), ('rgb/image',value('rgb_topic')),
+            ('depth/image',value('depth_topic')), ('rgb/camera_info',value('camera_info_topic')),
+            ('landmark_detections',value('landmarks_topic')),
+            ('landmark_detection',value('landmark_topic')),
+            # RTAB-Map versions use map or grid_map for their occupancy output.
+            ('grid_map','/map'), ('map','/map')])]
+
+
 def generate_launch_description():
-    pkg_share = get_package_share_directory('rover_slam')
-    rtabmap_config_path = os.path.join(pkg_share, 'config', 'rtabmap.yaml')
-
-    use_sim_time = LaunchConfiguration('use_sim_time')
-    rgb_topic = LaunchConfiguration('rgb_topic')
-    depth_topic = LaunchConfiguration('depth_topic')
-    camera_info_topic = LaunchConfiguration('camera_info_topic')
-
-    declare_use_sim_time = DeclareLaunchArgument(
-        'use_sim_time',
-        default_value='false',
-        description='Use simulation clock if true'
-    )
-    declare_rgb_topic = DeclareLaunchArgument(
-        'rgb_topic',
-        default_value='/camera/image_raw',
-        description='RGB Image topic name'
-    )
-    declare_depth_topic = DeclareLaunchArgument(
-        'depth_topic',
-        default_value='/camera/depth/image_raw',
-        description='Depth Image topic name'
-    )
-    declare_camera_info_topic = DeclareLaunchArgument(
-        'camera_info_topic',
-        default_value='/camera/camera_info',
-        description='Camera Info topic name'
-    )
-    declare_delete_db_on_start = DeclareLaunchArgument(
-        'delete_db_on_start',
-        default_value='false',
-        description='Delete previous database on startup if true'
-    )
-
-    return LaunchDescription([
-        declare_use_sim_time,
-        declare_delete_db_on_start,
-        declare_rgb_topic,
-        declare_depth_topic,
-        declare_camera_info_topic,
-        OpaqueFunction(function=lambda context: [Node(
-            package='rtabmap_slam',
-            executable='rtabmap',
-            name='rtabmap',
-            output='screen',
-            arguments=['-d'] if LaunchConfiguration('delete_db_on_start').perform(context).lower() == 'true' else [],
-            parameters=[
-                rtabmap_config_path,
-                {'use_sim_time': use_sim_time}
-            ],
-            remappings=[
-                ('odom', '/odometry/filtered'),
-                ('rgb/image', rgb_topic),
-                ('depth/image', depth_topic),
-                ('rgb/camera_info', camera_info_topic),
-                ('landmark_detections', '/perception/landmark_detections'),
-                ('landmark_detection', '/perception/landmark_detection')
-            ]
-        )])
-    ])
+    share=get_package_share_directory('rover_slam')
+    defaults={'use_sim_time':'false','delete_db_on_start':'false',
+        'params_file':os.path.join(share,'config','rtabmap.yaml'), 'database_path':'~/.ros/rtabmap.db',
+        'odom_topic':'/odometry/filtered','rgb_topic':'/camera/image_raw',
+        'depth_topic':'/camera/depth/image_raw','camera_info_topic':'/camera/camera_info',
+        'landmarks_topic':'/perception/landmark_detections','landmark_topic':'/perception/landmark_detection'}
+    return LaunchDescription([DeclareLaunchArgument(k,default_value=v,
+        choices=['true','false'] if k in ('use_sim_time','delete_db_on_start') else None)
+        for k,v in defaults.items()]+[OpaqueFunction(function=setup)])

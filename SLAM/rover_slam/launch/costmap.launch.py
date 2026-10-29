@@ -5,6 +5,7 @@ from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 def generate_launch_description():
     pkg_share = get_package_share_directory('rover_slam')
@@ -39,8 +40,10 @@ def generate_launch_description():
         name='costmap',
         output='screen',
         parameters=[
-            costmap_config_path,
-            {'use_sim_time': use_sim_time}
+            LaunchConfiguration('params_file'),
+            {'use_sim_time': ParameterValue(use_sim_time, value_type=bool),
+             'obstacle_layer.rock_obstacles.topic': LaunchConfiguration('obstacle_topic'),
+             'obstacle_layer.clearing_depth.topic': LaunchConfiguration('clearing_cloud_topic')}
         ],
         remappings=[
             ('costmap', '/global_costmap/costmap'),
@@ -57,14 +60,17 @@ def generate_launch_description():
         name='costmap_lifecycle_manager',
         output='screen',
         parameters=[
-            {'use_sim_time': use_sim_time},
-            {'autostart': autostart},
+            {'use_sim_time': ParameterValue(use_sim_time, value_type=bool)},
+            {'autostart': ParameterValue(autostart, value_type=bool)},
             {'bond_timeout': 0.0},
             {'node_names': ['costmap']}
         ]
     )
 
     return LaunchDescription([
+        DeclareLaunchArgument('params_file', default_value=costmap_config_path),
+        DeclareLaunchArgument('obstacle_topic', default_value='/bridge/pointcloud'),
+        DeclareLaunchArgument('clearing_cloud_topic', default_value='/camera/depth/color/points'),
         declare_use_sim_time,
         declare_autostart,
         declare_standalone,
