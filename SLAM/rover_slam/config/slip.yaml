@@ -1,0 +1,14 @@
+heuristic_slip_checker:
+  ros__parameters:
+    imu_timeout_sec: 0.2
+    odom_timeout_sec: 0.5
+    slip_flag_timeout_sec: 0.5
+    slip_angular_threshold: 0.35
+    slip_accel_threshold: 0.18
+    covariance_inflation_factor: 100.0
+    nominal_linear_covariance: 0.02
+    nominal_angular_covariance: 0.05
+    slip_hold_time: 0.4
+    # Standard sensor_msgs/Imu specific force includes gravity. Set false only
+    # for a verified gravity-free IMU stream.
+    imu_includes_gravity: true

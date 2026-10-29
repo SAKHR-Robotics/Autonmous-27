@@ -1,152 +1,64 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
-from launch.conditions import IfCondition
+from launch.actions import DeclareLaunchArgument, GroupAction, IncludeLaunchDescription, OpaqueFunction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
+
+
+# Production orchestration: test fixtures and artificial localization live in testing/.
+def setup(context):
+    def value(key): return LaunchConfiguration(key).perform(context)
+    share = get_package_share_directory('rover_slam')
+    actions = []
+    def include(filename, keys, extra=None):
+        arguments = {'use_sim_time': value('use_sim_time'), **{k: value(k) for k in keys}}
+        arguments.update(extra or {})
+        return GroupAction(scoped=True, actions=[IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(os.path.join(share, 'launch', filename)),
+            launch_arguments=arguments.items())])
+    if value('launch_ekf') == 'true':
+        actions.append(include('ekf.launch.py', ('launch_encoder', 'launch_slip', 'odom_topic',
+            'imu_topic', 'encoder_input_mode', 'encoder_params_file', 'slip_params_file', 'ekf_params_file')))
+    elif value('launch_encoder') == 'true':
+        raise ValueError('Master launch_encoder requires launch_ekf; use encoder.launch.py independently')
+    if value('launch_rtabmap') == 'true':
+        actions.append(include('rtabmap.launch.py', ('rgb_topic', 'depth_topic', 'camera_info_topic',
+            'database_path', 'delete_db_on_start', 'landmarks_topic'),
+            {'params_file': value('rtabmap_params_file'), 'odom_topic': '/odometry/filtered'}))
+    if value('launch_static_tf') == 'true':
+        actions.append(include('static_transforms.launch.py', ('publish_optical_tf', 'publish_gazebo_optical_tf'),
+                               {'standalone': value('standalone_tf')}))
+    elif value('publish_gazebo_optical_tf') == 'true' or value('publish_optical_tf') == 'true' or value('standalone_tf') == 'true':
+        raise ValueError('Static TF switches require launch_static_tf:=true')
+    if value('launch_camera') == 'true':
+        actions.append(include('vision_helper.launch.py', (), {'params_file': value('camera_params_file')}))
+    if value('launch_costmap') == 'true':
+        actions.append(include('costmap.launch.py', ('autostart', 'obstacle_topic', 'clearing_cloud_topic'),
+                               {'params_file': value('costmap_params_file')}))
+    if value('launch_rviz') == 'true':
+        actions.append(include('rviz.launch.py', ('rviz_view',), {'rviz_config': value('rviz_config')}))
+    return actions
+
 
 def generate_launch_description():
-    pkg_share = get_package_share_directory('rover_slam')
-
-    use_sim_time = LaunchConfiguration('use_sim_time')
-    autostart = LaunchConfiguration('autostart')
-    launch_camera = LaunchConfiguration('launch_camera')
-    launch_static_tf = LaunchConfiguration('launch_static_tf')
-    standalone_tf = LaunchConfiguration('standalone_tf')
-    launch_costmap = LaunchConfiguration('launch_costmap')
-    launch_rviz = LaunchConfiguration('launch_rviz')
-    rgb_topic = LaunchConfiguration('rgb_topic')
-    depth_topic = LaunchConfiguration('depth_topic')
-    camera_info_topic = LaunchConfiguration('camera_info_topic')
-    odom_topic = LaunchConfiguration('odom_topic')
-
-    declare_use_sim_time = DeclareLaunchArgument(
-        'use_sim_time',
-        default_value='false',
-        description='Use simulation (Gazebo) clock if true'
-    )
-    declare_autostart = DeclareLaunchArgument(
-        'autostart',
-        default_value='true',
-        description='Automatically startup nav2 lifecycle nodes'
-    )
-    declare_launch_camera = DeclareLaunchArgument(
-        'launch_camera',
-        default_value='false',
-        description='Whether to launch the physical RealSense camera driver (set true for physical robot, false for simulation/rosbag)'
-    )
-    declare_launch_static_tf = DeclareLaunchArgument(
-        'launch_static_tf',
-        default_value='true',
-        description='Whether to include static_transforms.launch.py'
-    )
-    declare_standalone_tf = DeclareLaunchArgument(
-        'standalone_tf',
-        default_value='false',
-        description='If true, publish base_link sensor TFs in static_transforms (set true only if robot_state_publisher is NOT active)'
-    )
-    declare_launch_costmap = DeclareLaunchArgument(
-        'launch_costmap',
-        default_value='false',
-        description='Whether to launch standalone Nav2 costmap (set false when running with full nav2/erc_path_planner)'
-    )
-
-
-    declare_launch_rviz = DeclareLaunchArgument(
-        'launch_rviz',
-        default_value='false',
-        description='Whether to launch RViz2 visualization dashboard'
-    )
-    declare_rgb_topic = DeclareLaunchArgument(
-        'rgb_topic',
-        default_value='/camera/image_raw',
-        description='RGB Image topic name'
-    )
-    declare_depth_topic = DeclareLaunchArgument(
-        'depth_topic',
-        default_value='/camera/depth/image_raw',
-        description='Depth Image topic name'
-    )
-    declare_camera_info_topic = DeclareLaunchArgument(
-        'camera_info_topic',
-        default_value='/camera/camera_info',
-        description='Camera Info topic name'
-    )
-    declare_odom_topic = DeclareLaunchArgument(
-        'odom_topic',
-        default_value='/odom',
-        description='Raw odometry topic (e.g. /odom for Gazebo, /wheel/odom_raw for physical robot)'
-    )
-
-    static_tf_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(os.path.join(pkg_share, 'launch', 'static_transforms.launch.py')),
-        launch_arguments={
-            'standalone': standalone_tf
-        }.items(),
-        condition=IfCondition(launch_static_tf)
-    )
-    ekf_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(os.path.join(pkg_share, 'launch', 'ekf.launch.py')),
-        launch_arguments={
-            'use_sim_time': use_sim_time,
-            'odom_topic': odom_topic
-        }.items()
-    )
-    vision_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(os.path.join(pkg_share, 'launch', 'vision_helper.launch.py')),
-        launch_arguments={'use_sim_time': use_sim_time}.items(),
-        condition=IfCondition(launch_camera)
-    )
-    rtabmap_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(os.path.join(pkg_share, 'launch', 'rtabmap.launch.py')),
-        launch_arguments={
-            'use_sim_time': use_sim_time,
-            'rgb_topic': rgb_topic,
-            'depth_topic': depth_topic,
-            'camera_info_topic': camera_info_topic
-        }.items()
-    )
-    costmap_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(os.path.join(pkg_share, 'launch', 'costmap.launch.py')),
-        launch_arguments={
-            'use_sim_time': use_sim_time,
-            'autostart': autostart,
-            'standalone': 'false'
-        }.items(),
-        condition=IfCondition(launch_costmap)
-    )
-
-
-    rviz_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(os.path.join(pkg_share, 'launch', 'rviz.launch.py')),
-        launch_arguments={'use_sim_time': use_sim_time}.items(),
-        condition=IfCondition(launch_rviz)
-    )
-
-    delayed_costmap_actions = TimerAction(
-        period=3.0,
-        actions=[costmap_launch, costmap_stub_node]
-    )
-
-    return LaunchDescription([
-        declare_use_sim_time,
-        declare_autostart,
-        declare_launch_camera,
-        declare_launch_static_tf,
-        declare_standalone_tf,
-        declare_launch_costmap,
-        declare_launch_rviz,
-        declare_rgb_topic,
-        declare_depth_topic,
-        declare_camera_info_topic,
-        declare_odom_topic,
-        static_tf_launch,
-        ekf_launch,
-        vision_launch,
-        rtabmap_launch,
-        delayed_costmap_actions,
-        rviz_launch
-    ])
-
+    share = get_package_share_directory('rover_slam')
+    defaults = {'use_sim_time': 'false', 'launch_ekf': 'true', 'launch_rtabmap': 'true',
+        'launch_encoder': 'false', 'launch_slip': 'true', 'launch_camera': 'false',
+        'launch_static_tf': 'false', 'standalone_tf': 'false', 'publish_optical_tf': 'false',
+        'publish_gazebo_optical_tf': 'false', 'launch_costmap': 'false', 'launch_rviz': 'false',
+        'autostart': 'true', 'odom_topic': '/odom', 'imu_topic': '/imu/data',
+        'encoder_input_mode': 'joint_states', 'rgb_topic': '/camera/image_raw',
+        'depth_topic': '/camera/depth/image_raw', 'camera_info_topic': '/camera/camera_info',
+        'landmarks_topic': '/perception/landmark_detections', 'database_path': '~/.ros/rtabmap.db',
+        'delete_db_on_start': 'false', 'obstacle_topic': '/bridge/pointcloud',
+        'clearing_cloud_topic': '/camera/depth/color/points', 'rviz_view': 'global', 'rviz_config': ''}
+    for name, stem in [('encoder','encoder'), ('slip','slip'), ('ekf','ekf'), ('rtabmap','rtabmap'),
+                       ('camera','realsense_filters'), ('costmap','costmap_params')]:
+        defaults[name+'_params_file'] = os.path.join(share, 'config', stem+'.yaml')
+    return LaunchDescription([DeclareLaunchArgument(k, default_value=v,
+        choices=['true', 'false'] if k.startswith(('launch_', 'publish_')) or k in
+        ('use_sim_time','standalone_tf','autostart','delete_db_on_start') else None)
+        for k,v in defaults.items()] + [OpaqueFunction(function=setup)])

@@ -1,0 +1,10 @@
+encoder_ticks_to_odom:
+  ros__parameters:
+    # Measure on hardware; these dimensions match the current simulation.
+    ticks_per_revolution: 1024
+    wheel_radius: 0.06
+    track_width: 0.49
+    input_timeout_sec: 0.5
+    max_wheel_speed_mps: 2.0
+    single_wheel_slip_threshold: 0.15
+    publish_tf: false
