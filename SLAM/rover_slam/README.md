@@ -1,247 +1,263 @@
-# 🚀 rover_slam: ERC Mars Rover SLAM & State Estimation Package
+# rover_slam running guide
 
-## Perception integration update
+Target: **Linux, Ubuntu 24.04, ROS 2 Jazzy**. Run commands from the workspace
+root (`Autonmous-27`), not from this package directory. Source ROS and the
+workspace overlay in every terminal. See [the work record](../SLAMImprovments.md)
+for verification evidence and pending checks.
 
-The perception landmark adapter now uses RTAB-Map's native landmark messages.
-`rtabmap.launch.py` subscribes to `/perception/landmark_detections` (real arrays)
-and `/perception/landmark_detection` (explicit test singleton). The old generic
-`landmark -> PoseStamped` remap is not a supported RTAB-Map contract.
-Database deletion is off by default; `delete_db_on_start:=true` explicitly enables it.
+## 1. Build and understand the inputs
 
-Costmap obstacle marking consumes `/bridge/pointcloud` from the real planner
-bridge. The planner normally owns that bridge; for SLAM-only operation start
-`ros2 launch erc_path_planner obstacle_bridge.launch.py use_sim_time:=true`.
-Do not start a duplicate bridge. Real depth is a separate clearing source;
-update its topic in the costmap YAML for the active camera.
-
-Runtime mock publishers and standalone mock orchestration moved to
-`testing/SLAM/slam_test_tools`. Build/run them explicitly in an isolated domain;
-production SLAM does not install or start them. This change does not repair or
-validate the separate SLAM wheel-odometry/slip algorithms.
-
-
-This ROS 2 package implements **Option B Architecture** for the ERC Autonomous Mars Rover:
-* **Local State Estimator:** `robot_localization` EKF node publishing smooth `odom -> base_link` pose at 100 Hz.
-* **Pre-Filtering:** RealSense D435 post-processing depth filters + `heuristic_slip_checker.py` dynamically scaling wheel covariance during sand slippage.
-* **Global Mapping Backend:** `rtabmap_ros` publishing static `/map` grid and `map -> odom` transform offset (1-5 Hz), incorporating ArUco landmark 6-DOF poses.
-* **Costmap Server:** `nav2_costmap_2d` server fusing static map & dynamic rock obstacle point clouds into `/global_costmap/costmap`.
-
-```mermaid
-graph TD
-    subgraph PreProcessing ["1. Pre-Processing Layer"]
-        Ticks["Raw Encoders (/wheel/ticks)"] --> OdomNode["encoder_ticks_to_odom"]
-        OdomNode -->|/wheel/odom_raw| SlipChecker["heuristic_slip_checker"]
-        IMU_raw["IMU (/imu/data)"] --> SlipChecker
-        Cam_raw["RealSense D435 Raw Depth"] --> VisionHelper["vision_helper (Depth Filters)"]
-    end
-
-    subgraph LocalFusion ["2. Local State Estimation (High Rate ~50-100Hz)"]
-        SlipChecker -->|/wheel/odom_filtered| EKF["robot_localization (EKF)"]
-        IMU_raw --> EKF
-        EKF -->|TF: odom -> base_link| OdomFiltered["/odometry/filtered"]
-    end
-
-    subgraph GlobalSLAM ["3. Global SLAM & Loop Closure (1-5Hz)"]
-        VisionHelper -->|/camera/depth/filtered| RTAB["RTAB-Map (rtabmap_slam)"]
-        Cam_RGB["RealSense RGB + CameraInfo"] --> RTAB
-        OdomFiltered --> RTAB
-        ArUco["ArUco Markers (/perception/aruco_pose)"] --> RTAB
-        RTAB -->|TF: map -> odom| GlobalMap["/map (OccupancyGrid)"]
-    end
-
-    subgraph NavigationLayer ["4. Navigation Costmap Layer"]
-        GlobalMap --> Costmap["Nav2 Costmap 2D"]
-        Rocks["Terrain Obstacles (/bridge/pointcloud)"] --> Costmap
-        Costmap --> OutCostmap["/global_costmap/costmap & /local_costmap"]
-    end
-```
-
-> 📖 For full end-to-end dataflow (inputs, outputs, topics, and message types), see [**`SLAM/README.md`**](../README.md).
-
-## 📦 Package Layout
-```text
-rover_slam/
-├── config/
-│   ├── ekf.yaml                  # robot_localization EKF config
-│   ├── rtabmap.yaml              # RTAB-Map parameters & loop closure settings
-│   ├── costmap_params.yaml       # Nav2 Costmap 2D layer & inflation settings
-│   ├── realsense_filters.yaml   # D435 depth filter parameters
-│   └── slam_visualization.rviz  # RViz 2 dashboard configuration
-├── launch/
-│   ├── slam_bringup.launch.py   # Master system launch file
-│   ├── ekf.launch.py            # Local EKF & Slip Checker launch
-│   ├── rtabmap.launch.py        # RTAB-Map SLAM launch
-│   ├── static_transforms.launch.py # Static TFs (base_link -> camera_link / imu_link)
-│   ├── vision_helper.launch.py  # Camera depth filters & ArUco detector launch
-│   └── costmap.launch.py        # Nav2 Costmap 2D server launch
-├── rover_slam/
-│   ├── encoder_ticks_to_odom.py  # Converts raw wheel ticks to nav_msgs/Odometry Twist & isolates single-wheel slip
-│   ├── heuristic_slip_checker.py # Compares wheel vs IMU, suppresses false velocity, and scales covariance
-│   ├── aruco_detector_node.py    # OpenCV ArUco detector & PnP solver
-│   └── costmap_test_stub.py      # Test stub simulating perception rock clouds
-└── test/
-    ├── test_encoder_ticks_to_odom.py # Unit tests for robust side velocity & kinematics
-    └── test_slip_checker.py          # Unit tests for slip detection & covariance logic
-```
-
-## 🛠️ System Dependencies Installation
-Before building or running, install required system dependencies:
 ```bash
-sudo apt update && sudo apt install -y \
-  ros-jazzy-diagnostic-updater \
-  ros-jazzy-nav2-lifecycle-manager \
-  ros-jazzy-nav2-costmap-2d \
-  ros-jazzy-robot-localization \
-  ros-jazzy-rtabmap-ros
-```
-
-## 🚀 How to Build
-```bash
-colcon build --symlink-install --packages-select rover_slam
+source /opt/ros/jazzy/setup.bash
+rosdep install --from-paths SLAM/rover_slam testing/SLAM/slam_test_tools \
+  --ignore-src -r -y
+colcon build --symlink-install \
+  --base-paths SLAM/rover_slam testing/SLAM/slam_test_tools \
+  --packages-select rover_slam slam_test_tools
 source install/setup.bash
 ```
 
----
+Gazebo workflows also require the existing `my_robot_description`, world assets
+and ros_gz installation. Perception/navigation workflows require their packages
+already built and sourced. The minimal command above does not build them.
 
-## 🧪 Standalone Testing Guide (World + Rover + Teleop + SLAM)
+| Input | Type / requirement |
+| --- | --- |
+| `/odom` (Gazebo) or `/wheel/odom_raw` (encoder converter/driver) | `nav_msgs/msg/Odometry`; select exactly one source |
+| `/imu/data` | `sensor_msgs/msg/Imu`; stamped, valid orientation/rates/acceleration, known sensor TF |
+| `/camera/image_raw`, `/camera/depth/image_raw` | `sensor_msgs/msg/Image`; depth aligned to RGB; supported metric depth encoding |
+| `/camera/camera_info` | `sensor_msgs/msg/CameraInfo`; matches RGB/depth geometry |
+| Optional `/perception/landmark_detections` | `rtabmap_msgs/msg/LandmarkDetections`; real Perception adapter, camera-relative observations |
 
-You can validate state estimation, EKF fusion, and RTAB-Map 3D SLAM mapping in isolation with the simulated rover:
+Outputs: `/wheel/odom_filtered`, `/wheel/slip_detected`, `/odometry/filtered`,
+`/map`, RTAB-Map graph/path/status, and estimated TF. Encoder mode additionally
+publishes `/wheel/odom_raw`, `/wheel/per_wheel_speeds`, `/wheel/single_wheel_slip`.
+Health topics are `/slam/encoder_diagnostics` (when converter runs) and
+`/slam/slip_diagnostics`; robot_localization also emits diagnostics.
 
-### Method A: Interactive Launcher (Fastest)
+**TF ownership:** EKF owns `odom -> base_link`; RTAB-Map owns `map -> odom`.
+Robot description or physical sensor driver owns calibrated sensor frames.
+The current Gazebo launch adds optical frames and already supplies
+`my_robot/camera_link/camera` through robot_state_publisher. Leave all SLAM
+fallback static TF switches off for that launch. Never add a static map->odom
+while RTAB-Map runs. One `/clock` bridge serves every simulated module.
+
+## 2. Run SLAM alone with Gazebo and testing helpers
+
+These terminals run real SLAM without running real Perception or navigation.
+Gazebo supplies its sensors and wheel odometry; a landmark is optional.
+A textured RGB-D scene is necessary for meaningful mapping. A constant fake
+marker or the stationary Perception image fixture cannot validate moving SLAM.
+
+**Terminal 1 — existing simulation and real simulated sensors:**
+
 ```bash
-bash scripts/launch_slam.sh
-# Select Option 1 for Production Bringup, or Option 2 for Dedicated Standalone Testing
-```
-
----
-
-### Method B: Manual Step-by-Step Terminal Playbook
-
-#### Step 1: Launch Mars Yard Simulation & Spawn Rover
-Open Terminal 1:
-```bash
+source /opt/ros/jazzy/setup.bash
 source install/setup.bash
-# Keep bridge_sim_tf:=false (default) so EKF owns the odom -> base_link transform
-ros2 launch my_robot_description gazebo.launch.py
+ros2 launch my_robot_description gazebo.launch.py \
+  bridge_sim_tf:=false publish_map_tf:=false publish_camera_tf:=false
 ```
 
-#### Step 2: Launch Teleoperation GUI
-Open Terminal 2:
+**Terminal 2 — real SLAM through the top-level testing package:**
+
 ```bash
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+# Use a new path for a fresh experiment; no database is deleted.
+ros2 launch slam_test_tools test_slam_standalone.launch.py \
+  use_sim_time:=true odom_topic:=/odom launch_encoder:=false \
+  database_path:="$HOME/.ros/slam_run_$(date +%Y%m%d_%H%M%S).db" \
+  launch_rviz:=true
+```
+
+This wrapper starts the production master and global RViz. Both mocks are
+**off**. It requires the external simulator; it is not a complete synthetic
+SLAM tester. For EKF-only observation, add `launch_rtabmap:=false rviz_view:=local`.
+Without testing orchestration, run the production equivalent directly:
+
+```bash
+ros2 launch rover_slam slam_bringup.launch.py use_sim_time:=true \
+  odom_topic:=/odom launch_encoder:=false launch_rviz:=true
+```
+
+**Terminal 3 — optional teleoperation:**
+
+```bash
+source /opt/ros/jazzy/setup.bash
 source install/setup.bash
 ros2 run my_robot_description teleop_gui.py
 ```
 
-#### Step 3: Launch Standalone SLAM Bringup
-Open Terminal 3:
+**Terminal 4 — attach the existing test-only health monitor:**
+
 ```bash
+source /opt/ros/jazzy/setup.bash
 source install/setup.bash
-ros2 launch rover_slam test_slam_standalone.launch.py
+ros2 run slam_test_tools ekf_validator --ros-args \
+  -p use_sim_time:=true -p expected_frequency_hz:=30.0
 ```
-*(Boots Static TFs, Heuristic Slip Checker, EKF state estimator, RTAB-Map SLAM, and opens `slam_visualization.rviz`).*
 
-#### Step 4: Verification & Transform Diagnostics
-Open Terminal 4:
+The monitor observes the already-running EKF. Do not start a second EKF using
+`ekf_validation.launch.py` in this same run. Its status checks freshness,
+finite values, cadence and speed bounds; it is not an accuracy referee.
+
+What to observe: filtered odometry at approximately **30 Hz**, continuous local
+TF, global TF and a growing map after valid images arrive. Map publication is
+subscriber/update dependent; it need not run at the EKF frequency.
+
 ```bash
-# 1. Verify EKF publishes continuous filtered odometry (~50 Hz)
 ros2 topic hz /odometry/filtered
-
-# 2. Verify odom -> base_link transform is owned solely by EKF
+ros2 topic echo /slam/slip_diagnostics --once
 ros2 run tf2_ros tf2_echo odom base_link
-
-# 3. Verify RTAB-Map publishes dynamic map -> odom transform (1-5 Hz)
+ros2 run tf2_ros tf2_echo base_link my_robot/camera_link/camera
 ros2 run tf2_ros tf2_echo map odom
-
-# 4. Verify 2D occupancy grid map generation
-ros2 topic hz /map
+ros2 topic info /map --verbose
 ```
-As you drive the rover using the GUI, observe the 3D point cloud assembling and the 2D occupancy grid expanding in RViz2 without TF jitter.
 
----
+For initial input diagnosis, inspect `/imu/data` and camera headers, their
+publisher QoS, and TF at those timestamps. A published map/odom message alone
+does not prove accurate localization. Detailed testers/referees/benchmarks are
+owned by the separate testing work; see [testing package guide](../../testing/SLAM/slam_test_tools/README.md).
 
-## 🔬 Subsystem Unit Tests & Standalone Checkpoints
+## 3. Run independent stages or physical sensors
 
-### 1️⃣ Test 1: Static Transforms Validation (Checkpoint 1)
-Verify that static coordinate frames (`base_link -> camera_link` and `base_link -> imu_link`) broadcast correctly:
+Run each row in a separate terminal only when you need that stage. A standalone
+stage does not manufacture its upstream dependencies.
+
+| Stage | Command and external inputs |
+| --- | --- |
+| Encoder converter | `ros2 launch rover_slam encoder.launch.py input_mode:=joint_states`; needs wheel JointState positions. Use `input_mode:=ticks_array` or `individual_ticks` for hardware counts. |
+| Slip covariance filter | `ros2 launch rover_slam slip.launch.py odom_topic:=/wheel/odom_raw`; needs stamped wheel odometry, `/imu/data` and sensor TF. |
+| Local EKF with preprocessing | `ros2 launch rover_slam ekf.launch.py launch_encoder:=true encoder_input_mode:=ticks_array odom_topic:=/wheel/odom_raw`; needs ticks, IMU and TF. With an external odometry driver, leave `launch_encoder:=false`. |
+| RTAB-Map only | `ros2 launch rover_slam rtabmap.launch.py`; needs `/odometry/filtered`, RGB-D, calibration and TF. |
+| Visualization | `ros2 launch rover_slam rviz.launch.py rviz_view:=local` or `rviz_view:=global`; local uses `odom`, global uses `map`. |
+
+For EKF without the slip filter, add `launch_slip:=false`; `odom_topic` then
+feeds EKF directly. `ekf_validation.launch.py` in **slam_test_tools** deliberately
+starts an EKF plus its monitor; use it only when no other EKF runs.
+
+**Hardware preparation:** measure wheel radius, effective track width, encoder
+counts per revolution, wheel order/signs, IMU mounting, gravity convention and
+camera extrinsics. Edit an external copy of `config/encoder.yaml` and
+`config/slip.yaml`, and supply their absolute paths. Defaults match simulation,
+not a calibrated physical rover. Counter overflow/reset appears as a rejected
+speed discontinuity and a new baseline; no particular counter width is assumed.
+
 ```bash
-# Terminal 1:
-ros2 launch rover_slam static_transforms.launch.py
-
-# Terminal 2:
-ros2 run tf2_ros tf2_echo base_link camera_link
-ros2 run tf2_ros tf2_echo base_link imu_link
+# Driver/URDF already provide sensors, mounts and any physical camera.
+ros2 launch rover_slam slam_bringup.launch.py use_sim_time:=false \
+  launch_encoder:=true encoder_input_mode:=ticks_array odom_topic:=/wheel/odom_raw \
+  encoder_params_file:=/absolute/path/encoder.yaml \
+  slip_params_file:=/absolute/path/slip.yaml launch_rviz:=true
 ```
-*Expected Result:* 3D translation and rotation frames print continuously at 10 Hz with 0 lookup errors.
 
-> [!NOTE]
-> **TF Tree Conflict Prevention**: When running the full SLAM stack (`slam_bringup.launch.py`), `spawn_rover.launch.py` and `gazebo.launch.py` MUST run with `publish_map_tf:=false` (default) and `publish_camera_tf:=false` (default). This guarantees that RTAB-Map is the sole publisher of `map ➔ odom` and `static_transforms.launch.py` is the sole owner of the camera optical frame, preventing TF conflicts.
+One physical RealSense can serve Perception and SLAM. To start it independently:
 
----
-
-### 2️⃣ Test 2: RealSense Depth Filter Pipeline (Checkpoint 2)
-Verify that camera depth post-processing filters (decimation, spatial, temporal, 4.0m range clipping) are active:
 ```bash
-# Terminal 1:
 ros2 launch rover_slam vision_helper.launch.py
-
-# Terminal 2:
-ros2 topic hz /camera/depth/filtered
 ```
-*Expected Result:* Filtered depth images publish smoothly on `/camera/depth/filtered`.
 
----
+Or add `launch_camera:=true` to the master, **not both**. The helper normalizes
+color, aligned depth and point-cloud topics to the interfaces above. Check the
+actual topic list and supported stream profiles on the installed driver/device.
+D435 has no IMU: this helper does not supply `/imu/data`; an external calibrated
+IMU is required. Its raw camera TF still needs a measured base-to-camera mount.
+Do not enable generic SLAM mount/optical fallbacks alongside the driver's TF.
 
-### 3️⃣ Test 3: Standalone Nav2 Costmap 2D + Synthetic Obstacle Test (Checkpoint 4B)
-Verify that `nav2_costmap_2d` ingests 3D point cloud rocks from `/perception/obstacles_only` and outputs an inflated safety costmap grid:
+In `slip.yaml`, `imu_includes_gravity: true` assumes standard specific force.
+Set false only for a verified gravity-free stream. Keep EKF's
+`imu0_remove_gravitational_acceleration` consistent in your EKF profile.
+A missing/stale IMU inflates wheel covariance and reports degraded operation;
+it cannot establish slip or stationary ground truth.
+
+## 4. Run with real Perception and navigation
+
+Use one sourced terminal per command. Start Gazebo as in section 2, or start
+physical drivers/robot description. Use the same clock setting everywhere.
+For Gazebo, the production module sequence is:
+
 ```bash
-# Terminal 1: Launch Costmap 2D Server
-ros2 launch rover_slam costmap.launch.py
+# Terminal A: SLAM; Nav2 will own navigation costmaps.
+ros2 launch rover_slam slam_bringup.launch.py use_sim_time:=true \
+  odom_topic:=/odom launch_encoder:=false launch_costmap:=false launch_rviz:=true
 
-# Terminal 2: Run Synthetic Rock Generator
-ros2 run rover_slam costmap_test_stub
+# Terminal B: real Perception; enable its native RTAB-Map adapter explicitly.
+ros2 launch terrain_geometry perception_system.launch.py use_sim_time:=true \
+  launch_landmark_adapter:=true launch_marker_mapping:=true
 
-# Terminal 3: Echo the Costmap Output
-ros2 topic echo /global_costmap/costmap
+# Terminal C: existing navigation entry point; starts the obstacle bridge too.
+ros2 launch erc_path_planner path_planning.launch.py use_sim_time:=true use_slam:=true
 ```
-*Expected Result:* `/global_costmap/costmap` publishes streaming `nav_msgs/msg/OccupancyGrid` showing inflated rock obstacle cost zones (costs 100 -> 85 -> 50).
 
----
+These are the existing module entry points, not a claim of a validated full
+rover mission. Global marker mapping is optional and needs SLAM TF; leave it
+false if you only need native landmark observations. The adapter retains its
+quality gates and positive ID offset. RTAB-Map must not be configured to feed
+estimated global marker positions back as independent observations.
 
-### 4️⃣ Test 4: ArUco Landmark Pose Topic Contract (Checkpoint 3B)
-Verify that the SLAM landmark channel can ingest 6-DOF marker poses independently:
+If running **SLAM + Perception without navigation**, inspect obstacles by adding
+`launch_costmap:=true` to SLAM and running the actual bridge separately:
+
 ```bash
-ros2 topic pub /perception/aruco_pose geometry_msgs/msg/PoseStamped "{header: {frame_id: 'camera_link'}, pose: {position: {x: 1.0, y: 0.0, z: 0.5}, orientation: {w: 1.0}}}" -1
+ros2 launch erc_path_planner obstacle_bridge.launch.py use_sim_time:=true
 ```
-*Expected Result:* Message publishes cleanly for RTAB-Map graph loop closure.
 
----
+Do not start this extra bridge when the navigation launch already owns it.
+The optional SLAM costmap is a fixed 40 m obstacle inspection view in `map`,
+not a replacement for Nav2's global/local navigation maps. It has no static map
+layer. Box-derived points mark obstacles only; measured camera rays clear.
+Empty box arrays or memory expiry alone do not guarantee old marks disappear.
 
-### 5️⃣ Test 5: Master SLAM Bringup (Checkpoint 5)
-Run the full system integration launch combining all sub-systems:
+Optional `launch_memory` in Perception needs fresh local `odom` TF. Keep
+`enable_terrain_risk:=false`: planar EKF does not supply measured physical
+roll/pitch for gravity-based slope assessment. Calibrate/validate that separately.
+Do not run testing mocks alongside their real output publishers.
+
+## 5. Arguments, troubleshooting and checks
+
 ```bash
-# Production mode (clean defaults: real perception, no stubs, Nav2 costmap managed by path planner):
-ros2 launch rover_slam slam_bringup.launch.py
-
-# Standalone SLAM testing mode (enable internal costmap & synthetic ArUco generator):
-ros2 launch rover_slam slam_bringup.launch.py launch_costmap:=true launch_costmap_stub:=true launch_aruco_stub:=true
+ros2 launch rover_slam slam_bringup.launch.py --show-args
+bash scripts/launch_slam.sh
+bash scripts/launch_slam.sh --mode test --use-sim-time true -- launch_rviz:=false
+bash scripts/launch_slam.sh --node ticks -- input_mode:=ticks_array
 ```
 
----
+Master defaults: EKF and RTAB-Map on; slip filter on; encoder, camera, fallback
+static TF, costmap and RViz off. Master `odom_topic` defaults to `/odom` for the
+existing simulation; standalone `ekf.launch.py` defaults to `/wheel/odom_raw`.
+When enabling the converter, select `/wheel/odom_raw` to prevent competing input.
 
-## 🛞 Wheel Slip Detection & IMU Fusion Pipeline
+Profiles: `encoder_params_file`, `slip_params_file`, `ekf_params_file`,
+`rtabmap_params_file`, `camera_params_file`, `costmap_params_file`. Independent
+encoder/slip/RTAB-Map/camera/costmap launches use `params_file`. Explicit launch
+clock/topic/frame selections override profiles. Common frames are `base_frame`,
+`odom_frame`, `map_frame`; override all dependent external modules consistently.
+RViz accepts `rviz_view`, optional `rviz_config` and master `rviz_fixed_frame`.
 
-### Multi-Stage Traction Validation
-1. **Intra-Side Single-Wheel Slip Isolation (`encoder_ticks_to_odom.py`)**:
-   * Cross-evaluates front vs rear wheels on each side (`|v_front - v_rear| > single_wheel_slip_threshold`).
-   * Rejects free-spinning wheels by bounding side speed to the lower-magnitude traction wheel.
-   * Publishes `/wheel/single_wheel_slip` (`std_msgs/msg/Bool`).
-2. **Kinematic & Impact Verification (`heuristic_slip_checker.py`)**:
-   * Subscribes to `/wheel/single_wheel_slip` and flags slip when individual wheels lose traction.
-   * Compares wheel yaw rate $w_{wheel}$ against IMU calibrated gyroscope $w_{imu,z}$.
-   * Symmetrically detects forward/reverse collision impact decelerations and sustained obstacle stalls.
-   * Detects stalled takeoff from rest across both forward and reverse commands.
-3. **Dynamic Odometry Clamping & Covariance Scaling**:
-   * On slip detection, clamps `filtered_odom.twist.twist.linear.x = 0.0` and `linear.y = 0.0`, preventing false EKF dead-reckoning forward motion while stuck or spinning.
-   * Directs calibrated IMU gyroscope rate `angular.z = w_imu` into filtered odometry.
-   * Inflates twist and pose covariance by `covariance_inflation_factor` (100x), commanding EKF to discount slipping wheel data.
+Database: `database_path` accepts an absolute path or `~/...`; its directory
+must exist and be writable. `delete_db_on_start:=false` preserves it. Use a new
+filename per experiment. Only explicitly set true when that database is
+expendable. The master forwards this flag to RTAB-Map.
 
+| Symptom | Check / correction |
+| --- | --- |
+| No raw wheel odometry | Select one input mode; verify every configured wheel, freshness, units and realistic speed bounds. Output is measurement-driven, not a fabricated 50 Hz heartbeat. |
+| Degraded slip diagnostics | Verify IMU timestamps, orientation/gravity setting and transform into the odometry child frame. Missing data is not a healthy zero-speed reading. |
+| No map or global TF | First verify RGB-D synchronization, calibration, EKF output, sensor TF and RTAB-Map logs. An empty textureless scene or constant marker mock is insufficient. |
+| Duplicate/jumping TF | Disable simulator odom TF bridging and static map anchors. Current Gazebo URDF already supplies optical sensor frames. SLAM fallback switches are only for externally supplied incomplete descriptions. |
+| RViz blank or wrong frame | Use local view before global mapping initializes; enable optional displays only when their publishers exist. GUI rendering remains a separate runtime check. |
+
+Pure/static checks and ROS-dependent regressions:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+python3 -m pytest SLAM/rover_slam/test testing/SLAM/slam_test_tools/test -q
+bash -n scripts/launch_slam.sh
+```
+
+Run in isolated ROS_DOMAIN_ID with no rover hardware attached. Full moving
+RGB-D, GUI, RTAB-Map optimization, Nav2 clearing, outdoor timing and physical
+calibration checks are pending unless explicitly recorded in the work record.
+A boolean monitor or passing mathematical tests do not certify autonomous
+operation; the controller still needs its own freshness/stop policy.
