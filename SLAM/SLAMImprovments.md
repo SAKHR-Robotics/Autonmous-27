@@ -32,7 +32,7 @@ after that documentation work lands; do not overwrite another agent's work.
       Gazebo with testing helpers, hardware, whole system and troubleshooting.
 - [x] Verify syntax/manifests/install resources, focused regression tests and
       actual launch construction where ROS exists. Record missing evidence.
-- [ ] Review each milestone diff, make focused descriptive commits, push branch.
+- [x] Review each milestone diff, make focused descriptive commits, push branch.
 
 ## Acceptance and deferred testing requirements
 
@@ -140,3 +140,12 @@ package README's real Gazebo and integrated Perception sequences after these
 checks. Record exact results here; do not infer map accuracy from stationary
 mock inputs. TestingPlan.md reconciliation remains the separate merge handoff
 above because its file is not in this branch's remote base.
+
+## Delivery status
+
+Feature branch `slam-jazzy-improvements` was pushed successfully to origin on
+2026-10-29. Source implementation, guides and available static/pure checks are
+complete; the Linux/runtime checks and TestingPlan.md merge handoff above remain
+explicitly pending. Create a PR with base `jazzy-port`. Do not merge or claim
+hardware readiness automatically. Existing local jazzy-port documentation
+commits were preserved unchanged on that branch.
