@@ -21,25 +21,26 @@ def setup(context):
             launch_arguments=arguments.items())])
     if value('launch_ekf') == 'true':
         actions.append(include('ekf.launch.py', ('launch_encoder', 'launch_slip', 'odom_topic',
-            'imu_topic', 'encoder_input_mode', 'encoder_params_file', 'slip_params_file', 'ekf_params_file')))
+            'imu_topic', 'encoder_input_mode', 'base_frame', 'odom_frame', 'map_frame', 'encoder_params_file', 'slip_params_file', 'ekf_params_file')))
     elif value('launch_encoder') == 'true':
         raise ValueError('Master launch_encoder requires launch_ekf; use encoder.launch.py independently')
     if value('launch_rtabmap') == 'true':
         actions.append(include('rtabmap.launch.py', ('rgb_topic', 'depth_topic', 'camera_info_topic',
-            'database_path', 'delete_db_on_start', 'landmarks_topic'),
+            'database_path', 'delete_db_on_start', 'landmarks_topic', 'base_frame', 'map_frame'),
             {'params_file': value('rtabmap_params_file'), 'odom_topic': '/odometry/filtered'}))
     if value('launch_static_tf') == 'true':
         actions.append(include('static_transforms.launch.py', ('publish_optical_tf', 'publish_gazebo_optical_tf'),
-                               {'standalone': value('standalone_tf')}))
+                               {'standalone': value('standalone_tf'), 'base_frame':value('base_frame')}))
     elif value('publish_gazebo_optical_tf') == 'true' or value('publish_optical_tf') == 'true' or value('standalone_tf') == 'true':
         raise ValueError('Static TF switches require launch_static_tf:=true')
     if value('launch_camera') == 'true':
         actions.append(include('vision_helper.launch.py', (), {'params_file': value('camera_params_file')}))
     if value('launch_costmap') == 'true':
-        actions.append(include('costmap.launch.py', ('autostart', 'obstacle_topic', 'clearing_cloud_topic'),
+        actions.append(include('costmap.launch.py', ('autostart', 'obstacle_topic', 'clearing_cloud_topic', 'base_frame', 'map_frame'),
                                {'params_file': value('costmap_params_file')}))
     if value('launch_rviz') == 'true':
-        actions.append(include('rviz.launch.py', ('rviz_view',), {'rviz_config': value('rviz_config')}))
+        actions.append(include('rviz.launch.py', ('rviz_view',), {'rviz_config': value('rviz_config'), 'fixed_frame':value('rviz_fixed_frame') or
+            (value('odom_frame') if value('rviz_view')=='local' else value('map_frame'))}))
     return actions
 
 
@@ -54,7 +55,8 @@ def generate_launch_description():
         'depth_topic': '/camera/depth/image_raw', 'camera_info_topic': '/camera/camera_info',
         'landmarks_topic': '/perception/landmark_detections', 'database_path': '~/.ros/rtabmap.db',
         'delete_db_on_start': 'false', 'obstacle_topic': '/bridge/pointcloud',
-        'clearing_cloud_topic': '/camera/depth/color/points', 'rviz_view': 'global', 'rviz_config': ''}
+        'clearing_cloud_topic': '/camera/depth/color/points', 'base_frame':'base_link',
+        'odom_frame':'odom','map_frame':'map','rviz_fixed_frame':'', 'rviz_view': 'global', 'rviz_config': ''}
     for name, stem in [('encoder','encoder'), ('slip','slip'), ('ekf','ekf'), ('rtabmap','rtabmap'),
                        ('camera','realsense_filters'), ('costmap','costmap_params')]:
         defaults[name+'_params_file'] = os.path.join(share, 'config', stem+'.yaml')

@@ -15,7 +15,8 @@ def setup(context):
     return [Node(package='rtabmap_slam', executable='rtabmap', name='rtabmap', output='screen',
         arguments=['-d'] if value('delete_db_on_start')=='true' else [],
         parameters=[value('params_file'), {'use_sim_time':value('use_sim_time')=='true',
-            'database_path':path, 'odom_frame_id':'', 'subscribe_odom':True}],
+            'database_path':path, 'odom_frame_id':'', 'subscribe_odom':True,
+            'frame_id':value('base_frame'), 'map_frame_id':value('map_frame')}],
         remappings=[('odom',value('odom_topic')), ('rgb/image',value('rgb_topic')),
             ('depth/image',value('depth_topic')), ('rgb/camera_info',value('camera_info_topic')),
             ('landmark_detections',value('landmarks_topic')),
@@ -28,7 +29,7 @@ def generate_launch_description():
     share=get_package_share_directory('rover_slam')
     defaults={'use_sim_time':'false','delete_db_on_start':'false',
         'params_file':os.path.join(share,'config','rtabmap.yaml'), 'database_path':'~/.ros/rtabmap.db',
-        'odom_topic':'/odometry/filtered','rgb_topic':'/camera/image_raw',
+        'base_frame':'base_link', 'map_frame':'map', 'odom_topic':'/odometry/filtered','rgb_topic':'/camera/image_raw',
         'depth_topic':'/camera/depth/image_raw','camera_info_topic':'/camera/camera_info',
         'landmarks_topic':'/perception/landmark_detections','landmark_topic':'/perception/landmark_detection'}
     return LaunchDescription([DeclareLaunchArgument(k,default_value=v,

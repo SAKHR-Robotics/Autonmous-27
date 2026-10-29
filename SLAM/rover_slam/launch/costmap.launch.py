@@ -42,6 +42,7 @@ def generate_launch_description():
         parameters=[
             LaunchConfiguration('params_file'),
             {'use_sim_time': ParameterValue(use_sim_time, value_type=bool),
+             'robot_base_frame':LaunchConfiguration('base_frame'), 'global_frame':LaunchConfiguration('map_frame'),
              'obstacle_layer.rock_obstacles.topic': LaunchConfiguration('obstacle_topic'),
              'obstacle_layer.clearing_depth.topic': LaunchConfiguration('clearing_cloud_topic')}
         ],
@@ -68,6 +69,8 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        DeclareLaunchArgument('base_frame', default_value='base_link'),
+        DeclareLaunchArgument('map_frame', default_value='map'),
         DeclareLaunchArgument('params_file', default_value=costmap_config_path),
         DeclareLaunchArgument('obstacle_topic', default_value='/bridge/pointcloud'),
         DeclareLaunchArgument('clearing_cloud_topic', default_value='/camera/depth/color/points'),

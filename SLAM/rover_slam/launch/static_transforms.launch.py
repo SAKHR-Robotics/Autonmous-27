@@ -24,6 +24,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        DeclareLaunchArgument('base_frame', default_value='base_link'),
         DeclareLaunchArgument('use_sim_time', default_value='false', choices=['true','false']),
         DeclareLaunchArgument('publish_gazebo_optical_tf', default_value='false', choices=['true','false'],
             description='Fallback only: current Gazebo robot_state_publisher already owns the sensor child'),
@@ -46,7 +47,7 @@ def generate_launch_description():
             arguments=[
                 '--x', '0.2', '--y', '0.0', '--z', '0.3',
                 '--roll', '0.0', '--pitch', '0.0', '--yaw', '0.0',
-                '--frame-id', 'base_link',
+                '--frame-id', LaunchConfiguration('base_frame'),
                 '--child-frame-id', 'camera_link'
             ],
             condition=IfCondition(standalone)
@@ -61,7 +62,7 @@ def generate_launch_description():
             arguments=[
                 '--x', '0.0', '--y', '0.0', '--z', '0.1',
                 '--roll', '0.0', '--pitch', '0.0', '--yaw', '0.0',
-                '--frame-id', 'base_link',
+                '--frame-id', LaunchConfiguration('base_frame'),
                 '--child-frame-id', 'imu_link'
             ],
             condition=IfCondition(standalone)
