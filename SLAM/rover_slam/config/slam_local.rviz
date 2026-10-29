@@ -1,0 +1,90 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ""
+  Global Options:
+    Background Color: 32; 32; 32
+    Fixed Frame: odom
+    Frame Rate: 30
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Ground grid
+      Enabled: true
+      Cell Size: 1
+      Plane: XY
+    - Class: rviz_default_plugins/TF
+      Name: Estimated and sensor frames
+      Enabled: true
+      Frame Timeout: 2
+    - Class: rviz_default_plugins/RobotModel
+      Name: Rover (requires robot_state_publisher)
+      Enabled: true
+      Description Source: Topic
+      Description Topic:
+        Value: /robot_description
+        Durability Policy: Transient Local
+    - Class: rviz_default_plugins/Odometry
+      Name: Raw wheel odometry
+      Enabled: true
+      Topic:
+        Value: /wheel/odom_raw
+      Keep: 50
+    - Class: rviz_default_plugins/Odometry
+      Name: Local EKF odometry
+      Enabled: true
+      Topic:
+        Value: /odometry/filtered
+      Keep: 100
+    - Class: rviz_default_plugins/Map
+      Name: RTAB-Map occupancy
+      Enabled: false
+      Topic:
+        Value: /map
+        Durability Policy: Transient Local
+      Color Scheme: map
+    - Class: rviz_default_plugins/Path
+      Name: Optimized global trajectory
+      Enabled: false
+      Topic:
+        Value: /mapPath
+        Durability Policy: Transient Local
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Perception obstacle bridge (marking only)
+      Enabled: false
+      Topic:
+        Value: /bridge/pointcloud
+      Position Transformer: XYZ
+      Color Transformer: FlatColor
+      Color: 255; 80; 80
+      Size (m): 0.05
+    - Class: rviz_default_plugins/MarkerArray
+      Name: Perception obstacle boxes
+      Enabled: false
+      Topic:
+        Value: /terrain/obstacle_markers
+    - Class: rviz_default_plugins/MarkerArray
+      Name: Optional global marker map
+      Enabled: false
+      Topic:
+        Value: /marker_map/visualization
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Measured camera depth
+      Enabled: false
+      Topic:
+        Value: /camera/depth/color/points
+        Reliability Policy: Best Effort
+      Position Transformer: XYZ
+      Color Transformer: AxisColor
+      Size (m): 0.02
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 15
+Window Geometry:
+  Width: 1200
+  Height: 800

@@ -6,8 +6,10 @@ Task: SLAM Fix 4 / Issue 4 (Standardize Camera Optical Frame Conventions)
 import math
 import os
 import re
-import numpy as np
 import pytest
+np = pytest.importorskip("numpy")
+import pytest
+pytest.importorskip("launch.actions", reason="ROS 2 launch required")
 from launch import LaunchContext
 from launch_ros.actions import Node
 import xacro

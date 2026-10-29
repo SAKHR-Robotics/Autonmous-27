@@ -8,6 +8,7 @@ from launch_ros.actions import Node
 def generate_launch_description():
     standalone = LaunchConfiguration('standalone')
     publish_optical_tf = LaunchConfiguration('publish_optical_tf')
+    publish_gazebo_optical_tf = LaunchConfiguration('publish_gazebo_optical_tf')
 
     declare_standalone = DeclareLaunchArgument(
         'standalone',
@@ -22,8 +23,17 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        DeclareLaunchArgument('use_sim_time', default_value='false', choices=['true','false']),
+        DeclareLaunchArgument('publish_gazebo_optical_tf', default_value='false', choices=['true','false'],
+            description='Fallback only: current Gazebo robot_state_publisher already owns the sensor child'),
         declare_standalone,
         declare_publish_optical_tf,
+
+        Node(package='tf2_ros', executable='static_transform_publisher',
+            name='static_tf_camera_optical_to_gz',
+            arguments=['--frame-id','camera_depth_optical_frame',
+                       '--child-frame-id','my_robot/camera_link/camera'],
+            condition=IfCondition(publish_gazebo_optical_tf)),
 
         # base_link -> camera_link (Only published when standalone=true to avoid colliding with robot_state_publisher)
         Node(
