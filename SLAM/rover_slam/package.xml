@@ -19,6 +19,13 @@
   <depend>nav2_lifecycle_manager</depend>
   <depend>diagnostic_updater</depend>
   <depend>diagnostic_msgs</depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>rtabmap_slam</exec_depend>
+  <exec_depend>rtabmap_msgs</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>realsense2_camera</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
