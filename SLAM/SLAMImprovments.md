@@ -30,7 +30,7 @@ after that documentation work lands; do not overwrite another agent's work.
       frequency and dropout monitoring; retain explicit compatibility launch.
 - [x] Rewrite SLAM and package READMEs: build, individual stages, standalone
       Gazebo with testing helpers, hardware, whole system and troubleshooting.
-- [ ] Verify syntax/manifests/install resources, focused regression tests and
+- [x] Verify syntax/manifests/install resources, focused regression tests and
       actual launch construction where ROS exists. Record missing evidence.
 - [ ] Review each milestone diff, make focused descriptive commits, push branch.
 
@@ -95,3 +95,48 @@ work merges, update TestingPlan.md section 9 with these exact requirements:
 The legacy testing README is marked as a proposal. The actual package guide
 contains only commands implemented by this branch. No new benchmark/referee
 or coherent moving sensor tester was added.
+
+## Verification record — 2026-10-29
+
+Implemented source and documentation are ready for review. Executed on the
+available host (Python 3.13; target remains Linux/Jazzy):
+
+- `python -m pytest SLAM/rover_slam/test testing/SLAM/slam_test_tools/test -q`
+  with source PYTHONPATH, no bytecode/cache writes: **37 passed, 3 skipped**.
+  Skips are entire ROS/optical-dependent modules: missing NumPy, ROS launch,
+  and rclpy. They are not passing runtime checks.
+- Parsed all **30 Python files** in the production/testing packages; parsed
+  both XML manifests; checked package resource markers and setup.cfg files.
+- Parsed every SLAM YAML and both RViz profiles; verified current guide links;
+  `git diff --check` passed.
+- Git Bash `bash -n scripts/launch_slam.sh` passed. Four isolated checks with
+  a temporary mock ros2 executable verified package selection, argument/clock
+  forwarding and invalid-option rejection. No ROS nodes ran in these checks.
+
+Not executed: Linux colcon installation; ROS-dependent node/launch tests;
+installed RealSense/RTAB-Map parameter acceptance; Gazebo moving RGB-D and
+optical/IMU TF; native landmark graph optimization; RViz GUI; Nav2 lifecycle/
+clearing; physical hardware or safe autonomous operation. Docker Linux engine
+was unavailable. Do not interpret source completion as deployment approval.
+
+### Linux continuation commands
+
+Run from the repository root in an isolated environment with no rover hardware
+attached. Install dependencies from the running guide first, then:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+export ROS_DOMAIN_ID=87
+colcon --log-base /tmp/slam-review-log build --symlink-install \
+  --base-paths SLAM/rover_slam testing/SLAM/slam_test_tools \
+  --build-base /tmp/slam-review-build --install-base /tmp/slam-review-install
+source /tmp/slam-review-install/setup.bash
+python3 -m pytest SLAM/rover_slam/test testing/SLAM/slam_test_tools/test -q -rs
+ros2 launch rover_slam slam_bringup.launch.py --show-args
+```
+
+Use fresh artifact paths if another review owns these directories. Follow the
+package README's real Gazebo and integrated Perception sequences after these
+checks. Record exact results here; do not infer map accuracy from stationary
+mock inputs. TestingPlan.md reconciliation remains the separate merge handoff
+above because its file is not in this branch's remote base.

@@ -114,7 +114,8 @@ ros2 run tf2_ros tf2_echo map odom
 ros2 topic info /map --verbose
 ```
 
-For initial input diagnosis, inspect `/imu/data` and camera headers, their
+Run each diagnostic command independently; stop streaming `hz`/`tf2_echo`
+with Ctrl+C before starting the next. For initial input diagnosis, inspect `/imu/data` and camera headers, their
 publisher QoS, and TF at those timestamps. A published map/odom message alone
 does not prove accurate localization. Detailed testers/referees/benchmarks are
 owned by the separate testing work; see [testing package guide](../../testing/SLAM/slam_test_tools/README.md).
