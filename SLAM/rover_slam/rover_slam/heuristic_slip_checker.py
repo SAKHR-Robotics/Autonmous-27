@@ -7,8 +7,8 @@ ROS 2 Node that monitors wheel velocity against IMU motion telemetry to detect w
 
 When wheel slippage is detected (|V_wheels - V_imu| > threshold or |W_wheels - W_imu| > threshold),
 it dynamically inflates the covariance matrix of wheel odometry before passing it to EKF,
-forcing the local state estimator (robot_localization) to ignore slipping wheel data and rely
-on IMU and Visual SLAM (RTAB-Map).
+reducing trust in wheels in the local EKF. RTAB-Map remains a separate global
+mapping backend and does not supply local EKF velocity.
 
 Developer Track: SLAM & Pre-Processing Subsystem
 """
@@ -40,7 +40,6 @@ class SlipCheckerCore:
         self,
         slip_rot_threshold: float = 0.35,
         slip_accel_threshold: float = 0.18,
-        slip_vel_threshold: float = 0.20,
         covariance_scale: float = 100.0,
         nominal_linear_cov: float = 0.02,
         nominal_angular_cov: float = 0.05,
@@ -48,12 +47,15 @@ class SlipCheckerCore:
     ) -> None:
         self.slip_rot_threshold = slip_rot_threshold
         self.slip_accel_threshold = slip_accel_threshold
-        self.slip_vel_threshold = slip_vel_threshold
         self.covariance_scale = covariance_scale
         self.nominal_linear_cov = nominal_linear_cov
         self.nominal_angular_cov = nominal_angular_cov
         self.slip_hold_time = slip_hold_time
 
+        if not all(math.isfinite(v) and v > 0 for v in (slip_rot_threshold, slip_accel_threshold,
+                covariance_scale, nominal_linear_cov, nominal_angular_cov, slip_hold_time)):
+            raise ValueError('Positive finite slip thresholds, covariance and hold time required')
+        self.last_evaluation_time = None
         self.last_slip_time: float = -100.0
         self.is_slipping: bool = False
         self.last_slip_reason: str = "None"
@@ -93,6 +95,16 @@ class SlipCheckerCore:
         Returns:
             Tuple[bool, float, float]: (slip_detected, linear_covariance, angular_covariance)
         """
+        values = (v_wheel, w_wheel, w_imu, a_imu_x, current_time_sec, w_imu_y, *orientation_q)
+        if not all(math.isfinite(v) for v in values):
+            raise ValueError('Non-finite slip input')
+        if self.last_evaluation_time is not None and current_time_sec < self.last_evaluation_time:
+            self.last_slip_time = -float('inf')
+            self.last_v_wheel = None
+            self.obstacle_blocked = False
+            self.takeoff_start_time = None
+            self.takeoff_accel_seen = True
+        self.last_evaluation_time = current_time_sec
         raw_slip = False
         reason = "None"
 
@@ -105,10 +117,12 @@ class SlipCheckerCore:
         # Normal turning on open ground: wheels and chassis rotate in the same direction with genuine rotation (|w_imu| > 0.10)
         # Blocked turning against obstacle: wheels commanded to turn (|w_wheel| > 0.25), but chassis cannot rotate (|w_imu| < 0.10 or opposite)
         if not raw_slip:
-            if abs(w_wheel) > 0.25 and (abs(w_imu) < 0.10 or (w_wheel * w_imu < -0.05)):
+            if (abs(w_wheel-w_imu) > self.slip_rot_threshold and abs(w_wheel) > 0.25
+                    and (abs(w_imu) < 0.10 or w_wheel*w_imu < -0.05)):
                 raw_slip = True
                 reason = f"YawBlocked (w_wheel={w_wheel:.2f}, w_imu={w_imu:.2f})"
-            elif abs(w_wheel) < 0.10 and abs(w_imu) > 0.40:
+            elif (abs(w_wheel-w_imu) > self.slip_rot_threshold
+                  and abs(w_wheel) < 0.10 and abs(w_imu) > 0.40):
                 # Chassis spinning out with stationary wheels
                 raw_slip = True
                 reason = f"UncontrolledYawSpin (w_imu={w_imu:.2f})"
@@ -190,244 +204,189 @@ class SlipCheckerCore:
         return slip_detected, linear_cov, angular_cov
 
 
+def quaternion_product(a, b):
+    x,y,z,w = a; X,Y,Z,W = b
+    return (w*X+x*W+y*Z-z*Y, w*Y-x*Z+y*W+z*X,
+            w*Z+x*Y-y*X+z*W, w*W-x*X-y*Y-z*Z)
+
+
+def normalize_quaternion(q):
+    norm = math.hypot(*q)
+    if not math.isfinite(norm) or norm < 1e-8:
+        raise ValueError('Invalid quaternion')
+    return tuple(v/norm for v in q)
+
+
+def rotate_vector(q, vector):
+    q = normalize_quaternion(q)
+    return quaternion_product(quaternion_product(q, (*vector,0.)), (-q[0],-q[1],-q[2],q[3]))[:3]
+
+
+def inflate_covariance(covariance, multiplier, linear_floor, angular_floor):
+    if (len(covariance) != 36 or not all(math.isfinite(v) for v in covariance)
+            or any(covariance[i*6+i] < 0 for i in range(6))):
+        raise ValueError('Invalid odometry covariance')
+    result = [v*multiplier for v in covariance]
+    for index, floor in ((0,linear_floor),(35,angular_floor)):
+        result[index] = max(result[index],floor*multiplier)
+    return result
+
+
 class HeuristicSlipCheckerNode(Node):
-    """
-    ROS 2 Pre-Filter Node to detect wheel slip by comparing wheel-derived odometry
-    against IMU rate readings, dynamically scaling wheel covariance during slippage.
-    """
+    """Fresh, frame-correct slip assessment; uncertainty changes, twist does not."""
+    def __init__(self):
+        super().__init__('heuristic_slip_checker')
+        from tf2_ros import Buffer, TransformListener
+        from diagnostic_msgs.msg import DiagnosticArray
+        from rclpy.qos import qos_profile_sensor_data
+        defaults = {'slip_angular_threshold':.35, 'slip_accel_threshold':.18,
+            'covariance_inflation_factor':100., 'nominal_linear_covariance':.02,
+            'nominal_angular_covariance':.05, 'slip_hold_time':.4,
+            'raw_odom_topic':'/wheel/odom_raw', 'imu_topic':'/imu/data',
+            'imu_timeout_sec':.2, 'odom_timeout_sec':.5, 'slip_flag_timeout_sec':.5,
+            'imu_includes_gravity':True}
+        for key,val in defaults.items(): self.declare_parameter(key,val)
+        self.settings = {key:self.get_parameter(key).value for key in defaults}
+        for key in ('imu_timeout_sec','odom_timeout_sec','slip_flag_timeout_sec'):
+            if not math.isfinite(self.settings[key]) or self.settings[key] <= 0:
+                raise ValueError('Positive finite sensor timeout required')
+        if self.settings['covariance_inflation_factor'] < 1:
+            raise ValueError('Covariance inflation must be at least one')
+        self.core = SlipCheckerCore(slip_rot_threshold=self.settings['slip_angular_threshold'],
+            slip_accel_threshold=self.settings['slip_accel_threshold'],
+            covariance_scale=self.settings['covariance_inflation_factor'],
+            nominal_linear_cov=self.settings['nominal_linear_covariance'],
+            nominal_angular_cov=self.settings['nominal_angular_covariance'],
+            slip_hold_time=self.settings['slip_hold_time'])
+        self.latest_imu = None
+        self._imu_receipt = self._slip_receipt = self._odom_receipt = None
+        self._last_processed_stamp = None
+        self._last_clock = self.get_clock().now().nanoseconds/1e9
+        self.single_wheel_slip = False
+        self.health = 'waiting for wheel odometry'
+        self.buffer = Buffer()
+        self.listener = TransformListener(self.buffer,self)
+        self.sub_wheel_odom = self.create_subscription(Odometry,self.settings['raw_odom_topic'],self._wheel_odom_callback,10)
+        self.sub_imu = self.create_subscription(Imu,self.settings['imu_topic'],self._imu_callback,qos_profile_sensor_data)
+        self.sub_single_wheel_slip = self.create_subscription(Bool,'/wheel/single_wheel_slip',self._single_wheel_slip_callback,10)
+        self.pub_filtered_odom = self.create_publisher(Odometry,'/wheel/odom_filtered',10)
+        self.pub_slip_flag = self.create_publisher(Bool,'/wheel/slip_detected',10)
+        self.pub_diagnostics = self.create_publisher(DiagnosticArray,'/slam/slip_diagnostics',10)
+        self.timer = self.create_timer(.1,self._watchdog)
 
-    def __init__(self) -> None:
-        """Initialize HeuristicSlipCheckerNode, declare parameters, subscribers, and publishers."""
-        super().__init__("heuristic_slip_checker")
+    @staticmethod
+    def _stamp(msg): return msg.header.stamp.sec+msg.header.stamp.nanosec/1e9
 
-        # ----------------------------------------------------------------------
-        # ROS 2 Parameters Declaration
-        # ----------------------------------------------------------------------
-        self.declare_parameter("slip_velocity_threshold", 0.20)
-        self.declare_parameter("slip_angular_threshold", 0.35)
-        self.declare_parameter("slip_accel_threshold", 0.18)
-        self.declare_parameter("covariance_inflation_factor", 100.0)
-        self.declare_parameter("nominal_linear_covariance", 0.02)
-        self.declare_parameter("nominal_angular_covariance", 0.05)
-        self.declare_parameter("slip_hold_time", 0.4)
-        self.declare_parameter("raw_odom_topic", "/wheel/odom_raw")
+    def _now(self):
+        now = self.get_clock().now().nanoseconds/1e9
+        if now < self._last_clock:
+            self.latest_imu = None
+            self._imu_receipt = self._slip_receipt = self._odom_receipt = None
+            self._last_processed_stamp = None
+            self.single_wheel_slip = False
+            self.core.last_evaluation_time = float('inf')
+            self.health = 'clock reset; waiting for new measurements'
+        self._last_clock = now
+        return now
 
-        # Retrieve parameter values
-        self.slip_vel_threshold: float = (
-            self.get_parameter("slip_velocity_threshold").get_parameter_value().double_value
-        )
-        self.slip_rot_threshold: float = (
-            self.get_parameter("slip_angular_threshold").get_parameter_value().double_value
-        )
-        self.slip_accel_threshold: float = (
-            self.get_parameter("slip_accel_threshold").get_parameter_value().double_value
-        )
-        self.covariance_scale: float = (
-            self.get_parameter("covariance_inflation_factor").get_parameter_value().double_value
-        )
-        self.nominal_linear_cov: float = (
-            self.get_parameter("nominal_linear_covariance").get_parameter_value().double_value
-        )
-        self.nominal_angular_cov: float = (
-            self.get_parameter("nominal_angular_covariance").get_parameter_value().double_value
-        )
-        self.slip_hold_time: float = (
-            self.get_parameter("slip_hold_time").get_parameter_value().double_value
-        )
-        self.raw_odom_topic: str = (
-            self.get_parameter("raw_odom_topic").get_parameter_value().string_value
-        )
-
-        # Core logic helper
-        self.core = SlipCheckerCore(
-            slip_rot_threshold=self.slip_rot_threshold,
-            slip_accel_threshold=self.slip_accel_threshold,
-            slip_vel_threshold=self.slip_vel_threshold,
-            covariance_scale=self.covariance_scale,
-            nominal_linear_cov=self.nominal_linear_cov,
-            nominal_angular_cov=self.nominal_angular_cov,
-            slip_hold_time=self.slip_hold_time,
-        )
-
-        # ----------------------------------------------------------------------
-        # State Data Tracking
-        # ----------------------------------------------------------------------
-        self.latest_imu: Optional[Imu] = None
-        self.last_raw_odom_time: float = -100.0
-        self._last_processed_stamp: Optional[Tuple[int, int]] = None
-        self.is_slipping: bool = False
-
-        # ----------------------------------------------------------------------
-        # ROS 2 Subscribers & Publishers
-        # ----------------------------------------------------------------------
-        # Primary raw wheel odometry subscription (hardware / encoder_ticks_to_odom)
-        self.sub_wheel_odom = self.create_subscription(
-            Odometry,
-            self.raw_odom_topic,
-            self._wheel_odom_callback,
-            10,
-        )
-
-        # Gazebo simulation fallback subscription (diff-drive plugin outputs /odom)
-        self.sub_sim_odom = None
-        if self.raw_odom_topic != "/odom":
-            self.sub_sim_odom = self.create_subscription(
-                Odometry,
-                "/odom",
-                self._sim_odom_callback,
-                10,
-            )
-
-        self.sub_imu = self.create_subscription(
-            Imu,
-            "/imu/data",
-            self._imu_callback,
-            10,
-        )
-
-        self.single_wheel_slip: bool = False
-        self.sub_single_wheel_slip = self.create_subscription(
-            Bool,
-            "/wheel/single_wheel_slip",
-            self._single_wheel_slip_callback,
-            10,
-        )
-
-        self.pub_filtered_odom = self.create_publisher(Odometry, "/wheel/odom_filtered", 10)
-        self.pub_slip_flag = self.create_publisher(Bool, "/wheel/slip_detected", 10)
-
-        self.get_logger().info("Heuristic Slip Checker Pre-Filter Node Initialized successfully.")
-
-    # --------------------------------------------------------------------------
-    # Callbacks & Logic Execution
-    # --------------------------------------------------------------------------
-    def _single_wheel_slip_callback(self, msg: Bool) -> None:
-        """Callback for single-wheel slip telemetry flag from encoder_ticks_to_odom."""
+    def _single_wheel_slip_callback(self,msg):
+        self._slip_receipt = self._now()
         self.single_wheel_slip = msg.data
 
-    def _imu_callback(self, msg: Imu) -> None:
-        """
-        Callback to process IMU angular velocity and linear acceleration telemetry.
-        No open-loop integration is performed, eliminating unbounded sensor drift.
-        """
+    def _imu_callback(self,msg):
+        self._imu_receipt = self._now()
         self.latest_imu = msg
 
-    def _wheel_odom_callback(self, msg: Odometry) -> None:
-        """Callback for primary /wheel/odom_raw odometry telemetry."""
-        now_sec: float = self.get_clock().now().nanoseconds / 1e9
-        self.last_raw_odom_time = now_sec
-        self._process_odometry(msg)
-
-    def _sim_odom_callback(self, msg: Odometry) -> None:
-        """Fallback callback for Gazebo /odom odometry when /wheel/odom_raw is not active."""
-        now_sec: float = self.get_clock().now().nanoseconds / 1e9
-        # If /wheel/odom_raw has not published within the last 0.5s, process /odom
-        if (now_sec - self.last_raw_odom_time) > 0.5:
-            self._process_odometry(msg)
-
-    def _process_odometry(self, msg: Odometry) -> None:
-        """
-        Evaluate wheel motion against IMU telemetry, dynamically scale covariance,
-        and publish filtered odometry and slip flag.
-        """
-        # Deduplicate if remappings result in multiple triggers for the exact same message
-        stamp = (msg.header.stamp.sec, msg.header.stamp.nanosec)
-        if stamp != (0, 0) and stamp == self._last_processed_stamp:
-            return
-        self._last_processed_stamp = stamp
-
-        v_wheel: float = msg.twist.twist.linear.x
-        w_wheel: float = msg.twist.twist.angular.z
-
-        slip_detected: bool = False
-        linear_cov: float = self.nominal_linear_cov
-        angular_cov: float = self.nominal_angular_cov
-
-        if self.latest_imu is not None:
-            w_imu: float = self.latest_imu.angular_velocity.z
-            w_imu_y: float = self.latest_imu.angular_velocity.y
-            a_imu_x: float = self.latest_imu.linear_acceleration.x
-            orient = self.latest_imu.orientation
-            orientation_q = (orient.x, orient.y, orient.z, orient.w)
-            now_sec: float = self.get_clock().now().nanoseconds / 1e9
-
-            slip_detected, linear_cov, angular_cov = self.core.evaluate(
-                v_wheel=v_wheel,
-                w_wheel=w_wheel,
-                w_imu=w_imu,
-                a_imu_x=a_imu_x,
-                current_time_sec=now_sec,
-                orientation_q=orientation_q,
-                w_imu_y=w_imu_y,
-                single_wheel_slip=self.single_wheel_slip,
-            )
+    def _body_imu(self, target, odom_stamp, now):
+        from rclpy.time import Time
+        imu = self.latest_imu
+        if (imu is None or self._imu_receipt is None
+                or not 0 <= now-self._imu_receipt <= self.settings['imu_timeout_sec']
+                or not 0 <= now-self._stamp(imu) <= self.settings['imu_timeout_sec']
+                or abs(odom_stamp-self._stamp(imu)) > self.settings['imu_timeout_sec']):
+            raise ValueError('IMU missing, stale or not aligned in time')
+        if not target or not imu.header.frame_id:
+            raise ValueError('Missing IMU or wheel body frame')
+        if imu.angular_velocity_covariance[0] == -1 or imu.linear_acceleration_covariance[0] == -1:
+            raise ValueError('IMU rate or acceleration unavailable')
+        gyro=(imu.angular_velocity.x,imu.angular_velocity.y,imu.angular_velocity.z)
+        accel=(imu.linear_acceleration.x,imu.linear_acceleration.y,imu.linear_acceleration.z)
+        if not all(math.isfinite(v) for v in (*gyro,*accel)):
+            raise ValueError('Non-finite IMU data')
+        q_bs=(0.,0.,0.,1.)
+        if imu.header.frame_id != target:
+            rotation=self.buffer.lookup_transform(target,imu.header.frame_id,Time.from_msg(imu.header.stamp)).transform.rotation
+            q_bs=normalize_quaternion((rotation.x,rotation.y,rotation.z,rotation.w))
+        gyro,accel=rotate_vector(q_bs,gyro),rotate_vector(q_bs,accel)
+        q=(imu.orientation.x,imu.orientation.y,imu.orientation.z,imu.orientation.w)
+        if self.settings['imu_includes_gravity']:
+            if imu.orientation_covariance[0] == -1:
+                raise ValueError('Gravity compensation requires valid orientation')
+            q=normalize_quaternion(q)
+            q=quaternion_product(q,(-q_bs[0],-q_bs[1],-q_bs[2],q_bs[3]))
         else:
-            self.get_logger().warn(
-                "Waiting for IMU telemetry on /imu/data... Slip detection is paused.",
-                throttle_duration_sec=3.0,
-            )
+            q=(0.,0.,0.,1.)
+        return gyro,accel,q
 
-        self.is_slipping = slip_detected
+    def _wheel_odom_callback(self,msg):
+        import copy
+        from tf2_ros import TransformException
+        now = self._now()
+        stamp = self._stamp(msg)
+        if self._last_processed_stamp is not None and stamp <= self._last_processed_stamp:
+            self.health = 'duplicate or out-of-order odometry'
+            return
+        twist=msg.twist.twist
+        if (not 0 <= now-stamp <= self.settings['odom_timeout_sec']
+                or not msg.header.frame_id or not msg.child_frame_id
+                or not all(math.isfinite(v) for v in (twist.linear.x,twist.linear.y,twist.linear.z,
+                    twist.angular.x,twist.angular.y,twist.angular.z))):
+            self.health = 'invalid or stale wheel odometry'
+            return
+        slip = (self.single_wheel_slip and self._slip_receipt is not None
+                and 0 <= now-self._slip_receipt <= self.settings['slip_flag_timeout_sec'])
+        imu_valid = False
+        self.health = 'healthy'
+        try:
+            gyro,accel,orientation = self._body_imu(msg.child_frame_id,stamp,now)
+            imu_valid = True
+            slip,_,_ = self.core.evaluate(twist.linear.x,twist.angular.z,gyro[2],accel[0],stamp,
+                orientation_q=orientation,w_imu_y=gyro[1],single_wheel_slip=slip)
+            if slip: self.health='suspected slip; wheel covariance inflated'
+        except (ValueError,TransformException) as error:
+            self.health='degraded: '+str(error)
+        multiplier=self.settings['covariance_inflation_factor'] if slip or not imu_valid else 1.
+        filtered = copy.deepcopy(msg)
+        try:
+            filtered.twist.covariance = inflate_covariance(msg.twist.covariance,multiplier,
+                self.settings['nominal_linear_covariance'],self.settings['nominal_angular_covariance'])
+        except ValueError as error:
+            self.health=str(error)
+            return
+        self._last_processed_stamp, self._odom_receipt = stamp,now
+        self.pub_filtered_odom.publish(filtered)
+        self.pub_slip_flag.publish(Bool(data=slip))
 
-        # Construct output odometry message with updated covariance
-        filtered_odom = Odometry()
-        filtered_odom.header = msg.header
-        filtered_odom.child_frame_id = msg.child_frame_id
-        filtered_odom.pose = msg.pose
-        filtered_odom.twist = msg.twist
-
-        multiplier: float = self.covariance_scale if slip_detected else 1.0
-
-        # Dynamic velocity suppression during ANY confirmed slip:
-        # If wheels are slipping (spinning in sand, obstacle block, single wheel slip, etc.),
-        # wheel encoders do not represent true chassis ground velocity.
-        # Clamping twist to 0.0 prevents EKF from integrating forward and penetrating the obstacle.
-        if slip_detected:
-            filtered_odom.twist.twist.linear.x = 0.0
-            filtered_odom.twist.twist.linear.y = 0.0
-            if self.latest_imu is not None:
-                # Direct calibrated IMU gyro heading rate to EKF during wheel slippage
-                filtered_odom.twist.twist.angular.z = self.latest_imu.angular_velocity.z
-
-        # Pose Covariance
-        filtered_odom.pose.covariance[0] = 0.01 * multiplier
-        filtered_odom.pose.covariance[7] = 0.01 * multiplier
-        filtered_odom.pose.covariance[35] = 0.05 * multiplier
-
-        # Twist Covariance
-        filtered_odom.twist.covariance[0] = linear_cov
-        filtered_odom.twist.covariance[7] = linear_cov
-        filtered_odom.twist.covariance[35] = angular_cov
-
-        # Publish filtered odometry and slip telemetry status flag
-        self.pub_filtered_odom.publish(filtered_odom)
-
-        slip_msg = Bool()
-        slip_msg.data = slip_detected
-        self.pub_slip_flag.publish(slip_msg)
-
-        if slip_detected:
-            self.get_logger().warn(
-                f"Wheel Slip Detected! Reason: {self.core.last_slip_reason} (inflating covariance {self.covariance_scale:.1f}x)",
-                throttle_duration_sec=1.0,
-            )
+    def _watchdog(self):
+        from diagnostic_msgs.msg import DiagnosticArray,DiagnosticStatus
+        now=self._now()
+        if self._odom_receipt is None or now-self._odom_receipt > self.settings['odom_timeout_sec']:
+            self.health='wheel odometry unavailable or stale'
+        status=DiagnosticStatus(name='slam/slip_filter',hardware_id='wheel_imu',
+            level=DiagnosticStatus.OK if self.health=='healthy' else DiagnosticStatus.WARN,
+            message=self.health)
+        array=DiagnosticArray(status=[status]); array.header.stamp=self.get_clock().now().to_msg()
+        self.pub_diagnostics.publish(array)
 
 
-def main(args: Optional[List[str]] = None) -> None:
-    """
-    Main entry point for starting the Heuristic Slip Checker Node.
-    """
+def main(args=None):
     rclpy.init(args=args)
-    node = HeuristicSlipCheckerNode()
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
+    node=HeuristicSlipCheckerNode()
+    try: rclpy.spin(node)
+    except KeyboardInterrupt: pass
     finally:
         node.destroy_node()
         rclpy.shutdown()
 
 
-if __name__ == "__main__":
-    main()
-
+if __name__ == '__main__': main()
