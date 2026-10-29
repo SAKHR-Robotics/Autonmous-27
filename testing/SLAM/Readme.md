@@ -1,3 +1,9 @@
+> **Current implementation:** [slam_test_tools](slam_test_tools/README.md) and
+> [SLAM running guide](../../SLAM/rover_slam/README.md). The document below is
+> a historical benchmark proposal. Its automated feeders, referee, dashboards,
+> numerical targets and run_testing_suite.sh are not delivered by this change.
+> Future implementation belongs to the separate testing plan.
+
 # 🛰️ SLAM & EKF State Estimation Standalone Testing Suite
 
 A complete, interactive black-box testing and benchmarking framework for the ERC Rover state estimation, visual SLAM, and localization pipeline (`rover_slam`).

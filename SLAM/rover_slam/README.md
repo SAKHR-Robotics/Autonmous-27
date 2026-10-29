@@ -140,8 +140,9 @@ starts an EKF plus its monitor; use it only when no other EKF runs.
 counts per revolution, wheel order/signs, IMU mounting, gravity convention and
 camera extrinsics. Edit an external copy of `config/encoder.yaml` and
 `config/slip.yaml`, and supply their absolute paths. Defaults match simulation,
-not a calibrated physical rover. Counter overflow/reset appears as a rejected
-speed discontinuity and a new baseline; no particular counter width is assumed.
+not a calibrated physical rover. Implausible counter jumps are rejected and rebaselined; no counter width is
+assumed. A small reset that looks like real wheel motion cannot be identified
+from ticks alone: the driver must establish a new session/baseline on restart.
 
 ```bash
 # Driver/URDF already provide sensors, mounts and any physical camera.

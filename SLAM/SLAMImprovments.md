@@ -16,19 +16,19 @@ after that documentation work lands; do not overwrite another agent's work.
 
 ## Ordered implementation checklist
 
-- [ ] Repair master launch; add encoder/slip standalone launches; scope flags,
+- [x] Repair master launch; add encoder/slip standalone launches; scope flags,
       topic/frame overrides, clock and YAML profiles; fix interactive script.
-- [ ] Select one encoder source; compute speeds from measurement intervals;
+- [x] Select one encoder source; compute speeds from measurement intervals;
       stop valid-looking stale output; reject jumps and rebaseline on resets.
-- [ ] Validate IMU age/values/frame; preserve measured wheel twist on slip;
+- [x] Validate IMU age/values/frame; preserve measured wheel twist on slip;
       inflate covariance; remove implicit source fallback; publish diagnostics.
-- [ ] Feed RTAB-Map EKF odometry with covariance; expose database/profile;
+- [x] Feed RTAB-Map EKF odometry with covariance; expose database/profile;
       correct RealSense settings and optional costmap configuration.
-- [ ] Make TF ownership explicit; add opt-in Gazebo optical bridge; update
+- [x] Make TF ownership explicit; add opt-in Gazebo optical bridge; update
       local/global RViz and Perception integration documentation.
-- [ ] Move EKF evaluation helper to testing; repair logging, clock, expected
+- [x] Move EKF evaluation helper to testing; repair logging, clock, expected
       frequency and dropout monitoring; retain explicit compatibility launch.
-- [ ] Rewrite SLAM and package READMEs: build, individual stages, standalone
+- [x] Rewrite SLAM and package READMEs: build, individual stages, standalone
       Gazebo with testing helpers, hardware, whole system and troubleshooting.
 - [ ] Verify syntax/manifests/install resources, focused regression tests and
       actual launch construction where ROS exists. Record missing evidence.
@@ -59,3 +59,39 @@ surveyed-map anchoring. Diagnostics are not a controller stopping interlock.
 
 Resume by reading this file, `git status`, and this branch's log. Complete the
 unchecked tasks only; preserve unrelated edits. Update this record at milestones.
+
+## Corrected audit finding
+
+The current Gazebo launch rewrites its camera sensor joint into optical
+coordinates and robot_state_publisher already owns that child. No extra bridge
+is needed for the documented Gazebo workflow. An explicit fallback switch is
+provided for external incomplete descriptions only; it defaults off. Earlier
+claims that the standard Gazebo workflow lacked this TF were incomplete.
+
+## Testing-plan merge handoff
+
+The other documentation writer has finished its commits on local jazzy-port
+(`8d5de8b`), but they are not on origin/jazzy-port at implementation time.
+Do not silently include its three unrelated commits in this PR. After that
+work merges, update TestingPlan.md section 9 with these exact requirements:
+
+- Converter scope selects exactly one source: joint states, combined tick array
+  or individual ticks. Test cadence mismatch, missing wheels, stale/future/
+  duplicate samples, counter discontinuity, clock reset, stationary and turns.
+- Slip scope preserves measured twist and cross-covariance while increasing
+  uncertainty. Exercise fresh/stale/missing IMU, rotated sensor mounting,
+  gravity conventions, effective yaw thresholds and clock reset recovery.
+- Real master launch construction and stage/clock/frame/profile forwarding are
+  prerequisites. Validate exclusive TF and publisher ownership; ROS absence
+  must be skip/unavailable, not success.
+- RTAB-Map consumes covariance-bearing /odometry/filtered. Verify coherent
+  moving RGB-D, graph updates, landmark arrays on /perception/landmark_detections,
+  adapter ID offset and legacy singular fixture separately. Judge global map
+  pose separately from local odometry, with independent timestamp-aligned truth.
+- Validate typed local/global RViz and the optional obstacle inspection costmap;
+  box clouds mark, measured camera rays clear. Test memory TTL and real clearing
+  together without double-publishing the bridge or synthetic observations.
+
+The legacy testing README is marked as a proposal. The actual package guide
+contains only commands implemented by this branch. No new benchmark/referee
+or coherent moving sensor tester was added.
