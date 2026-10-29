@@ -109,158 +109,55 @@ def compute_robust_side_velocity(
 
 
 class EncoderTicksToOdomNode(Node):
-    """
-    ROS 2 Node to read encoder ticks from all individual wheels, compute per-wheel telemetry,
-    and estimate rover odometry for EKF sensor fusion.
+    """Consume one selected source and publish only new complete measurements."""
+    WHEEL_NAME_ALIASES = {'front_left':'left_front', 'left_front':'front_left',
+        'front_right':'right_front', 'right_front':'front_right',
+        'rear_left':'left_rear', 'left_rear':'rear_left',
+        'rear_right':'right_rear', 'right_rear':'rear_right'}
 
-    Attributes:
-        wheel_names (List[str]): Active wheel names (supports 4-wheel and 6-wheel rover layouts).
-        ticks_per_rev (int): Number of encoder counts/ticks per full wheel revolution.
-        wheel_radius (float): Radius of each wheel in meters.
-        track_width (float): Distance between left and right wheel baselines in meters.
-        publish_tf (bool): Flag indicating whether to broadcast odom -> base_link transform.
-    """
-
-    WHEEL_NAME_ALIASES: Dict[str, str] = {
-        "front_left": "left_front",
-        "left_front": "front_left",
-        "front_right": "right_front",
-        "right_front": "front_right",
-        "rear_left": "left_rear",
-        "left_rear": "rear_left",
-        "rear_right": "right_rear",
-        "right_rear": "rear_right",
-    }
-
-    def __init__(self) -> None:
-        """Initialize the EncoderTicksToOdomNode, declare parameters, subscribers, and publishers."""
-        super().__init__("encoder_ticks_to_odom")
-
-        # ----------------------------------------------------------------------
-        # ROS 2 Parameters Declaration
-        # ----------------------------------------------------------------------
-        # CUSTOMIZE WITH HARDWARE TEAM: Encoder resolution (CPR * gear ratio of motor driver)
-        self.declare_parameter("ticks_per_revolution", 1024)
-
-        # CUSTOMIZE WITH MECHANICAL TEAM: Measured outer radius of wheels in meters
-        self.declare_parameter("wheel_radius", 0.06)
-
-        # CUSTOMIZE WITH MECHANICAL TEAM: Left-to-right wheel baseline distance in meters (matches URDF & Gazebo diff-drive 0.49m)
-        self.declare_parameter("track_width", 0.49)
-
-        # Threshold to flag single wheel slip (m/s difference between wheels on same side)
-        self.declare_parameter("single_wheel_slip_threshold", 0.15)
-
-        # CUSTOMIZE WITH HARDWARE/SLAM TEAM: Set True if node should publish odom -> base_link TF
-        self.declare_parameter("publish_tf", False)
-
-        self.declare_parameter("odom_frame_id", "odom")
-        self.declare_parameter("base_frame_id", "base_link")
-
-        # CUSTOMIZE WITH HARDWARE/MECHANICAL TEAM: Naming of the 4 wheels (matches STM32/URDF)
-        self.declare_parameter(
-            "wheel_names",
-            [
-                "left_front",
-                "right_front",
-                "left_rear",
-                "right_rear",
-            ],
-        )
-
-        # Retrieve parameter values
-        self.ticks_per_rev: int = self.get_parameter("ticks_per_revolution").get_parameter_value().integer_value
-        self.wheel_radius: float = self.get_parameter("wheel_radius").get_parameter_value().double_value
-        self.track_width: float = self.get_parameter("track_width").get_parameter_value().double_value
-        self.single_wheel_slip_threshold: float = (
-            self.get_parameter("single_wheel_slip_threshold").get_parameter_value().double_value
-        )
-        self.publish_tf: bool = self.get_parameter("publish_tf").get_parameter_value().bool_value
-        self.odom_frame_id: str = self.get_parameter("odom_frame_id").get_parameter_value().string_value
-        self.base_frame_id: str = self.get_parameter("base_frame_id").get_parameter_value().string_value
-        self.wheel_names: List[str] = self.get_parameter("wheel_names").get_parameter_value().string_array_value
-
-        # Kinematics constants calculation
-        self.wheel_circumference: float = 2.0 * math.pi * self.wheel_radius
-        self.meters_per_tick: float = self.wheel_circumference / max(1, self.ticks_per_rev)
-
-        # ----------------------------------------------------------------------
-        # Per-Wheel Data Tracking Data Structures (Every Wheel Data)
-        # ----------------------------------------------------------------------
-        self.current_ticks: Dict[str, int] = {name: 0 for name in self.wheel_names}
-        self.prev_ticks: Dict[str, Optional[int]] = {name: None for name in self.wheel_names}
-        self.wheel_velocities: Dict[str, float] = {name: 0.0 for name in self.wheel_names}
-        self.wheel_delta_ticks: Dict[str, int] = {name: 0 for name in self.wheel_names}
-        self.last_odom_ticks: Dict[str, Optional[int]] = {name: None for name in self.wheel_names}
-
-        # Robot 2D Pose State Estimation
-        self.x: float = 0.0
-        self.y: float = 0.0
-        self.yaw: float = 0.0
-        self.last_time: Optional[rclpy.time.Time] = None
-
-        # ----------------------------------------------------------------------
-        # ROS 2 Subscribers & Publishers
-        # ----------------------------------------------------------------------
-        # Option 1: Multi-array subscriber for combined wheel ticks on `/wheel/ticks`
-        self.sub_ticks_array = self.create_subscription(
-            Int64MultiArray,
-            "/wheel/ticks",
-            self._ticks_array_callback,
-            10,
-        )
-
-        # Option 2: JointState subscriber for simulation / hardware drivers on `/joint_states`
-        self.sub_joint_states = self.create_subscription(
-            JointState,
-            "/joint_states",
-            self._joint_states_callback,
-            10,
-        )
-
-        # Option 3: Subscriptions for individual per-wheel topics (`/wheel/ticks/<wheel_name>`)
-        self.sub_individual_wheels: Dict[str, Any] = {}
-        for wheel in self.wheel_names:
-            topic_name: str = f"/wheel/ticks/{wheel}"
-            self.sub_individual_wheels[wheel] = self.create_subscription(
-                Int64,
-                topic_name,
-                self._make_individual_wheel_callback(wheel),
-                10,
-            )
-
-        # Publishers
-        self.pub_odom = self.create_publisher(Odometry, "/wheel/odom_raw", 10)
-        self.pub_wheel_speeds = self.create_publisher(Float64MultiArray, "/wheel/per_wheel_speeds", 10)
-        self.pub_single_wheel_slip = self.create_publisher(Bool, "/wheel/single_wheel_slip", 10)
-
-        # Optional Transform Broadcaster
-        if self.publish_tf:
-            self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
-
-        # CUSTOMIZE WITH COMPUTE/HARDWARE TEAM: Desired odometry publishing period (0.02s = 50Hz update rate)
-        self.timer = self.create_timer(0.02, self._update_odometry)
-
-        self.get_logger().info(
-            f"Encoder Ticks Node initialized for {len(self.wheel_names)} wheels: {self.wheel_names}"
-        )
-
-    # --------------------------------------------------------------------------
-    # Helper Callback Generator & Processing
-    # --------------------------------------------------------------------------
-    def _make_individual_wheel_callback(self, wheel_name: str):
-        """
-        Creates a dedicated subscriber callback function bound to a specific wheel name.
-
-        Args:
-            wheel_name (str): Identifier name of the wheel.
-
-        Returns:
-            Callable[[Int64], None]: Callback function accepting Int64 ROS message.
-        """
-        def callback(msg: Int64) -> None:
-            self._update_single_wheel_tick(wheel_name, msg.data)
-        return callback
+    def __init__(self):
+        super().__init__('encoder_ticks_to_odom')
+        from rover_slam.wheel_odometry import WheelOdometry
+        from diagnostic_msgs.msg import DiagnosticArray
+        defaults = {'ticks_per_revolution':1024, 'wheel_radius':0.06, 'track_width':0.49,
+            'single_wheel_slip_threshold':0.15, 'publish_tf':False, 'input_mode':'joint_states',
+            'input_timeout_sec':0.5, 'max_wheel_speed_mps':2.0, 'odom_frame_id':'odom',
+            'base_frame_id':'base_link', 'wheel_names':['left_front','right_front','left_rear','right_rear']}
+        for key,value in defaults.items(): self.declare_parameter(key,value)
+        def value(key): return self.get_parameter(key).value
+        self.wheel_names = list(value('wheel_names'))
+        self.ticks_per_rev = value('ticks_per_revolution')
+        if self.ticks_per_rev <= 0 or not math.isfinite(value('wheel_radius')) or value('wheel_radius') <= 0:
+            raise ValueError('Positive encoder resolution and radius required')
+        self.core = WheelOdometry(self.wheel_names, 2*math.pi*value('wheel_radius')/self.ticks_per_rev,
+            value('track_width'), value('input_timeout_sec'), value('max_wheel_speed_mps'),
+            value('single_wheel_slip_threshold'))
+        self.odom_frame_id, self.base_frame_id = value('odom_frame_id'), value('base_frame_id')
+        self.current_ticks, self._wheel_receipts, self._pending_wheels = {}, {}, set()
+        self._last_receipt = None
+        self._last_clock = self.get_clock().now().nanoseconds/1e9
+        self._last_valid_stamp = None
+        self._last_diagnostic = -float('inf')
+        mode = value('input_mode')
+        self.subscriptions_owned = []
+        if mode == 'joint_states':
+            from rclpy.qos import qos_profile_sensor_data
+            self.subscriptions_owned.append(self.create_subscription(JointState, '/joint_states', self._joint_states_callback, qos_profile_sensor_data))
+        elif mode == 'ticks_array':
+            self.subscriptions_owned.append(self.create_subscription(Int64MultiArray, '/wheel/ticks', self._ticks_array_callback, 10))
+        elif mode == 'individual_ticks':
+            for wheel in self.wheel_names:
+                self.subscriptions_owned.append(self.create_subscription(Int64, '/wheel/ticks/'+wheel,
+                    lambda msg, name=wheel: self._individual(name,msg.data), 10))
+        else:
+            raise ValueError('input_mode must be joint_states, ticks_array or individual_ticks')
+        self.pub_odom = self.create_publisher(Odometry, '/wheel/odom_raw', 10)
+        self.pub_wheel_speeds = self.create_publisher(Float64MultiArray, '/wheel/per_wheel_speeds', 10)
+        self.pub_single_wheel_slip = self.create_publisher(Bool, '/wheel/single_wheel_slip', 10)
+        self.pub_diagnostics = self.create_publisher(DiagnosticArray, '/slam/encoder_diagnostics', 10)
+        self.publish_tf = value('publish_tf')
+        if self.publish_tf: self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
+        self.timer = self.create_timer(0.1, self._watchdog)
 
     @classmethod
     def _is_joint_matching_wheel(cls, joint_name: str, wheel_name: str, alias: str = "") -> bool:
@@ -300,214 +197,106 @@ class EncoderTicksToOdomNode(Node):
 
         return False
 
-    def _ticks_array_callback(self, msg: Int64MultiArray) -> None:
-        """
-        Callback for receiving an array of raw encoder ticks from all wheels.
-        Handles standard 4-wheel arrays as well as legacy 6-wheel arrays.
+    def _now(self):
+        now = self.get_clock().now().nanoseconds/1e9
+        if now < self._last_clock:
+            self.core.reset_measurements()
+            self.current_ticks.clear()
+            self._wheel_receipts.clear()
+            self._pending_wheels.clear()
+            self._last_valid_stamp = self._last_receipt = None
+        self._last_clock = now
+        return now
 
-        Args:
-            msg (Int64MultiArray): Message containing raw tick counts for each wheel in order.
-        """
-        data: List[int] = list(msg.data)
+    def _ticks_array_callback(self, msg):
+        self._now()
+        data = list(msg.data)
         if len(data) == 6 and len(self.wheel_names) == 4:
-            # Handle legacy 6-wheel array layout: [LF, LM, LR, RF, RM, RR]
-            # Mapping 4 active wheels: LF -> data[0], LR -> data[2], RF -> data[3], RR -> data[5]
-            legacy_map = {
-                "left_front": data[0],
-                "front_left": data[0],
-                "left_rear": data[2],
-                "rear_left": data[2],
-                "right_front": data[3],
-                "front_right": data[3],
-                "right_rear": data[5],
-                "rear_right": data[5],
-            }
-            for name in self.wheel_names:
-                if name in legacy_map:
-                    self._update_single_wheel_tick(name, legacy_map[name])
+            legacy = dict(zip(('left_front','left_rear','right_front','right_rear'),
+                              (data[0],data[2],data[3],data[5])))
+            counts = {n:legacy.get(n,legacy.get(self.WHEEL_NAME_ALIASES.get(n))) for n in self.wheel_names}
+        elif len(data) == len(self.wheel_names):
+            counts = dict(zip(self.wheel_names,data))
+        else:
+            self.core.reason = 'incorrect wheel array length'
             return
+        self._observe(counts, self.get_clock().now().to_msg())
 
-        for idx, name in enumerate(self.wheel_names):
-            if idx < len(data):
-                self._update_single_wheel_tick(name, data[idx])
-
-    def _joint_states_callback(self, msg: JointState) -> None:
-        """
-        Callback for receiving joint states from simulation or hardware drivers.
-        Strictly matches continuous wheel joints while ignoring fixed suspension arm joints.
-
-        Args:
-            msg (JointState): Standard ROS 2 JointState message.
-        """
-        for idx, joint_name in enumerate(msg.name):
-            for wheel_name in self.wheel_names:
-                alias = self.WHEEL_NAME_ALIASES.get(wheel_name, "")
-                if self._is_joint_matching_wheel(joint_name, wheel_name, alias) and idx < len(msg.position):
-                    rad_pos: float = msg.position[idx]
-                    if not math.isfinite(rad_pos):
-                        break
-                    ticks: int = int(round((rad_pos / (2.0 * math.pi)) * self.ticks_per_rev))
-                    self._update_single_wheel_tick(wheel_name, ticks)
+    def _joint_states_callback(self, msg):
+        self._now()
+        counts = {}
+        for name in self.wheel_names:
+            for i,joint in enumerate(msg.name):
+                if self._is_joint_matching_wheel(joint,name,self.WHEEL_NAME_ALIASES.get(name,'')):
+                    if i < len(msg.position) and math.isfinite(msg.position[i]):
+                        counts[name] = msg.position[i]*self.ticks_per_rev/(2*math.pi)
                     break
+        stamp = msg.header.stamp
+        if stamp.sec == 0 and stamp.nanosec == 0:
+            stamp = self.get_clock().now().to_msg()
+        self._observe(counts, stamp)
 
-    def _update_single_wheel_tick(self, wheel_name: str, new_tick_count: int) -> None:
-        """
-        Updates internal tick count state and delta ticks for a specific wheel.
-
-        Args:
-            wheel_name (str): Name of the wheel to update.
-            new_tick_count (int): Latest raw encoder tick count reading.
-        """
-        if self.prev_ticks.get(wheel_name) is None:
-            self.prev_ticks[wheel_name] = new_tick_count
-            self.current_ticks[wheel_name] = new_tick_count
-            self.wheel_delta_ticks[wheel_name] = 0
-            self.last_odom_ticks[wheel_name] = new_tick_count
+    def _individual(self, name, count):
+        now = self._now()
+        self.current_ticks[name], self._wheel_receipts[name] = count, now
+        self._pending_wheels.add(name)
+        if len(self._pending_wheels) != len(self.wheel_names): return
+        self._pending_wheels.clear()
+        if now-min(self._wheel_receipts.values()) > self.core.timeout:
+            self.core.reason = 'individual wheel inputs not coherent'
             return
+        self._observe(self.current_ticks, self.get_clock().now().to_msg())
 
-        delta: int = new_tick_count - self.current_ticks[wheel_name]
-        self.prev_ticks[wheel_name] = self.current_ticks[wheel_name]
-        self.current_ticks[wheel_name] = new_tick_count
-        self.wheel_delta_ticks[wheel_name] = delta
-
-    # --------------------------------------------------------------------------
-    # Odometry Update & Kinematics Computation Loop
-    # --------------------------------------------------------------------------
-    def _update_odometry(self) -> None:
-        """
-        Timer callback to calculate per-wheel linear velocities, differential drive pose kinematics,
-        and publish wheel odometry and per-wheel speed data.
-        """
-        current_time = self.get_clock().now()
-
-        if self.last_time is None:
-            self.last_time = current_time
+    def _observe(self, counts, stamp):
+        now = self._now()
+        seconds = stamp.sec+stamp.nanosec/1e9
+        if not 0 <= now-seconds <= self.core.timeout:
+            self.core.reason = 'stale or future wheel timestamp'
             return
-
-        dt: float = (current_time - self.last_time).nanoseconds / 1e9
-        self.last_time = current_time
-
-        if dt <= 0.0:
-            return
-
-        left_velocities: List[float] = []
-        right_velocities: List[float] = []
-
-        # Calculate linear velocity for every individual wheel based on delta since last odometry cycle
-        for wheel_name in self.wheel_names:
-            if self.prev_ticks.get(wheel_name) is None:
-                # No encoder data received yet for this wheel; hold at zero
-                delta_ticks = 0
-            else:
-                current: int = self.current_ticks.get(wheel_name, 0)
-                last_odom: Optional[int] = self.last_odom_ticks.get(wheel_name)
-
-                if last_odom is not None:
-                    delta_ticks = current - last_odom
-                else:
-                    delta_ticks = 0
-
-                self.last_odom_ticks[wheel_name] = current
-
-            self.wheel_delta_ticks[wheel_name] = delta_ticks
-            dist: float = delta_ticks * self.meters_per_tick
-            velocity: float = dist / dt
-            self.wheel_velocities[wheel_name] = velocity
-
-            if "left" in wheel_name.lower():
-                left_velocities.append(velocity)
-            elif "right" in wheel_name.lower():
-                right_velocities.append(velocity)
-
-        # Robust per-side wheel velocity calculations rejecting single-wheel slippage
-        v_left, slip_left = compute_robust_side_velocity(left_velocities, self.single_wheel_slip_threshold)
-        v_right, slip_right = compute_robust_side_velocity(right_velocities, self.single_wheel_slip_threshold)
-        single_wheel_slip_active: bool = slip_left or slip_right
-
-        # Kinematics calculations
-        v_x: float = (v_right + v_left) / 2.0
-        v_y: float = 0.0
-        safe_track_width: float = max(1e-6, self.track_width)
-        omega_z: float = (v_right - v_left) / safe_track_width
-
-        # Integrate pose
-        delta_x: float = (v_x * math.cos(self.yaw)) * dt
-        delta_y: float = (v_x * math.sin(self.yaw)) * dt
-        delta_yaw: float = omega_z * dt
-
-        self.x += delta_x
-        self.y += delta_y
-        self.yaw += delta_yaw
-        # Normalize yaw to [-pi, pi] per REP-103
-        self.yaw = math.atan2(math.sin(self.yaw), math.cos(self.yaw))
-
-        # Construct nav_msgs/Odometry message
-        odom_msg = Odometry()
-        odom_msg.header.stamp = current_time.to_msg()
-        odom_msg.header.frame_id = self.odom_frame_id
-        odom_msg.child_frame_id = self.base_frame_id
-
-        odom_msg.pose.pose.position.x = self.x
-        odom_msg.pose.pose.position.y = self.y
-        odom_msg.pose.pose.position.z = 0.0
-        odom_msg.pose.pose.orientation = euler_to_quaternion(0.0, 0.0, self.yaw)
-
-        # CUSTOMIZE WITH HARDWARE/TESTING TEAM: Diagonal noise covariance matrices based on wheel slip & terrain testing
-        odom_msg.pose.covariance[0] = 0.01   # Position X variance (m^2)
-        odom_msg.pose.covariance[7] = 0.01   # Position Y variance (m^2)
-        odom_msg.pose.covariance[35] = 0.05  # Orientation Yaw variance (rad^2)
-
-        odom_msg.twist.twist.linear.x = v_x
-        odom_msg.twist.twist.linear.y = v_y
-        odom_msg.twist.twist.angular.z = omega_z
-
-        odom_msg.twist.covariance[0] = 0.02   # Linear Velocity Vx variance (m/s)^2
-        odom_msg.twist.covariance[7] = 0.02   # Linear Velocity Vy variance (m/s)^2
-        odom_msg.twist.covariance[35] = 0.05  # Angular Velocity Wz variance (rad/s)^2
-
-        self.pub_odom.publish(odom_msg)
-
-        # Publish per-wheel speeds
-        wheel_speeds_msg = Float64MultiArray()
-        wheel_speeds_msg.data = [self.wheel_velocities[w] for w in self.wheel_names]
-        self.pub_wheel_speeds.publish(wheel_speeds_msg)
-
-        # Publish single-wheel slip telemetry flag
-        slip_msg = Bool()
-        slip_msg.data = single_wheel_slip_active
-        self.pub_single_wheel_slip.publish(slip_msg)
-
-        # Broadcast odom -> base_link transform if enabled
+        result = self.core.observe(counts, seconds)
+        if result is None: return
+        self._last_receipt, self._last_valid_stamp = now, seconds
+        velocity, yaw_rate, speeds, slip = result
+        msg = Odometry()
+        msg.header.stamp, msg.header.frame_id, msg.child_frame_id = stamp, self.odom_frame_id, self.base_frame_id
+        msg.pose.pose.position.x, msg.pose.pose.position.y = self.core.x, self.core.y
+        msg.pose.pose.orientation = euler_to_quaternion(0.,0.,self.core.yaw)
+        msg.twist.twist.linear.x, msg.twist.twist.angular.z = velocity, yaw_rate
+        msg.pose.covariance[0], msg.pose.covariance[7], msg.pose.covariance[35] = .01,.01,.05
+        msg.twist.covariance[0], msg.twist.covariance[7], msg.twist.covariance[35] = .02,.02,.05
+        self.pub_odom.publish(msg)
+        self.pub_wheel_speeds.publish(Float64MultiArray(data=[speeds[n] for n in self.wheel_names]))
+        self.pub_single_wheel_slip.publish(Bool(data=slip))
         if self.publish_tf:
-            t = TransformStamped()
-            t.header.stamp = current_time.to_msg()
-            t.header.frame_id = self.odom_frame_id
-            t.child_frame_id = self.base_frame_id
-            t.transform.translation.x = self.x
-            t.transform.translation.y = self.y
-            t.transform.translation.z = 0.0
-            t.transform.rotation = odom_msg.pose.pose.orientation
-            self.tf_broadcaster.sendTransform(t)
+            tf = TransformStamped()
+            tf.header, tf.child_frame_id = msg.header, msg.child_frame_id
+            tf.transform.translation.x, tf.transform.translation.y = self.core.x,self.core.y
+            tf.transform.rotation = msg.pose.pose.orientation
+            self.tf_broadcaster.sendTransform(tf)
+
+    def _watchdog(self):
+        from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
+        now = self._now()
+        healthy = (self._last_receipt is not None and self._last_valid_stamp is not None
+                   and 0 <= now-self._last_receipt <= self.core.timeout
+                   and 0 <= now-self._last_valid_stamp <= self.core.timeout
+                   and self.core.reason == 'healthy')
+        status = DiagnosticStatus(name='slam/wheel_input', hardware_id='wheel_encoders',
+            level=DiagnosticStatus.OK if healthy else DiagnosticStatus.WARN,
+            message='healthy' if healthy else 'wheel input unavailable: '+self.core.reason)
+        array = DiagnosticArray(status=[status])
+        array.header.stamp = self.get_clock().now().to_msg()
+        self.pub_diagnostics.publish(array)
 
 
-def main(args: Optional[List[str]] = None) -> None:
-    """
-    Main entry point for starting the Encoder Ticks Node.
-
-    Args:
-        args (Optional[List[str]]): Arguments passed to rclpy initialization.
-    """
+def main(args=None):
     rclpy.init(args=args)
     node = EncoderTicksToOdomNode()
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
+    try: rclpy.spin(node)
+    except KeyboardInterrupt: pass
     finally:
         node.destroy_node()
         rclpy.shutdown()
 
 
-if __name__ == "__main__":
-    main()
-
+if __name__ == '__main__': main()
