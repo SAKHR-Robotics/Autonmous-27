@@ -229,6 +229,8 @@ def inflate_covariance(covariance, multiplier, linear_floor, angular_floor):
     result = [v*multiplier for v in covariance]
     for index, floor in ((0,linear_floor),(35,angular_floor)):
         result[index] = max(result[index],floor*multiplier)
+    if not all(math.isfinite(v) for v in result):
+        raise ValueError('Covariance overflow')
     return result
 
 
