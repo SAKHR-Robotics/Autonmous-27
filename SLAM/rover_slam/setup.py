@@ -25,7 +25,6 @@ setup(
         'console_scripts': [
             'encoder_ticks_to_odom = rover_slam.encoder_ticks_to_odom:main',
             'heuristic_slip_checker = rover_slam.heuristic_slip_checker:main',
-            'ekf_validator = rover_slam.ekf_validator:main',
         ],
     },
 
