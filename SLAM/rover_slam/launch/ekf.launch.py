@@ -20,7 +20,8 @@ def setup(context):
         if value('odom_topic') != '/wheel/odom_raw':
             raise ValueError('launch_encoder requires odom_topic:=/wheel/odom_raw; disable it for external odometry')
         actions.append(include('encoder.launch.py', {'use_sim_time': value('use_sim_time'),
-            'params_file': value('encoder_params_file'), 'input_mode': value('encoder_input_mode')}))
+            'params_file': value('encoder_params_file'), 'input_mode': value('encoder_input_mode'),
+            'odom_frame':value('odom_frame'), 'base_frame':value('base_frame')}))
     if value('launch_slip') == 'true':
         actions.append(include('slip.launch.py', {'use_sim_time': value('use_sim_time'),
             'params_file': value('slip_params_file'), 'odom_topic': value('odom_topic'), 'imu_topic': value('imu_topic')}))
@@ -28,14 +29,16 @@ def setup(context):
         output='screen', parameters=[value('ekf_params_file'), {
             'use_sim_time': value('use_sim_time') == 'true',
             'odom0': '/wheel/odom_filtered' if value('launch_slip') == 'true' else value('odom_topic'),
-            'imu0': value('imu_topic')}]))
+            'imu0': value('imu_topic'), 'map_frame':value('map_frame'),
+            'odom_frame':value('odom_frame'), 'world_frame':value('odom_frame'), 'base_link_frame':value('base_frame')}]))
     return actions
 
 
 def generate_launch_description():
     share = get_package_share_directory('rover_slam')
     defaults = {'use_sim_time': 'false', 'launch_encoder': 'false', 'launch_slip': 'true',
-        'odom_topic': '/wheel/odom_raw', 'imu_topic': '/imu/data', 'encoder_input_mode': 'joint_states'}
+        'odom_topic': '/wheel/odom_raw', 'imu_topic': '/imu/data', 'encoder_input_mode': 'joint_states',
+        'base_frame':'base_link', 'odom_frame':'odom', 'map_frame':'map'}
     defaults.update({key+'_params_file': os.path.join(share, 'config', key+'.yaml')
                      for key in ('encoder', 'slip', 'ekf')})
     return LaunchDescription([DeclareLaunchArgument(k, default_value=v,
