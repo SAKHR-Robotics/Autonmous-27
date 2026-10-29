@@ -137,7 +137,6 @@ class EncoderTicksToOdomNode(Node):
         self._last_receipt = None
         self._last_clock = self.get_clock().now().nanoseconds/1e9
         self._last_valid_stamp = None
-        self._last_diagnostic = -float('inf')
         mode = value('input_mode')
         self.subscriptions_owned = []
         if mode == 'joint_states':

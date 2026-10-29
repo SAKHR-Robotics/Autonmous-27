@@ -41,6 +41,12 @@ class EKFValidatorNode(Node):
                 p.x,p.y,p.z,q.x,q.y,q.z,q.w,*msg.pose.covariance,*msg.twist.covariance)
         valid=(all(math.isfinite(v) for v in values) and math.hypot(q.x,q.y,q.z,q.w)>1e-8
                and 0<=now-stamp<=self.settings['max_gap_seconds'])
+        if (not valid or math.hypot(t.linear.x,t.linear.y,t.linear.z)>self.settings['max_linear_speed_mps']
+                or (self.last_stamp is not None and stamp<=self.last_stamp)):
+            self.last_valid_status=False
+            self.reason='invalid, stale or out-of-order odometry'
+            self.pub_status.publish(Bool(data=False))
+            return
         if self.last_stamp is not None:
             dt=stamp-self.last_stamp
             valid=valid and dt>0 and dt<=self.settings['max_gap_seconds']
