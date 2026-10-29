@@ -28,3 +28,8 @@ def test_mount_rotation_and_orientation_composition():
     assert rotate_vector(q,(1.,0.,0.)) == pytest.approx((0.,1.,0.))
     assert quaternion_product(q,(-q[0],-q[1],-q[2],q[3])) == pytest.approx((0.,0.,0.,1.))
     with pytest.raises(ValueError): normalize_quaternion((0.,0.,0.,0.))
+
+
+def test_covariance_overflow_is_rejected():
+    values=[0.]*36; values[0]=1e308
+    with pytest.raises(ValueError): inflate_covariance(values,100.,.02,.05)

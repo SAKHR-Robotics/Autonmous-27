@@ -78,3 +78,22 @@ def test_real_master_constructs_and_selects_stages(ros):
     assert module.setup(context)==[]
     context.launch_configurations['launch_encoder']='true'
     with pytest.raises(ValueError): module.setup(context)
+
+
+def test_monitor_rejects_future_stamp_without_poisoning_baseline(ros):
+    from slam_test_tools.ekf_validator import EKFValidatorNode
+    node=EKFValidatorNode()
+    try:
+        msg=Odometry(); msg.pose.pose.orientation.w=1.
+        msg.header.stamp=node.get_clock().now().to_msg()
+        msg.header.stamp.sec+=100
+        node.observe(msg)
+        assert node.last_stamp is None
+        msg.header.stamp=node.get_clock().now().to_msg()
+        node.observe(msg)
+        assert node.last_stamp is not None
+        node.last_receipt=node.now()-1.
+        node.last_valid_status=True
+        node.watchdog()
+        assert node.last_valid_status is False
+    finally: node.destroy_node()
