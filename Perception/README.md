@@ -67,8 +67,9 @@ landmark topics; full navigation/SLAM behavior needs separate integration checks
 
 Runtime mock publishers, scenarios and artificial localization belong under the
 master `testing/` folder. Per-package `test/` directories contain regression tests,
-not runnable replacement dependencies. The existing terrain offline benchmark
-still needs a coordinated relocation; see the testing handoff before moving it.
+not runnable replacement dependencies. The offline terrain generator now lives
+in `testing/mocks/perception/perception_test_tools`; its timing runner is the
+`perception_benchmark_tools` package under `testing/benchmarking/perception/`.
 
 See [terrain details](terrain_geometry/README.md), [marker details](marker_detection/README.md)
 and [remaining validation limits](INTEGRATION_REVIEW.md). Older design documents

@@ -49,14 +49,14 @@ passing terrain acceptance recipe. The frontal marker also retains
 `POSE_AMBIGUOUS`, so positive action/landmark acceptance needs a different coherent
 scene. See [the measured results and decision](INTEGRATION_REVIEW.md).
 
-The current existing feeder is `testing/Perception/perception_test_tools`.
+The existing feeder is `testing/mocks/perception/perception_test_tools`.
 Its layout is owned by the testing agent. Use it as-is or snapshot it into a
 scratch directory before building; do not change it as part of Perception work.
 Build that package into the same isolated overlay when deliberately selected:
 
 ```bash
 colcon --log-base /validation/log build \
-  --base-paths /workspace/testing/Perception/perception_test_tools \
+  --base-paths /workspace/testing/mocks/perception/perception_test_tools \
   --build-base /validation/build --install-base /validation/install --symlink-install
 source /validation/install/setup.bash
 ```
@@ -96,12 +96,12 @@ Do not run two feeders simultaneously on the same topics/TF.
 
 ## Testing-agent handoff
 
-No files under master `testing/` are edited by the Perception implementation.
-The following coordination remains before changing its layout:
+The offline generator and runner have now been relocated into master `testing/`
+at Saif's request. Existing live sensor-feeder behavior is unchanged.
 
-| Item | Required action by testing-folder owner |
+| Item | Status / action |
 | --- | --- |
-| `Perception/terrain_geometry/terrain_geometry/benchmark.py` | Choose a testing package destination, move the synthetic generator/offline runner there, then remove it from the production package in a coordinated change. It is currently retained, unused by production nodes. |
+| Offline terrain generator and runner | Relocation complete: generator in `testing/mocks/perception/perception_test_tools/perception_test_tools/terrain_scene.py`, runner in `testing/benchmarking/perception/perception_benchmark_tools`. The old production module is removed. Use `ros2 run perception_benchmark_tools terrain_benchmark --synthetic --frames 3`; this measures helper computation, not production-node accuracy. |
 | Combined launch references | Prefer `perception_bringup perception.launch.py`. Existing `terrain_geometry perception_system.launch.py` includes still work after bringup is built. |
 | Combined view | Production view now lives in `perception_bringup/rviz/`. Truth overlays stay in the testing package's own RViz view. |
 | Dependency mocks | Match the documented topic types, QoS, units, timestamps and frames; provide only selected missing dependencies with one TF/output authority. |
@@ -109,8 +109,10 @@ The following coordination remains before changing its layout:
 
 The printable ArUco image generator is a calibration utility, not a sensor mock;
 it remains in `marker_detection`. Test-only publisher nodes already reside in
-master `testing/`. Historical synthetic benchmark code is the outstanding move,
-not a reason to alter the other agent's files without its agreed destination.
+master `testing/`. The offline benchmark relocation preserves the generator and
+processing settings; it does not resolve the known ground-classification error.
+See the [offline runner README](../testing/benchmarking/perception/perception_benchmark_tools/README.md)
+for isolated build and execution commands.
 
 ## Limits and next integration checks
 

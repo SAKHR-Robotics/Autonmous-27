@@ -4,7 +4,8 @@ Review date: 2026-11-19. Source branch: `TestingValidation`.
 Environment: existing `autonomous27:jazzy` image, ID `d952a9381d1f`, isolated ROS
 network namespaces and scratch build/install directories. The host ROS/Python
 installation was not used for builds, tests or perception processing. No image
-packages were installed or replaced. Master `testing/` source files are unchanged.
+packages were installed or replaced. Initial node validation left master
+`testing/` source unchanged; the subsequent offline fixture relocation is recorded below.
 
 ## Implemented
 
@@ -119,11 +120,23 @@ gates have not been loosened to force fixture acceptance.
 
 ## Coordination and later integration
 
-The offline synthetic terrain benchmark still resides in production source and
-is not invoked by production nodes. Its relocation awaits the testing agent's
-chosen package destination. The [testing handoff](TESTING_GUIDE.md#testing-agent-handoff)
-records source paths and compatibility details. Perception changes do not write
-to master `testing/` or change optional feature selection defaults.
+The offline synthetic terrain generator now resides in
+`testing/mocks/perception/perception_test_tools/perception_test_tools/terrain_scene.py`.
+Its helper timing runner is packaged separately under
+`testing/benchmarking/perception/perception_benchmark_tools`; the old production
+`terrain_geometry.benchmark` module is removed. The move preserves synthetic
+geometry and processing settings and does not fix ground classification or
+provide mission accuracy validation. The
+[testing handoff](TESTING_GUIDE.md#testing-agent-handoff) records the new entry point.
+Existing live feeder behavior and production optional feature defaults are unchanged.
+
+Relocation verification in the same Docker image: seven packages built in a fresh
+symlink overlay; the installed runner completed three-frame samples with and
+without tracking; 12 generated frames across three seeds matched the original
+arrays exactly; six before/after processing results matched all point and
+cluster counts (timings excluded). The fresh production install contains no
+`terrain_geometry.benchmark` module. The production regression suite passed
+178 pytest cases. Bag input was not exercised for this relocation.
 
 Physical camera alignment/mounting, ground reference, marker size, outdoor data,
 target-computer latency, Nav2 marking/clearing and safe stopping, RTAB-Map map
