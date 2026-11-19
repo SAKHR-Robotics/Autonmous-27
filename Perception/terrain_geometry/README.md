@@ -1,8 +1,9 @@
 # terrain_geometry
 
 Validation status: the native Patchwork++ backend currently fails the existing
-synthetic ground/obstacle geometry checks. The reference-frame decision and
-measured results are in [the integration review](../INTEGRATION_REVIEW.md).
+synthetic ground/obstacle geometry checks, even with a matching height reference.
+The investigation and measured results are in
+[the integration review](../INTEGRATION_REVIEW.md).
 
 ROS 2 terrain/obstacle processing package. One `terrain_node` processes each
 PointCloud2 frame in memory: timestamped TF, ROI crop, ground removal, voxel
