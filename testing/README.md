@@ -49,38 +49,61 @@ Jazzy and Humble instructions. No runtime profile is approved by this document.
 Launch files should not prompt interactively. Resolve choices in conversation,
 then represent them through arguments/configuration so runs remain repeatable.
 
-## Existing inventory
+## Current layout — 2026-11-19
 
-The following is a source review on 2026-11-18, not a new runtime validation.
+```text
+testing/
+├── mocks/
+│   ├── pathplanning/pathplanner_mock_tools/
+│   ├── perception/perception_test_tools/
+│   └── slam/slam_mock_tools/
+├── benchmarking/
+│   ├── pathplanning/                 # global_path_benchmarking package
+│   ├── slam/slam_test_tools/
+│   └── perception/                   # documentation; observer not implemented
+└── validation_bringup/               # documented future shared orchestration
+```
 
-| Location / package | Existing capability | Current limit |
-| --- | --- | --- |
-| `Perception/perception_test_tools` / `perception_test_tools` | Deterministic RGB, depth, CameraInfo, PointCloud2 and truth markers; feeder-only and real-pipeline launches; installed RViz view | Combined launch hardcodes wall time. Optional motion owns `odom -> base_link`. Confirm these choices before changes. Historical evidence: [Perception validation](Perception/VALIDATION.md). |
-| `SLAM/slam_test_tools` / `slam_test_tools` | EKF monitor, landmark and bridge-cloud stubs, wrapper for real EKF/RTAB-Map | Wrapper requires external sensor streams, sensor TF and clock; it is not a complete mocked SLAM run. Uses production SLAM RViz views. See [actual capabilities](SLAM/slam_test_tools/README.md). |
-| `PathPlanner` / `global_path_benchmarking` | Mock rover, obstacle feeder, scenarios, benchmark runner and installed RViz view | Packaging, launch selection, interface ownership and process cleanup need repair before accepting a run. Its [README](PathPlanner/README.md) also describes intended capabilities. |
-| `custom_maps/`, `launch_world_and_rover.sh` | Loose map fixtures and Gazebo launcher | Maps are outside an installed test package. Script cleanup targets process names globally. These are not accepted isolated test entry points. |
+[Mock ownership](mocks/README.md), [benchmark status](benchmarking/README.md) and
+[bringup boundaries](validation_bringup/README.md) describe what actually exists.
+The mission is the evaluation goal: module observers explain route quality,
+tracking, perception and localization across the same mission. Mocked and real
+runs must identify their dependencies; mission success with mocked inputs does
+not establish full-stack readiness.
+
+Original ROS package names and launch defaults are preserved. Mock implementations
+were extracted into `pathplanner_mock_tools` and `slam_mock_tools`; old Python
+imports and executable names delegate to those packages. Rebuild in a separate
+build/install directory after relocation; an old symlink overlay can still point
+to deleted source paths. No new launch profile or GUI has been implemented.
+
+Historical benchmark reports remain in `benchmarking/pathplanning/reports/` and
+historical design documents remain beside their modules. Neither establishes
+current readiness. The legacy `launch_world_and_rover.sh` remains at its existing
+path while its unsafe cleanup awaits a separate fix.
 
 ## Open issues and proposed fixes
 
-These are findings to resolve in bounded implementation steps. No launch or node
-behavior has been changed during the foundation stage.
+These are findings to resolve in bounded implementation steps. The layout step
+preserves launch defaults and mock algorithms.
+Known behavior defects remain open; folder organization does not fix scoring.
 
 | ID | Location / finding | Proposed resolution and acceptance check |
 | --- | --- | --- |
-| T01 | `PathPlanner/package.xml` lacks `ament_python` buildtool and dependencies used by launch/report code, including launch libraries, NumPy, YAML, Matplotlib and Pillow. | Reconcile imports against declared dependencies, distinguish optional report tools, then build/discover the package in the chosen clean environment. |
-| T02 | `PathPlanner/launch/live_test.launch.py` declares `target_package` and `target_launch` but includes the hardcoded ERC launch. Missing ERC can silently produce an empty group. | Confirm supported target modes, honor their arguments, and fail clearly for a missing selected target. Check both internal and external modes. |
+| T01 | `benchmarking/pathplanning/package.xml` now declares `ament_python`; remaining launch/report dependencies still need reconciliation, including launch libraries, NumPy, YAML, Matplotlib and Pillow. | Reconcile imports against declared dependencies, distinguish optional report tools, then build/discover the package in the chosen clean environment. |
+| T02 | `benchmarking/pathplanning/launch/live_test.launch.py` declares `target_package` and `target_launch` but includes the hardcoded ERC launch. Missing ERC can silently produce an empty group. | Confirm supported target modes, honor their arguments, and fail clearly for a missing selected target. Check both internal and external modes. |
 | T03 | The same live launch adds a costmap bridge while `PathPlanning/erc_path_planner/launch/path_planning.launch.py` already starts one. | Agree one bridge owner per profile. Confirm one authoritative bridge-cloud publisher and the expected message contract. |
-| T04 | `PathPlanner/global_path_benchmarking/testing_node.py` uses global `pkill -9` with `clean`; `launch_world_and_rover.sh` also kills processes by name. | Replace cleanup with tracking/stopping run-owned processes. Verify a separate unrelated process survives stopping the test run. Keep `clean` disabled meanwhile. |
-| T05 | `SLAM/slam_test_tools/launch/test_slam_standalone.launch.py` does not supply complete SLAM sensor inputs. Existing stubs are fixed smoke fixtures. | Agree local-EKF versus RGB-D SLAM stages, then supply coherent missing inputs and separate ground truth. Do not claim trajectory accuracy from the current stubs. |
+| T04 | `benchmarking/pathplanning/global_path_benchmarking/testing_node.py` uses global `pkill -9` with `clean`; `launch_world_and_rover.sh` also kills processes by name. | Replace cleanup with tracking/stopping run-owned processes. Verify a separate unrelated process survives stopping the test run. Keep `clean` disabled meanwhile. |
+| T05 | `benchmarking/slam/slam_test_tools/launch/test_slam_standalone.launch.py` does not supply complete SLAM sensor inputs. Existing stubs are fixed smoke fixtures. | Agree local-EKF versus RGB-D SLAM stages, then supply coherent missing inputs and separate ground truth. Do not claim trajectory accuracy from the current stubs. |
 | T06 | `PathPlanning/erc_path_planner/launch/test_planner_standalone.launch.py` publishes a synthetic map anchor from a production package; its default map is `config/dummy_map.yaml`. | Move test orchestration and synthetic assets under the appropriate testing package, updating install rules and references; agree whether a compatibility wrapper is needed. |
-| T07 | `testing/custom_maps/` has no package installation. PathPlanner generates `maps/` and `reports/` relative to the caller's working directory. | Assign fixture ownership to a test package, resolve installed resources through package share, and expose a separate run output directory. Check launching from outside the source tree. |
+| T07 | `mocks/pathplanning/pathplanner_mock_tools/custom_maps/` now has package installation. PathPlanner still generates `maps/` and `reports/` relative to the caller's working directory. | Assign fixture ownership to a test package, resolve installed resources through package share, and expose a separate run output directory. Check launching from outside the source tree. |
 
 ## Validation sequence
 
 | Stage | Bounded result | Completion gate |
 | --- | --- | --- |
-| 0 — Foundation (current) | Inventory, rules, issue list and runtime decision | Review this document and confirm the runtime; no runtime pass claimed. |
-| 1 — Package discovery and installation | Repair harness manifests/resource installation | Selected packages build and their executables, launch files and fixtures resolve from the overlay. |
+| 0 — Foundation (documented) | Inventory, rules, issue list and runtime decision | Review this document and confirm the runtime; no runtime pass claimed. |
+| 1 — Package discovery and installation | Layout reorganized; discovery passed; installation pending | Selected packages build and their executables, launch files and fixtures resolve from the overlay. |
 | 2 — Mock feeders alone | Validate one feeder at a time before consuming its data | Expected message types, QoS, rates, timestamps, frames, deterministic truth and dropout behavior. |
 | 3 — One real module with mocked dependencies | Dedicated agreed launch and RViz profile for that module | Expected real outputs, failure/recovery behavior, no duplicate owners, visual checks recorded separately. |
 | 4 — Replace mocks with real dependencies | Integrate only modules that passed their isolated stage | Repeat boundary checks and compare against agreed tolerances; document remaining gaps. |
@@ -89,28 +112,22 @@ Run Stage 3 separately for each module, rather than treating a combined stack as
 proof that each module works. Each implementation step must supply its own
 commands and observations before proceeding.
 
-## Commands to review Stage 0
+## Commands to validate the layout
 
-From the host checkout:
+From the repository root on the host (or `/workspace` in the agreed container):
 
 ```bash
 cd /home/saif/Desktop/MESEKET/Autonmous-27/Autonmous_Ws
-git show --stat HEAD
-git diff HEAD^ HEAD -- testing/README.md
-```
-
-Expected: a documentation-only foundation change. No mock or production process
-starts. Read the issue list and launch contract before choosing the first runtime
-profile.
-
-After entering the agreed ROS environment, this read-only command can inspect
-testing package discovery without launching anything:
-
-```bash
 colcon list --base-paths testing
+git show --stat HEAD
 ```
 
-Expected package names: `perception_test_tools`, `slam_test_tools`, and
-`global_path_benchmarking`. Discovery alone does not establish successful builds
-or dependency completeness. Build, launch and RViz validation commands will be
-provided with Stage 1 after the environment decision.
+Expected: five `ros.ament_python` packages: `global_path_benchmarking`,
+`pathplanner_mock_tools`, `perception_test_tools`, `slam_mock_tools`, and
+`slam_test_tools`. No duplicate package names. Discovery is not a build/runtime
+pass. See the [PathPlanner validation record](benchmarking/pathplanning/VALIDATION.md)
+for offline benchmark checks and known failures.
+
+Production documentation outside `testing/` has intentionally not been edited.
+Commands there using `testing/PathPlanner`, `testing/SLAM` or `testing/Perception`
+need the new paths above; the other agent owns those documentation updates.
