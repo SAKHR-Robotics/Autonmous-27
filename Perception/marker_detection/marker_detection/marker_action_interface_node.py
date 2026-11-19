@@ -37,6 +37,7 @@ from geometry_msgs.msg import PoseStamped
 from marker_detection_msgs.msg import MarkerActionTarget, MarkerActionTargetArray, MarkerTrackedPose, MarkerTrackedPoseArray
 from marker_detection.action_target_builder import ActionTarget, build_action_target
 from marker_detection.frame_transform import ResolvedPose, transform_to_base_link
+from marker_detection.quality_flags import QualityFlag
 
 
 def _covariance_matrix(flat9) -> np.ndarray | None:
@@ -52,6 +53,10 @@ class MarkerActionInterfaceNode(Node):
     def __init__(self) -> None:
         super().__init__("marker_action_interface")
         self._declare_parameters()
+        for key in ('max_action_age_seconds', 'max_action_covariance_trace_m2'):
+            value = float(self.get_parameter(key).value)
+            if not np.isfinite(value) or value <= 0:
+                raise ValueError(f'{key} must be finite and positive')
         self.base_link_frame = self.get_parameter("base_link_frame").value
         self.tf_buffer = Buffer(cache_time=Duration(seconds=float(self.get_parameter("tf_cache_seconds").value)))
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -74,6 +79,7 @@ class MarkerActionInterfaceNode(Node):
             # tracking state, quality flags, and confidence already computed
             # upstream.
             "min_action_confidence": 0.6, "max_action_covariance_trace_m2": 0.01,
+            "max_action_age_seconds": 0.5,
         }.items():
             self.declare_parameter(name, value)
 
@@ -98,16 +104,24 @@ class MarkerActionInterfaceNode(Node):
         self.targets_pub.publish(output)
 
     def _build_message(self, pose: MarkerTrackedPose) -> MarkerActionTarget:
+        now = self.get_clock().now().nanoseconds * 1e-9
+        stamp = pose.header.stamp.sec + pose.header.stamp.nanosec * 1e-9
+        elapsed = now - stamp
+        age = float(pose.age_seconds) + max(0.0, elapsed)
+        flags = int(pose.quality_flags)
+        if stamp <= 0 or elapsed < 0 or not np.isfinite(pose.age_seconds) or pose.age_seconds < 0:
+            flags |= int(QualityFlag.STALE_DATA)
         resolved = self._resolve_base_link(pose)
         target = build_action_target(
             marker_id=pose.id, detection_valid=pose.detection_valid, tracking_valid=pose.tracking_valid,
-            tracking_state=pose.track_state, confidence=pose.confidence, quality_flags=pose.quality_flags,
-            age_seconds=pose.age_seconds,
+            tracking_state=pose.track_state, confidence=pose.confidence, quality_flags=flags,
+            age_seconds=age,
             base_link_position=resolved.position if resolved else None,
             base_link_orientation=resolved.orientation if resolved else None,
             base_link_position_covariance=resolved.position_covariance if resolved else None,
             min_action_confidence=float(self.get_parameter("min_action_confidence").value),
-            max_action_covariance_trace_m2=float(self.get_parameter("max_action_covariance_trace_m2").value))
+            max_action_covariance_trace_m2=float(self.get_parameter("max_action_covariance_trace_m2").value),
+            max_action_age_seconds=float(self.get_parameter("max_action_age_seconds").value))
         return _to_message(target, self.base_link_frame, pose.header.stamp)
 
     def _resolve_base_link(self, pose: MarkerTrackedPose) -> ResolvedPose | None:
@@ -170,7 +184,7 @@ def main(args: list[str] | None = None) -> None:
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":

@@ -14,8 +14,8 @@ int32 marker_id
 # verbatim -- no second tracking state machine.
 string tracking_state
 bool detected
-# True only when tracking_state == "CONFIRMED" (Part 7); the existing
-# tracking system's own confirmation, not a new one.
+# True when detection/tracking are valid and tracking_state == "CONFIRMED";
+# this is the existing tracker's confirmation, not a new tracking state.
 bool stable
 
 # Part 4: marker pose in base_link. Never fabricated: if pose_valid is
@@ -45,5 +45,7 @@ uint32 quality_flags
 # Row-major 3x3 base_link-frame position covariance (m^2), rotated from the
 # Stage 4 camera-frame covariance; all-zero/absent means "not computed".
 float64[9] position_covariance
-# Seconds since the last valid detection (0.0 if detected this update).
+# Age at target publication: upstream detection age plus elapsed transport time.
+# The header above retains the source observation timestamp. Consumers must
+# additionally check that header when messages stop arriving.
 float32 age_seconds

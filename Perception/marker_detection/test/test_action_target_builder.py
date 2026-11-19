@@ -97,3 +97,16 @@ def test_detected_flag_reflects_input_directly():
     target = _confirmed_target(detection_valid=False)
     assert target.detected is False
     assert target.usable_for_action is False
+
+
+@pytest.mark.parametrize('age', [-1., 10., float('nan'), float('inf')])
+def test_age_gate_does_not_require_an_upstream_stale_flag(age):
+    target = _confirmed_target(age_seconds=age)
+    assert not target.usable_for_action
+    assert target.quality_flags & QualityFlag.STALE_DATA
+
+
+@pytest.mark.parametrize('covariance', [np.zeros((3, 3)), -np.eye(3), np.ones((2, 2)),
+    np.diag([float('nan'), .001, .001]), np.array([[.001, .1, 0], [0, .001, 0], [0, 0, .001]])])
+def test_invalid_or_unknown_covariance_is_not_actionable(covariance):
+    assert not _confirmed_target(base_link_position_covariance=covariance).usable_for_action

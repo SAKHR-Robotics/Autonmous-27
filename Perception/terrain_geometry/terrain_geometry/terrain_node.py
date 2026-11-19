@@ -379,7 +379,7 @@ class TerrainGeometryNode(Node):
         )
         self._obstacles_only_pub = self.create_publisher(
             Detection3DArray, "/perception/obstacles_only", reliable_qos
-        )
+        ) if self._publish_to_obstacles_only else None
 
         # --- Debug publishers (only *published to* when enabled) ------
         self._ground_cloud_pub = self.create_publisher(
@@ -695,6 +695,11 @@ class TerrainGeometryNode(Node):
                 self._enable_costmap = bool(param.value)
             elif param.name == "publish_to_obstacles_only":
                 self._publish_to_obstacles_only = bool(param.value)
+                if self._publish_to_obstacles_only and self._obstacles_only_pub is None:
+                    self._obstacles_only_pub = self.create_publisher(Detection3DArray, '/perception/obstacles_only', 5)
+                elif not self._publish_to_obstacles_only and self._obstacles_only_pub is not None:
+                    self.destroy_publisher(self._obstacles_only_pub)
+                    self._obstacles_only_pub = None
 
         return SetParametersResult(successful=True)
 

@@ -1,6 +1,7 @@
 """Minimal RGB optical-camera pinhole model for aligned depth deprojection."""
 from __future__ import annotations
 from dataclasses import dataclass
+import math
 from sensor_msgs.msg import CameraInfo
 
 
@@ -17,7 +18,7 @@ class RgbCameraModel:
         if len(info.k) != 9 or info.width <= 0 or info.height <= 0:
             return None
         fx, fy, cx, cy = float(info.k[0]), float(info.k[4]), float(info.k[2]), float(info.k[5])
-        if fx <= 0.0 or fy <= 0.0:
+        if not all(math.isfinite(v) for v in (fx, fy, cx, cy)) or fx <= 0.0 or fy <= 0.0:
             return None
         return cls(fx, fy, cx, cy)
 

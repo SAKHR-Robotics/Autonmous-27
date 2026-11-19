@@ -1,3 +1,5 @@
+> Historical design notes. For current package ownership, launch commands and interfaces, use the [Perception runbook](../RUNBOOK.md). PoseStamped compatibility output is not RTAB-Map's native landmark interface.
+
 # 🧠 Perception AI Implementation Guide & Roadmap (`PerceptionAiGuide.md`)
 
 > 💡 **AI Maintenance Directive:** This document is the master roadmap for AI assistants and human engineers implementing the Perception Subsystem. When completing a task or updating code, **mark the task checkbox (`- [x]`) and update the Document Status Log.**

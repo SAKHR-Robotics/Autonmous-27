@@ -8,6 +8,7 @@ independent of transform caching.
 
 from __future__ import annotations
 
+from copy import deepcopy
 import numpy as np
 
 import rclpy
@@ -57,21 +58,39 @@ def _fields_to_dtype(fields: list[PointField], point_step: int) -> np.dtype:
     whatever else the sensor publishes, e.g. rgb), with zero copying
     and zero per-point Python-level unpacking.
     """
+    if point_step <= 0:
+        raise ValueError('PointCloud2 point_step must be positive')
     names, formats, offsets = [], [], []
     for f in fields:
-        if f.count != 1:
-            # Uncommon for RealSense PointCloud2 output (x/y/z/rgb are
-            # all count=1); skip multi-count fields rather than guess.
-            continue
+        if f.datatype not in _DATATYPE_TO_NUMPY or f.count < 1:
+            raise ValueError(f'Invalid PointCloud2 field {f.name!r}')
+        base = np.dtype(_DATATYPE_TO_NUMPY[f.datatype])
+        if f.offset + base.itemsize * f.count > point_step:
+            raise ValueError(f'PointCloud2 field {f.name!r} exceeds point_step')
         names.append(f.name)
-        formats.append(_DATATYPE_TO_NUMPY[f.datatype])
+        formats.append(base if f.count == 1 else (base, (f.count,)))
         offsets.append(f.offset)
-    return np.dtype({
+    dtype = np.dtype({
         "names": names,
         "formats": formats,
         "offsets": offsets,
         "itemsize": point_step,
     })
+    for name in ('x', 'y', 'z'):
+        if name not in dtype.names or dtype[name].subdtype is not None:
+            raise ValueError('PointCloud2 requires scalar x, y and z fields')
+    return dtype
+
+
+def _cloud_view(cloud: PointCloud2, dtype=None, buffer=None) -> np.ndarray:
+    """View only declared points, respecting byte order and padding between rows."""
+    dtype = dtype if dtype is not None else _fields_to_dtype(cloud.fields, cloud.point_step)
+    dtype = dtype.newbyteorder('>' if cloud.is_bigendian else '<')
+    data = memoryview(cloud.data if buffer is None else buffer)
+    if cloud.row_step < cloud.width * cloud.point_step or data.nbytes != cloud.height * cloud.row_step:
+        raise ValueError('PointCloud2 dimensions, row_step and data length disagree')
+    return np.ndarray((cloud.height, cloud.width), dtype=dtype, buffer=data,
+                      strides=(cloud.row_step, cloud.point_step))
 
 
 def pointcloud2_to_xyz_array(cloud: PointCloud2) -> np.ndarray:
@@ -93,10 +112,9 @@ def pointcloud2_to_xyz_array(cloud: PointCloud2) -> np.ndarray:
     if cloud.width * cloud.height == 0 or not cloud.data:
         return np.empty((0, 3), dtype=np.float32)
 
-    dtype = _fields_to_dtype(cloud.fields, cloud.point_step)
-    raw = np.frombuffer(bytes(cloud.data), dtype=dtype)
+    raw = _cloud_view(cloud)
 
-    xyz = np.column_stack((raw["x"], raw["y"], raw["z"])).astype(
+    xyz = np.column_stack(tuple(raw[name].reshape(-1) for name in ('x', 'y', 'z'))).astype(
         np.float32, copy=False
     )
     finite_mask = np.isfinite(xyz).all(axis=1)
@@ -380,7 +398,7 @@ class CloudFrameTransformer:
         if cloud.width * cloud.height == 0 or not cloud.data:
             # Empty cloud: nothing to transform, just relabel the frame.
             transformed = PointCloud2()
-            transformed.header = cloud.header
+            transformed.header = deepcopy(cloud.header)
             transformed.header.frame_id = target_frame
             transformed.height = cloud.height
             transformed.width = cloud.width
@@ -423,7 +441,7 @@ class CloudFrameTransformer:
         dtype = self._get_dtype(cloud)
 
         # Zero-copy read view over the incoming message's raw bytes.
-        raw = np.frombuffer(bytes(cloud.data), dtype=dtype)
+        raw = _cloud_view(cloud, dtype)
 
         # OPTIMIZATION 2: fully vectorized batch transform.
         # P_in: (N, 3) array of all points at once (single stacking
@@ -433,7 +451,7 @@ class CloudFrameTransformer:
         r_t = matrix[:3, :3].T.astype(np.float32, copy=False)
         t_vec = matrix[:3, 3].astype(np.float32, copy=False)
 
-        p_in = np.column_stack((raw["x"], raw["y"], raw["z"])).astype(
+        p_in = np.column_stack(tuple(raw[name].reshape(-1) for name in ('x', 'y', 'z'))).astype(
             np.float32, copy=False
         )
         p_out = p_in @ r_t + t_vec
@@ -442,13 +460,12 @@ class CloudFrameTransformer:
         # overwrite x/y/z in place via a writable structured view so no
         # extra full-cloud array is allocated on top of it.
         out_bytes = bytearray(cloud.data)
-        out_view = np.frombuffer(out_bytes, dtype=dtype)
-        out_view["x"] = p_out[:, 0]
-        out_view["y"] = p_out[:, 1]
-        out_view["z"] = p_out[:, 2]
+        out_view = _cloud_view(cloud, dtype, out_bytes)
+        for axis, name in enumerate(('x', 'y', 'z')):
+            out_view[name] = p_out[:, axis].reshape(cloud.height, cloud.width)
 
         transformed = PointCloud2()
-        transformed.header = cloud.header
+        transformed.header = deepcopy(cloud.header)
         transformed.header.frame_id = target_frame
         transformed.header.stamp = cloud.header.stamp
         transformed.height = cloud.height

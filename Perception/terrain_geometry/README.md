@@ -1,412 +1,134 @@
 # terrain_geometry
 
-Single-node ROS 2 Jazzy terrain/obstacle perception pipeline for a rover
-carrying an Intel RealSense D435, from raw `PointCloud2` to a costmap ready
-for a planner.
+Validation status: the native Patchwork++ backend currently fails the existing
+synthetic ground/obstacle geometry checks. The reference-frame decision and
+measured results are in [the integration review](../INTEGRATION_REVIEW.md).
 
-## Current Jazzy launch and validation
+ROS 2 terrain/obstacle processing package. One `terrain_node` processes each
+PointCloud2 frame in memory: timestamped TF, ROI crop, ground removal, voxel
+filter, radius outlier filter, DBSCAN, obstacle geometry, optional tracking,
+optional occupancy rasterization and inflation. Internal filters remain library
+functions. Optional obstacle memory is a separate node in this package.
 
-```bash
-ros2 launch terrain_geometry terrain.launch.py use_sim_time:=true enable_costmap:=true
-ros2 launch terrain_geometry rviz.launch.py use_sim_time:=true
-```
+Whole-Perception orchestration belongs to `perception_bringup`, not terrain.
 
-The master remains `ros2 launch terrain_geometry perception_system.launch.py`.
-It starts real processing only; its independent switches and testing prerequisites
-are listed in the [runbook](../RUNBOOK.md). Runtime stubs and artificial map
-anchors are installed only from top-level `testing/`.
-
-Changes: unknown space is the default; only valid observed ground establishes
-free cells. Invalid or stale processing produces diagnostics and an unknown
-optional costmap. The default grid now covers the forward ROI. TF is resolved at
-observation time; `cache_static_transform:=true` is only for verified rigid mounts.
-Some parameters require restarting the node; do not assume every runtime parameter
-update rebuilds the pipeline.
-
-Optional `obstacle_memory.launch.py` uses odom-frame observations. Its separate
-`params_file` selects TTL and optional observed-ground clearing. The terrain
-publisher must have `publish_to_obstacles_only:=false` when memory owns that topic.
-The master enforces ownership automatically. Memory and surface-risk processing
-are off until explicitly enabled and locally validated.
-
-`enable_terrain_risk:=true` requires positive measured `max_slope_deg`,
-`max_step_m`, `max_roughness_m` and TF from a gravity-aligned `gravity_frame`.
-This is a geometric observed-surface check, not guaranteed negative-obstacle detection.
-
-## 1. Pipeline architecture
-
-```
-sensor_msgs/PointCloud2  (camera optical frame, e.g. camera_depth_optical_frame)
-        |
-        v
-[1] PointCloud2 -> NumPy decode + finite-value (NaN/Inf) filter   (tf_transform.py)
-        |            -- single vectorized pass, no Python loop over points
-        v
-[2] TF transform: sensor frame -> target_frame (base_link)        (tf_transform.py)
-        |            -- cached 4x4 matrix, re-looked-up only on failure
-        v
-[3] 3D ROI crop  (enable_roi_filter)                               (roi_filter.py)
-        |            -- vectorized box crop, runs BEFORE every expensive
-        |               spatial-search stage below
-        v
-[4] Ground removal  (ground_removal_backend: patchwork|fallback|auto)  (ground_removal.py)
-        |            -- Patchwork++ CZM segmentation, or NumPy fallback
-        v
-[5] Voxel downsampling  (voxel_filter.py)
-        |            -- per-axis voxel-grid centroid downsample
-        v
-[6] Radius Outlier Removal  (enable_radius_outlier_removal)        (outlier_filter.py)
-        |            -- cKDTree radius query, configurable worker count
-        v
-[7] DBSCAN clustering  (enable_clustering)                         (clustering.py)
-        |            -- KD-tree DBSCAN + min/max cluster size filter
-        v
-[8] Obstacle feature extraction (centroid/AABB/OBB)                (obstacle_features.py)
-        |
-        v
-[9] Temporal obstacle tracking  (enable_obstacle_tracking)         (obstacle_tracking.py)
-        |            -- nearest-neighbor association + centroid smoothing
-        |               ONLY emits detections matched this frame
-        v
-[10] Occupancy grid rasterization  (use_unknown_space)             (occupancy_grid.py)
-        |            -- vectorized obstacle-footprint rasterization
-        v
-[11] Costmap inflation (distance transform + exponential decay)    (costmap_inflation.py)
-        |
-        v
-nav_msgs/OccupancyGrid  ->  /terrain/costmap  ->  SLAM / Planner
-```
-
-Every stage above `terrain_node.py` is a pure computational module with
-**zero rclpy/ROS dependency** -- each is independently importable and
-unit-testable (see `PERFORMANCE NOTES` / module docstrings in each file).
-`terrain_node.py` is only the ROS wiring: parameters, subscriptions,
-publishers, and the per-frame call sequence.
-
-## 2. Coordinate frames
-
-- Sensor data arrives in the camera's own optical frame (e.g.
-  `camera_depth_optical_frame`), taken from `msg.header.frame_id`.
-- All processing after stage [2] happens in `target_frame` (default
-  `base_link`), per REP-103: **X forward, Y left, Z up**.
-- The D435 -> `base_link` transform is expected to be a static/rigid
-  transform (URDF `<joint type="fixed">` or a `static_transform_publisher`).
-  `CloudFrameTransformer` caches the resolved 4x4 matrix and only re-queries
-  TF on lookup failure or after a configurable staleness window -- it does
-  **not** perform a fresh `lookup_transform()` call on every single frame.
-- If the transform isn't available yet (e.g. at startup, before
-  `robot_state_publisher` / static TF broadcasters come up), the frame is
-  safely skipped (logged as a warning) and retried on the next message --
-  the node never processes data against a stale or invalid transform.
-
-## 3. Ground-removal backend selection
-
-`ground_removal_backend` (default `"auto"`):
-
-| Value        | Behavior |
-|--------------|----------|
-| `patchwork`  | **Requires** Patchwork++ (`pypatchworkpp`). If it's not installed or fails to initialize, the node raises `GroundRemovalConfigError` at startup and refuses to run -- it never silently substitutes the weaker fallback for a caller that explicitly asked for the production backend. |
-| `fallback`   | Explicitly uses the vectorized NumPy concentric slope/height-threshold fallback, regardless of whether Patchwork++ is available. Useful for development/CI without native deps. |
-| `auto`       | Uses Patchwork++ if importable and it initializes successfully; otherwise falls back to the NumPy implementation and logs a clear warning explaining why. A Patchwork++ init failure (as opposed to it simply not being installed) is always logged as an `ERROR` first, so it's never silently hidden. |
-
-Install Patchwork++ with `pip3 install pypatchworkpp`
-(https://github.com/url-kaist/patchwork-plusplus). It's a soft/optional
-dependency -- not declared in `package.xml`/`setup.py` -- so the package
-builds and runs without it.
-
-## 4. Region-of-interest (ROI) filtering
-
-`enable_roi_filter` (default `True`) crops the cloud to an axis-aligned box
-in `target_frame`, immediately after the TF transform and before ground
-removal / outlier removal / clustering, since those are the expensive
-spatial-search stages. Defaults are a forward-facing box tuned for a
-D435 on a ground rover:
-
-| Param | Default | Meaning |
-|---|---|---|
-| `roi_min_x` / `roi_max_x` | `0.2` / `8.0` m | Forward range (X). |
-| `roi_min_y` / `roi_max_y` | `-4.0` / `4.0` m | Lateral range (Y, +left). |
-| `roi_min_z` / `roi_max_z` | `-0.5` / `1.5` m | Vertical range (Z, +up). |
-
-Tune these to your rover's actual footprint and the D435's realistic depth
-range/FOV. Bounds are validated at startup (`min < max` on every axis);
-an empty ROI intersection is handled safely (empty output published, no
-crash) rather than treated as an error.
-
-## 5. Voxel downsampling
-
-`leaf_size_x/y/z` (default `0.05` m each) control the voxel-grid centroid
-downsample. Keep leaf size in the **0.05-0.08 m** range: large enough to
-meaningfully cut point count, small enough that the smallest
-safety-relevant obstacle for your rover doesn't get merged away. Handles
-empty/invalid input safely and is fully deterministic (no RNG).
-
-## 6. Radius Outlier Removal (ROR)
-
-`enable_radius_outlier_removal` (default `True`) toggles the stage
-entirely. `search_radius` / `min_neighbors` control sensitivity.
-`outlier_removal_max_workers` (default `-1`, all cores) bounds how many
-threads the underlying `cKDTree` radius query may use -- lower this (e.g.
-`2`-`4`) on a shared rover compute stack if this stage is starving other
-ROS 2 nodes (localization, planning, control) of CPU.
-
-## 7. DBSCAN clustering
-
-`enable_clustering` (default `True`). `cluster_eps` / `cluster_min_points`
-/ `min_cluster_size` / `max_cluster_size` as before. At startup, if
-`cluster_eps` is smaller than the diagonal of the configured voxel
-(`sqrt(leaf_size_x^2 + leaf_size_y^2 + leaf_size_z^2)`), a warning is
-logged: adjacent voxel centroids of the *same* physical obstacle can end
-up farther apart than `eps` and get incorrectly split into separate
-clusters. When clustering is disabled, all surviving points are treated
-as unclustered (zero obstacles reported) rather than crashing or
-fabricating one giant fake obstacle.
-
-## 8. Temporal obstacle tracking
-
-`enable_obstacle_tracking` (default `False`). A lightweight nearest-
-neighbor tracker (`obstacle_tracking.py`), kept fully decoupled from
-`clustering.py`:
-
-| Param | Default | Meaning |
-|---|---|---|
-| `tracking_max_association_distance` | `0.5` m | Max centroid distance to associate a detection with an existing track. |
-| `tracking_max_missed_frames` | `3` | Frames a track may go unmatched before being dropped. |
-| `tracking_position_smoothing` | `0.5` | Exponential smoothing weight given to each new measurement, in `(0, 1]`. `1.0` = no smoothing. |
-
-Stable IDs reuse the existing `ObstacleFeature.id` field -- no message
-schema change. **Only detections matched in the current frame are ever
-emitted** -- a missed detection ages internally (so it can re-associate
-after a brief occlusion) but never produces a phantom obstacle in the
-occupancy grid or costmap on its own.
-
-## 9. Occupancy-grid semantics
-
-`use_unknown_space` (default `False`, preserves prior behavior exactly):
-
-- **`False`**: grid starts entirely `FREE` (0); only obstacle footprints
-  are marked `OCCUPIED` (100). "No detected obstacle" reads as "known
-  clear". Matches the original pipeline's behavior.
-- **`True`**: grid starts entirely `UNKNOWN` (-1); only the region
-  actually sensed this frame (reused from the ROI box, or a
-  `ground_max_range`-sized box if ROI filtering is disabled) is stamped
-  `FREE` before obstacles are rasterized on top. Distinguishes "sensed
-  and clear" from "never observed" -- missing depth data can mean
-  occlusion, out-of-range, or an invalid return, not necessarily clear
-  terrain.
-
-`CostmapInflator`'s `inflate_unknown_cells` param controls whether `-1`
-cells are treated as inflatable obstacles or passed through untouched
-during the downstream inflation step.
-
-## 10. Costmap inflation
-
-Distance-transform-based (`scipy.ndimage.distance_transform_edt`) +
-exponential cost decay, governed by `robot_radius`, `costmap_inflation_radius`,
-and `cost_scaling_factor`. Occupied cells always remain occupied after
-inflation; empty/all-free grids are handled without error.
-
-## 11. Performance profiling
-
-`enable_performance_profiling` (default `False`) + `profiling_interval`
-(default `30` frames). Per-stage timing (`time.perf_counter()`) is always
-measured (negligible overhead -- see `performance_profiling.py`); only the
-*logging* of a summary is gated by these two parameters, to avoid
-flooding the console by default. Example output:
-
-```text
-TerrainGeometry:
-input=307200
-roi=120000
-non_ground=28000
-voxel=8500
-filtered=7200
-clusters=14
-total=58.4 ms
-fps=17.1
-stages: decode=1.20ms tf=0.10ms roi=0.80ms ground=4.50ms voxel=2.10ms outlier=1.80ms cluster=3.20ms features=0.90ms tracking=0.15ms occupancy=1.40ms costmap=2.30ms
-```
-
-The base per-frame summary line (`Frame processed | in=... roi=...
-obstacle=... voxel=... inlier=... obstacles=... time=...`) is still logged
-every frame at `INFO`, unchanged from before -- the detailed breakdown
-above is additive.
-
-## 12. Real-time QoS behavior
-
-The input subscription uses an explicit `BEST_EFFORT` / `VOLATILE` /
-`KEEP_LAST` profile (same reliability/durability as
-`qos_profile_sensor_data`, so it stays compatible with the RealSense ROS 2
-driver's own publisher QoS) with a small, configurable queue depth
-(`input_qos_depth`, default `1`). If processing falls behind the camera's
-publish rate, the DDS layer drops old buffered clouds in favor of the
-newest one -- the node processes the latest available frame, not a
-backlog of stale ones. The node runs under the default single-threaded
-executor (`rclpy.spin`); no custom multi-threaded executor or callback
-group was introduced, since the pipeline is single-callback and
-CPU-bound end to end.
-
-## 13. Parameter reference
-
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `input_pointcloud_topic` | string | `/camera/depth/color/points` | Input `PointCloud2` topic. |
-| `target_frame` | string | `base_link` | Frame all processing happens in. |
-| `tf_timeout_sec` | double | `0.2` | TF lookup timeout (s). Must be > 0. |
-| `input_qos_depth` | int | `1` | Subscriber queue depth. Must be >= 1. |
-| `enable_roi_filter` | bool | `True` | Enable the 3D ROI crop. |
-| `roi_min_x` / `roi_max_x` | double | `0.2` / `8.0` | ROI X bounds (m). min < max. |
-| `roi_min_y` / `roi_max_y` | double | `-4.0` / `4.0` | ROI Y bounds (m). min < max. |
-| `roi_min_z` / `roi_max_z` | double | `-0.5` / `1.5` | ROI Z bounds (m). min < max. |
-| `ground_sensor_height` | double | `0.2` | Sensor height above ground (m). |
-| `ground_num_zones` | int | `4` | Concentric zones for ground segmentation. >= 1. |
-| `ground_min_range` / `ground_max_range` | double | `0.2` / `10.0` | Radial range considered for ground estimation (m). |
-| `ground_height_threshold` | double | `0.15` | Fallback-only height threshold (m). |
-| `ground_removal_backend` | string | `auto` | `patchwork` \| `fallback` \| `auto`. |
-| `leaf_size_x/y/z` | double | `0.05` | Voxel leaf size per axis (m). > 0. |
-| `enable_radius_outlier_removal` | bool | `True` | Enable ROR. |
-| `search_radius` | double | `0.2` | ROR neighbor search radius (m). > 0. |
-| `min_neighbors` | int | `5` | ROR minimum neighbor count. > 0. |
-| `outlier_removal_max_workers` | int | `-1` | ROR KD-tree worker threads. `-1` = all cores, else >= 1. |
-| `enable_clustering` | bool | `True` | Enable DBSCAN clustering. |
-| `cluster_eps` | double | `0.3` | DBSCAN neighborhood radius (m). > 0. |
-| `cluster_min_points` | int | `5` | DBSCAN min samples. >= 1. |
-| `min_cluster_size` / `max_cluster_size` | int | `10` / `50000` | Cluster size filter bounds. |
-| `enable_obb` | bool | `False` | Compute oriented bounding boxes (else AABB only). |
-| `enable_marker_visualization` | bool | `True` | Publish RViz obstacle markers. |
-| `enable_obstacle_tracking` | bool | `False` | Enable temporal tracking. |
-| `tracking_max_association_distance` | double | `0.5` | Max association distance (m). > 0. |
-| `tracking_max_missed_frames` | int | `3` | Frames before a track is dropped. >= 0. |
-| `tracking_position_smoothing` | double | `0.5` | Smoothing weight in `(0, 1]`. |
-| `grid_resolution` | double | `0.05` | Occupancy grid cell size (m). |
-| `grid_width_cells` / `grid_height_cells` | int | `200` / `200` | Grid dimensions in cells. > 0. |
-| `grid_origin_x/y/z` | double | `-5.0` / `-5.0` / `0.0` | Grid origin (m, in `target_frame`). |
-| `use_unknown_space` | bool | `False` | Three-state (`UNKNOWN`/`FREE`/`OCCUPIED`) vs. binary occupancy semantics. |
-| `robot_radius` | double | `0.3` | Robot footprint radius for inflation (m). |
-| `costmap_inflation_radius` | double | `0.6` | Inflation radius (m). >= 0. |
-| `cost_scaling_factor` | double | `10.0` | Exponential decay rate for inflated cost. |
-| `inflate_unknown_cells` | bool | `False` | Whether inflation treats UNKNOWN cells as inflatable. |
-| `publish_debug_topics` | bool | `False` | Publish `/terrain/debug/*` intermediate clouds. |
-| `enable_performance_profiling` | bool | `False` | Log detailed per-stage timing summaries. |
-| `profiling_interval` | int | `30` | Frames between profiling summary logs. >= 1. |
-
-All parameters are exposed as launch arguments in `launch/terrain.launch.py`
-under the same names.
-
----
-
-## 🧪 Standalone Testing Guide (World + Rover + Teleop + Perception)
-
-To test terrain ground removal, 3D rock clustering, and standard `vision_msgs/msg/Detection3DArray` bounding box generation in isolation with the simulated rover:
-
-### Method A: Interactive Launcher (Fastest)
-```bash
-bash scripts/launch_perception.sh
-# Select Option 2 (Dedicated Standalone Test Launcher)
-```
-
----
-
-### Method B: Manual Step-by-Step Terminal Playbook
-
-#### Step 1: Launch Mars Yard World & Spawn Rover
-Open Terminal 1:
-```bash
-source install/setup.bash
-# When testing perception standalone without SLAM, pass publish_map_tf:=true to provide map -> odom
-ros2 launch my_robot_description gazebo.launch.py publish_map_tf:=true
-```
-
-#### Step 2: Launch Teleoperation GUI
-Open Terminal 2:
-```bash
-source install/setup.bash
-ros2 run my_robot_description teleop_gui.py
-```
-*(Drive the rover within 1 to 4 meters of Mars Yard rocks).*
-
-#### Step 3: Launch Standalone Perception Pipeline
-Open Terminal 3:
-```bash
-source install/setup.bash
-ros2 launch terrain_geometry test_perception_standalone.launch.py
-```
-*(Boots `terrain_node` with RViz2 visualization, rendering ground removal, DBSCAN clusters, and 3D bounding boxes).*
-
-#### Step 4: Verification Commands
-Open Terminal 4:
-```bash
-# 1. Verify standard Detection3DArray output (single-frame raw bboxes)
-ros2 topic hz /perception/local_bboxes
-ros2 topic echo /perception/local_bboxes
-
-# 2. Verify Detection3DArray output on /perception/obstacles_only (consumed by Nav2)
-ros2 topic hz /perception/obstacles_only
-
-# 3. Verify RViz 3D bounding box visual markers
-ros2 topic hz /terrain/obstacle_markers
-```
-*Expected Result:* As the rover faces physical rocks in the simulation, RViz2 renders bounding boxes enclosing each rock, and `/perception/local_bboxes` outputs 3D centroids and extents matching the rock sizes.
-
----
-
-## 14. Expected failure cases (all handled without crashing)
-
-| Case | Behavior |
-|---|---|
-| Empty/zero-point `PointCloud2` | Warning logged, frame skipped. |
-| All points non-finite (NaN/Inf) | Warning logged, frame skipped. |
-| TF not yet available | Warning logged, frame skipped, retried next message. |
-| Zero points remain after ROI crop | Warning logged, empty outputs published. |
-| < 3 points for ground segmentation | `GroundNotFoundError` caught, empty outputs published. |
-| Zero obstacle (non-ground) points | Empty outputs published; ground debug cloud still published if enabled. |
-| Zero points after voxel/ROR/clustering | Empty outputs published at whichever stage produced zero. |
-| All DBSCAN points classified as noise | Zero obstacles reported, not a crash. |
-| `ground_removal_backend="patchwork"` but Patchwork++ unavailable/broken | `GroundRemovalConfigError` at node startup -- fails loudly, does not run degraded. |
-| Invalid parameter (e.g. `roi_min_x >= roi_max_x`, negative radius) | `ValueError` at node startup with a specific message -- node refuses to start rather than run with silently-clamped values. |
-
-## 15. Benchmarking
-
-See `terrain_geometry/benchmark.py` -- a standalone script (not part of
-the production node/callback path) that replays either synthetic point
-clouds or a recorded `ros2 bag` of `PointCloud2` messages through the
-full computational pipeline (ROI -> ground removal -> voxel -> ROR ->
-DBSCAN -> features -> tracking) and reports:
-
-- average / min / max / standard deviation of total processing time
-- p95 and maximum latency (more informative than average FPS alone)
-- point count at every stage, per run
+## Independent startup
 
 ```bash
-# Synthetic benchmark (no ROS bag needed):
-python3 terrain_geometry/benchmark.py --synthetic --frames 100
-
-# Replay a recorded bag's PointCloud2 topic:
-python3 terrain_geometry/benchmark.py --bag /path/to/bag --topic /camera/depth/color/points
+# Inside the sourced Jazzy Docker container; inputs and calibrated TF external:
+ros2 launch terrain_geometry terrain.launch.py use_sim_time:=false
+ros2 launch terrain_geometry terrain.launch.py --show-args
+# Optional grid and visualization:
+ros2 launch terrain_geometry terrain.launch.py use_sim_time:=false enable_costmap:=true
+ros2 launch terrain_geometry rviz.launch.py use_sim_time:=false
 ```
 
-The benchmark is intentionally kept out of the real-time node/callback --
-running it does not affect production latency.
+`terrain.launch.py` starts only the terrain node. `obstacle_memory.launch.py`
+starts only memory; it requires current box observations and odometry TF.
+`rviz.launch.py` starts only RViz. The deprecated
+`perception_system.launch.py` forwards to `perception_bringup perception.launch.py`
+and requires bringup installed. Terrain-only processing does not depend on the
+marker package. The compatibility launcher deliberately has no reverse package
+dependency that would create a terrain/bringup cycle.
 
-## 16. Known limitations
+The standalone terrain launch defaults to simulation time and debug clouds on;
+combined startup forwards its own clock and defaults debug clouds off. Neither
+starts a camera or `/clock`. Select time explicitly in validation commands.
 
-- **Patchwork++ availability**: the fallback ground-removal backend is a
-  simpler concentric slope/height-threshold method; it is not a drop-in
-  quality replacement for Patchwork++ on complex/sloped/vegetated terrain.
-- **Hardware-specific performance**: profiling numbers depend heavily on
-  the rover's onboard compute; no numbers in this document should be
-  taken as guaranteed for a different CPU.
-- **Depth-camera limitations**: the D435's own range/FOV/noise
-  characteristics (especially at range, in direct sunlight, or on
-  low-texture/specular surfaces) bound what any downstream stage can
-  recover from.
-- **Tracking is intentionally simple**: nearest-neighbor + exponential
-  smoothing, not a Kalman filter or learned association model. It will
-  not gracefully handle fast-crossing obstacles that pass within
-  `tracking_max_association_distance` of each other in a single frame.
-- **Untested on real hardware in this change**: the changes in this
-  revision were validated via unit tests and a synthetic-data
-  integration test of the pure-computational pipeline (see the final
-  report), not against a live D435 + real ROS 2 graph -- see the
-  Testing section of the final report for exactly what was and wasn't
-  exercised.
+## Inputs and outputs
+
+| Topic | Type / contract |
+| --- | --- |
+| `/camera/depth/color/points` (configurable) | Best Effort PointCloud2; valid acquisition timestamp and sensor frame |
+| `/perception/local_bboxes` | Reliable volatile `Detection3DArray`; current observation in `target_frame` |
+| `/perception/obstacles_only` | Same current observation when `publish_to_obstacles_only=true`; optional memory replaces this output |
+| `/terrain/obstacle_features` | `terrain_geometry_msgs/msg/ObstacleFeatureArray` |
+| `/terrain/obstacle_markers` | Current box/label `MarkerArray`; valid empty observations delete old markers |
+| `/terrain/costmap` | Optional inflated `OccupancyGrid`, in `target_frame` |
+| `/terrain/diagnostics` | Input/processing freshness and health, published every 0.5 ROS seconds |
+| `/terrain/debug/ground_cloud`, `/terrain/debug/voxel_cloud`, `/terrain/debug/clustered_cloud` | Optional sensor-QoS diagnostic clouds |
+
+Cloud decoding honors point layout, byte order and row padding. Malformed fields,
+lengths or strides are rejected rather than converted into misleading geometry.
+Transforming a full cloud preserves source headers, padding and non-XYZ fields.
+Camera-to-target TF resolves at acquisition time by default. Static transform
+caching is opt-in for a verified rigid source/target pair, never assumed for
+camera-to-odom/map. Clock reversal clears the terrain transform/tracking state.
+
+The default target frame is `base_link`: X forward, Y left, Z up, in metres.
+AABB `bbox.size` is X=depth, Y=width, Z=height. The box center is the midpoint of
+its min/max bounds, not necessarily the point-sample centroid. OBB output carries
+its own orientation. Changing `target_frame` also changes coordinate-dependent
+ROI and ground assumptions; configure those deliberately.
+
+## Valid observations versus unavailable processing
+
+`use_unknown_space=true` is the node/launch default. Only cells containing
+supplied finite observed-ground returns become free; a rectangular ROI is not
+proof that every cell was observed. Obstacle footprints are marked occupied.
+Unobserved/occluded cells remain unknown. `false` explicitly selects the legacy
+fully-free grid initialization and should not be used to hide sensor loss.
+
+Valid ground-only observations publish empty box arrays and an observed-ground
+grid. Empty/invalid/stale clouds, absent TF or segmentation failure report
+unavailable processing; an enabled costmap becomes unknown. They do not publish
+a fabricated valid empty box observation. Existing consumers may retain earlier
+geometry, so check diagnostics AND header age. Silence is not free terrain.
+
+Disabling clustering makes surviving points unclustered and produces no boxes;
+that tuning mode does not establish that obstacle detection is working.
+No diagnostics topic directly stops the rover; navigation/control must enforce
+its observation-loss policy during later integration validation.
+
+## Main configuration defaults
+
+The full launch surface is available through `--show-args`; numeric filters are
+read at startup and require a restart. Only documented output toggles are live.
+
+| Setting | Default |
+| --- | --- |
+| Input topic / target frame | `/camera/depth/color/points` / `base_link` |
+| TF timeout / cloud timeout / input queue depth | 0.2 s / 1 s / 1 |
+| ROI X / Y / Z | 0.2..8 / -4..4 / -0.5..1.5 m |
+| Ground backend / sensor height / height threshold | `auto` / 0.2 m / 0.15 m |
+| Voxel leaf size | 0.05 m per axis |
+| Outlier radius / minimum neighbors | 0.2 m / 5 |
+| DBSCAN eps / min points / cluster size bounds | 0.3 m / 5 / 10..50000 |
+| Optional tracking / OBB | Off / off |
+| Grid resolution / dimensions / origin | 0.05 m / 200x200 / (0, -5, 0) m |
+| Unknown space / costmap generation | On / off |
+| Robot radius / inflation radius / scaling | 0.3 m / 0.6 m / 10 |
+
+Verify current values with `ros2 param dump /terrain_node`; measure rover geometry
+and camera mounting before tuning safety margins. The grid's default forward
+coverage is 10 m. Patchwork++ is used when installed; `auto` otherwise logs a
+NumPy fallback. Explicit `ground_removal_backend:=patchwork` fails startup if that
+backend cannot initialize. The current project Docker image includes Patchwork++.
+Its ground-height assumptions still need physical-data validation.
+
+## Optional memory and surface risk
+
+Memory associates observations in `memory_frame` (default `odom`) and expires
+unseen boxes after `ttl_sec` (default 5 s). Its array timestamp is publication
+time; each retained detection keeps its acquisition timestamp. Retained geometry
+is not a fresh camera observation. In combined startup memory exclusively
+publishes obstacle updates; in manual startup set terrain
+`publish_to_obstacles_only:=false`. Do not run two producers for that interface.
+Ground clearing is off and needs valid debug-ground observations when selected.
+
+Risk checks are off. They require a calibrated gravity-aligned reference plus
+positive measured slope, step and roughness limits. They are conditional geometry
+checks, not validated crater detection. Missing returns remain unknown.
+
+RViz starts with raw cloud and obstacle markers visible. RobotModel, RGB,
+costmap and debug-cloud displays are disabled until their producers are available.
+Enable the costmap display after `enable_costmap:=true`, and debug displays after
+`publish_debug_topics:=true`. Sensor displays use Best Effort.
+
+The offline `terrain_geometry/benchmark.py` still contains a synthetic generator
+and is not called by production nodes. Relocation is reserved for the owner of
+the master testing folder; its mirrored pipeline is not full node validation.
+See the [testing handoff](../TESTING_GUIDE.md#testing-agent-handoff).
+
+See the [runbook](../RUNBOOK.md), [message definitions](../terrain_geometry_msgs/README.md)
+and [validation limits](../INTEGRATION_REVIEW.md).

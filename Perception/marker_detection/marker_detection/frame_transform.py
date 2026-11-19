@@ -46,12 +46,20 @@ def transform_to_base_link(*, transform_translation: np.ndarray, transform_rotat
     rotation = to_rotation_matrix(transform_rotation)
     orientation = normalize(camera_orientation)
     position = np.asarray(camera_position, dtype=np.float64)
-    if rotation is None or orientation is None or position.shape != (3,) or not np.isfinite(position).all():
+    translation = np.asarray(transform_translation, dtype=np.float64)
+    if (rotation is None or orientation is None or position.shape != (3,) or not np.isfinite(position).all()
+            or translation.shape != (3,) or not np.isfinite(translation).all()):
         return None
     composed_orientation = multiply(transform_rotation, camera_orientation)
     if composed_orientation is None:
         return None
-    base_link_position = rotation @ position + np.asarray(transform_translation, dtype=np.float64)
+    base_link_position = rotation @ position + translation
+    if camera_position_covariance is not None:
+        covariance = np.asarray(camera_position_covariance, dtype=np.float64)
+        if (covariance.shape != (3, 3) or not np.isfinite(covariance).all()
+                or not np.allclose(covariance, covariance.T)
+                or np.min(np.linalg.eigvalsh(covariance)) < -1e-9):
+            camera_position_covariance = None
     base_link_covariance = (rotation @ camera_position_covariance @ rotation.T
                             if camera_position_covariance is not None else None)
     return ResolvedPose(base_link_position, composed_orientation, base_link_covariance)
