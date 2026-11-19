@@ -126,9 +126,11 @@ costmap and debug-cloud displays are disabled until their producers are availabl
 Enable the costmap display after `enable_costmap:=true`, and debug displays after
 `publish_debug_topics:=true`. Sensor displays use Best Effort.
 
-The offline `terrain_geometry/benchmark.py` still contains a synthetic generator
-and is not called by production nodes. Relocation is reserved for the owner of
-the master testing folder; its mirrored pipeline is not full node validation.
+The offline synthetic generator has moved to
+`perception_test_tools.terrain_scene` in master `testing/mocks/perception/`.
+Its runner is `ros2 run perception_benchmark_tools terrain_benchmark`, under
+`testing/benchmarking/perception/`. Neither is installed by this production
+package. The runner's mirrored pipeline is not full node validation.
 See the [testing handoff](../TESTING_GUIDE.md#testing-agent-handoff).
 
 See the [runbook](../RUNBOOK.md), [message definitions](../terrain_geometry_msgs/README.md)
