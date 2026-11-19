@@ -54,7 +54,7 @@ message summaries and window captures are outside the repository. No sensor
 mock, artificial localization fixture or generated validation output was added
 to production packages.
 
-## Terrain geometry is blocked on the ground-reference decision
+## Terrain geometry fails controlled ground-segmentation checks
 
 The existing synthetic feeder places the ground at `base_link` Z=0. With the
 image's native Patchwork++ backend, the exact float32 transformed cloud labels
@@ -73,11 +73,39 @@ value between 0, 0.2 and 0.4 m did not resolve the classification. The NumPy
 backend was compared diagnostically and did not show this ground-as-obstacle
 case; it has NOT been substituted for the default to claim validation passed.
 
-Decision needed: reconcile the fixture's base/ground reference with the rover's
-real frame/calibration, or explicitly redesign segmentation's reference frame.
-No invented offset, hidden fallback or guessed physical calibration has been
-introduced. The overall Perception validation remains incomplete until the
-selected approach passes ground-only and obstacle-geometry checks.
+A follow-up isolated check in the same Docker image fed known XYZ points directly
+to the production `GroundRemoval` wrapper, bypassing ROS decoding, TF and box
+visualization. Each fresh native instance processed five identical observations;
+the counts below describe the fifth observation of a 9,120-point floor with no
+rock. All points were inside the configured ROI and radial range.
+
+| Floor Z (m) | Configured origin height (m) | Ground points labelled non-ground |
+| --- | --- | --- |
+| 0 | 0.2 | 2,173 |
+| -0.2 | 0.2 | 605 |
+| -0.255 | 0.255 | 605 |
+
+These checks demonstrate that correcting the height reference alone does not
+resolve the failure. Sloped and noisy diagnostic variants changed the error
+counts; variants containing a rock also lost some known rock samples to the
+ground class. Reducing floor false positives alone is therefore insufficient
+evidence of a fix. The exact native cause, including patch support, plane-fitting
+numerics and classification settings, remains unconfirmed. The scratch driver
+and full results are outside the repository in
+`/tmp/codex-perception-validation.kXgjr9/check_ground_sensitivity.py` and
+`ground_sensitivity.json`; these are diagnostic inputs, not rover calibration or
+an approved traversability envelope.
+
+Next validation must distinguish raw-cloud/TF alignment, ground classification,
+and downstream box generation using the existing Gazebo world's camera stream.
+That world has not yet been validated by these synthetic checks. Replay the same
+recorded observations for before/after comparisons, including flat ground,
+gentle slopes, steps and real obstacles. Ground classification and safe
+traversability are separate decisions: acceptable slope and step limits need
+the rover's agreed operating requirements. No invented offset, hidden fallback
+or guessed physical calibration has been introduced. Overall Perception
+validation remains incomplete until ground-only and obstacle-geometry checks
+pass without hiding real obstacles.
 
 ## Positive camera-to-action/landmark acceptance needs a suitable scene
 
