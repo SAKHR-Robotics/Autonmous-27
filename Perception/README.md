@@ -1,7 +1,9 @@
 # Perception
 
-Current status: package/regression checks pass; full terrain geometry validation
-is blocked on the ground-reference decision. See [results and limits](INTEGRATION_REVIEW.md).
+Current status: package/regression checks pass; terrain ground classification
+still fails controlled geometry checks, including with a matching height
+reference. Positive camera-to-action/landmark acceptance also needs a suitable
+scene. See [results and limits](INTEGRATION_REVIEW.md).
 
 `Perception/` is an organizing folder. Its five ROS 2 packages are:
 
