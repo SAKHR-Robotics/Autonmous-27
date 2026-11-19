@@ -54,7 +54,8 @@ def build_action_target(*, marker_id: int, detection_valid: bool, tracking_valid
                         tracking_state: str, confidence: float, quality_flags: int, age_seconds: float,
                         base_link_position: np.ndarray | None, base_link_orientation: np.ndarray | None,
                         base_link_position_covariance: np.ndarray | None,
-                        min_action_confidence: float, max_action_covariance_trace_m2: float) -> ActionTarget:
+                        min_action_confidence: float, max_action_covariance_trace_m2: float,
+                        max_action_age_seconds: float = 0.5) -> ActionTarget:
     """Pure function: one Stage-4 track's fields + an optional resolved
     base_link pose -> the clean, high-level ActionTarget.
 
@@ -65,11 +66,18 @@ def build_action_target(*, marker_id: int, detection_valid: bool, tracking_valid
     reported flags (Part 4/Part 19).
     """
     flags = QualityFlag(quality_flags)
+    if not np.isfinite(age_seconds) or not 0 <= age_seconds <= max_action_age_seconds:
+        flags |= QualityFlag.STALE_DATA
     stable = bool(detection_valid and tracking_valid and tracking_state == TrackState.CONFIRMED.value)
-    pose_valid = base_link_position is not None and base_link_orientation is not None
+    pose_valid = bool(
+        base_link_position is not None and np.shape(base_link_position) == (3,) and
+        np.isfinite(base_link_position).all() and base_link_orientation is not None and
+        np.shape(base_link_orientation) == (4,) and np.isfinite(base_link_orientation).all() and
+        np.linalg.norm(base_link_orientation) > 1e-8)
 
     if not pose_valid:
         flags |= QualityFlag.TF_UNAVAILABLE
+        base_link_position = base_link_orientation = base_link_position_covariance = None
         distance = forward = lateral = vertical = float("nan")
     else:
         forward = float(base_link_position[0])
@@ -77,8 +85,12 @@ def build_action_target(*, marker_id: int, detection_valid: bool, tracking_valid
         vertical = float(base_link_position[2])
         distance = float(np.linalg.norm(base_link_position))
 
-    covariance_trace = (float(np.trace(base_link_position_covariance))
-                        if base_link_position_covariance is not None else float("inf"))
+    covariance_valid = bool(
+        base_link_position_covariance is not None and np.shape(base_link_position_covariance) == (3, 3) and
+        np.isfinite(base_link_position_covariance).all() and np.any(base_link_position_covariance) and
+        np.allclose(base_link_position_covariance, base_link_position_covariance.T) and
+        np.min(np.linalg.eigvalsh(base_link_position_covariance)) >= -1e-9)
+    covariance_trace = float(np.trace(base_link_position_covariance)) if covariance_valid else float('inf')
     usable_for_action = bool(
         pose_valid and stable and detection_valid and tracking_valid and
         np.isfinite(confidence) and confidence >= min_action_confidence and

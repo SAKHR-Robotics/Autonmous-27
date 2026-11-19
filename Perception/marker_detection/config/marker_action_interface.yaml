@@ -13,3 +13,5 @@ marker_action_interface:
     # flags); these are the only two new tunables this interface adds.
     min_action_confidence: 0.6
     max_action_covariance_trace_m2: 0.01
+    # Includes time spent in transport/queues; tune against measured sensor latency.
+    max_action_age_seconds: 0.5

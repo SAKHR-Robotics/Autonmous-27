@@ -23,7 +23,7 @@ def expand(monkeypatch):
             arguments=[perform_substitutions(context,normalize_to_list_of_substitutions(v)) for v in self.arguments]
             captured[self.executable]=(self.package,parameters,arguments)
     monkeypatch.setattr(launch_ros.actions,'Node',CaptureNode)
-    def run(options=None,package='terrain_geometry',filename='perception_system.launch.py'):
+    def run(options=None,package='perception_bringup',filename='perception.launch.py'):
         captured.clear()
         service=LaunchService()
         path=os.path.join(get_package_share_directory(package),'launch',filename)
@@ -68,6 +68,24 @@ def test_master_uses_combined_rviz_and_standalone_frame(expand):
     arguments=nodes['rviz2'][2]
     assert Path(arguments[1]).name=='perception_system_view.rviz'
     assert arguments[-2:]==['-f','test_frame']
+
+
+def test_legacy_combined_launch_forwards_options(expand):
+    nodes=expand({'launch_marker_branch':'false','use_sim_time':'false'},
+        'terrain_geometry','perception_system.launch.py')
+    assert set(nodes)=={'terrain_node'}
+    parameters={k:v for entry in nodes['terrain_node'][1] if isinstance(entry,dict) for k,v in entry.items()}
+    assert parameters['use_sim_time'] is False
+
+
+def test_combined_view_has_no_testing_or_unstarted_displays():
+    import yaml
+    view=Path(get_package_share_directory('perception_bringup'))/'rviz'/'perception_system_view.rviz'
+    displays=yaml.safe_load(view.read_text())['Visualization Manager']['Displays']
+    assert not any('/testing/' in str(display) for display in displays)
+    for display in displays:
+        if display['Name'] in ('Robot Model','Terrain Costmap','Debug Clustered Cloud','Debug Ground Cloud'):
+            assert display['Enabled'] is False
 
 
 def test_testing_launch_selects_isolated_sensor_topics(expand):

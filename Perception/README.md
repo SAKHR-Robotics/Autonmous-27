@@ -1,50 +1,74 @@
-# Perception — ROS 2 Jazzy / Linux
+# Perception
 
-**Start with the [current runbook](RUNBOOK.md) or the [Linux Testing & Validation Guide](TESTING_GUIDE.md).** It contains build steps,
-independent modules, the master launch, testing inputs, Gazebo/real-camera
-workflows, RViz, expected outputs and troubleshooting.
+Current status: package/regression checks pass; full terrain geometry validation
+is blocked on the ground-reference decision. See [results and limits](INTEGRATION_REVIEW.md).
 
-## Launch real perception
+`Perception/` is an organizing folder. Its five ROS 2 packages are:
 
-```bash
-source /opt/ros/jazzy/setup.bash
-source install/setup.bash
-ros2 launch terrain_geometry perception_system.launch.py \
-  use_sim_time:=true launch_rviz:=true enable_costmap:=true
-```
-
-Camera streams and calibrated camera TF must already exist. The Jazzy Gazebo
-rover launch supplies its clock; real cameras require `use_sim_time:=false`.
-Global marker mapping, obstacle memory, terrain-risk checks and the RTAB-Map
-landmark adapter are optional and off in the master until explicitly selected.
-
-## Test perception only
-
-Build `perception_test_tools` from top-level `testing/Perception/`, then:
-
-```bash
-ros2 launch perception_test_tools test_stack.launch.py \
-  pipeline:=all scenario:=rocks_and_marker launch_rviz:=true
-```
-
-Use `pipeline:=terrain` or `pipeline:=markers` for one module. This launches
-synthetic inputs and **real processing**, without Gazebo, hardware or SLAM.
-All runtime stubs and artificial localization fixtures remain under `testing/`.
-The [runbook](RUNBOOK.md#3-perception-only-tests-what-to-launch) also shows exactly
-how to launch the feeder and production master in separate terminals.
-
-## Packages and evidence
-
-| Package | Details |
+| Package | Owns |
 | --- | --- |
-| Terrain | [Processing and independent launch](terrain_geometry/README.md) |
-| Markers | [Detection, tracking and independent consumers](marker_detection/README.md) |
-| Terrain interfaces | [Message definitions](terrain_geometry_msgs/README.md) |
-| Marker interfaces | [Message definitions](marker_detection_msgs/README.md) |
-| Testing | [Scenarios, commands and limits](../testing/Perception/Readme.md) |
+| `perception_bringup` | Combined startup, combined RViz view and launch-contract checks |
+| `terrain_geometry` | Terrain processing, optional obstacle memory, independent launches and terrain RViz |
+| `marker_detection` | Marker detection/tracking, TF, action targets, optional mapping/landmark adapter and marker RViz |
+| `terrain_geometry_msgs` | Terrain feature messages |
+| `marker_detection_msgs` | Marker observation, tracking, mapping and action-target messages |
 
-Read the [integration review](INTEGRATION_REVIEW.md) before autonomous use.
-Unknown/unavailable perception must not be interpreted as clear terrain.
-Calibrated hardware accuracy, safe stopping, outdoor performance and final
-ERC 2027 compliance still require validation. Historical roadmaps in `docs/`
-are not evidence that every proposed feature or benchmark is implemented.
+A package can contain several nodes. Internal image/cloud filtering helpers stay
+in the processing nodes; making each helper a package would add unnecessary
+communication and deployment boundaries.
+
+## Start here
+
+Use the software installed in `autonomous27:jazzy`, not host Python or ROS.
+The [runbook](RUNBOOK.md) has Docker setup, isolated build commands, independent
+and combined startup, sensor requirements and the complete launch inventory.
+The [validation guide](TESTING_GUIDE.md) records checks and the testing-agent handoff.
+
+```bash
+# Inside the sourced Jazzy container, with sensors and calibrated TF available:
+ros2 launch perception_bringup perception.launch.py use_sim_time:=true launch_rviz:=true
+```
+
+This starts terrain processing, marker detection/tracking, marker TF and action
+targets. The camera driver, clock and localization are external. Use
+`use_sim_time:=false` for wall-clock sources. Docker itself does not select time.
+Optional mapping, memory, native landmarks, costmap and risk checks are not
+started by the default combined launch. Their existing switches are preserved.
+
+Independent entry points:
+
+```bash
+ros2 launch terrain_geometry terrain.launch.py use_sim_time:=false
+ros2 launch marker_detection marker_branch.launch.py use_sim_time:=false launch_marker_mapping:=false
+```
+
+The old `ros2 launch terrain_geometry perception_system.launch.py` command
+forwards to the new combined launch and requires `perception_bringup` installed.
+It is a compatibility entry point, not terrain's dependency on marker processing.
+
+## Data sent to other modules
+
+| Topic | Type | Meaning |
+| --- | --- | --- |
+| `/perception/local_bboxes` | `vision_msgs/msg/Detection3DArray` | Current terrain observations in `target_frame` (default `base_link`) |
+| `/perception/obstacles_only` | `vision_msgs/msg/Detection3DArray` | Terrain observations normally; retained odom-frame boxes when memory is selected |
+| `/marker_detection/targets` | `marker_detection_msgs/msg/MarkerActionTargetArray` | Marker targets in the configured rover base frame; check freshness and usability |
+| `/perception/landmark_detections` | `rtabmap_msgs/msg/LandmarkDetections` | Optional native SLAM observations with IDs, per-observation headers and covariance |
+| `/perception/aruco_pose` | `geometry_msgs/msg/PoseStamped` | Compatibility pose output; lacks marker ID/covariance and is not the native SLAM interface |
+| `/terrain/diagnostics`, `/marker_detection/diagnostics` | `diagnostic_msgs/msg/DiagnosticArray` | Processing health; consumers must also enforce message age |
+
+An empty valid observation is different from unavailable perception. Do not infer
+clear terrain from an empty topic, missing updates or a previously clear map.
+The planner owns its box-to-cloud bridge. Perception does not start another one.
+Current planner and SLAM source configurations match the obstacle and native
+landmark topics; full navigation/SLAM behavior needs separate integration checks.
+
+Runtime mock publishers, scenarios and artificial localization belong under the
+master `testing/` folder. Per-package `test/` directories contain regression tests,
+not runnable replacement dependencies. The existing terrain offline benchmark
+still needs a coordinated relocation; see the testing handoff before moving it.
+
+See [terrain details](terrain_geometry/README.md), [marker details](marker_detection/README.md)
+and [remaining validation limits](INTEGRATION_REVIEW.md). Older design documents
+under `docs/` and `PerPro&Solu.md` describe historical proposals, not current startup
+or evidence of physical accuracy.

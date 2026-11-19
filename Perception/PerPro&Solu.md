@@ -1,3 +1,5 @@
+> Historical design notes. For current package ownership, launch commands and interfaces, use the [Perception runbook](RUNBOOK.md). PoseStamped compatibility output is not RTAB-Map's native landmark interface.
+
 # Perception Subsystem: Problems, Status Audit & Comprehensive Solutions (`PerPro&Solu.md`)
 
 > Historical audit/proposals. Current implemented behavior, interfaces and remaining limits are in [INTEGRATION_REVIEW.md](INTEGRATION_REVIEW.md) and the [Linux runbook](RUNBOOK.md). In particular, PoseStamped alone is not RTAB-Map landmark ingestion, and ROI bounds are not observed free space.

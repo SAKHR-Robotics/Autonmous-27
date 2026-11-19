@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 from marker_detection.landmark_adapter import landmark_from_track
 from marker_detection_msgs.msg import MarkerTrackedPose
 
@@ -31,3 +32,27 @@ def test_stale_lost_and_nonfinite_observations_rejected():
     assert landmark_from_track(value,now=10.) is None
     value=track(); value.position.x=float('nan')
     assert landmark_from_track(value,now=10.) is None
+
+
+@pytest.mark.parametrize('defect', ['negative_id', 'empty_frame', 'zero_stamp', 'future', 'negative_age', 'bad_covariance', 'combined_age', 'infinite_confidence'])
+def test_invalid_landmark_contract_is_rejected(defect):
+    value=track()
+    now=10.
+    if defect=='negative_id':
+        value.id=-1
+    elif defect=='empty_frame':
+        value.header.frame_id=''
+    elif defect=='zero_stamp':
+        value.header.stamp.sec=0
+    elif defect=='future':
+        now=9.
+    elif defect=='negative_age':
+        value.age_seconds=-1.
+    elif defect=='combined_age':
+        value.age_seconds=.3
+        now=10.3
+    elif defect=='infinite_confidence':
+        value.tracking_confidence=float('inf')
+    else:
+        value.position_covariance=(-np.eye(3)).ravel().tolist()
+    assert landmark_from_track(value,now=now) is None

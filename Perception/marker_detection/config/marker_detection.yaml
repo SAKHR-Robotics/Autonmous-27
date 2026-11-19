@@ -1,13 +1,8 @@
 marker_detection:
   ros__parameters:
-    # RealSense D435: RGB color stream + depth ALIGNED to color (not raw depth,
-    # which is a different resolution/frame and would misregister every pixel
-    # used for depth sampling) + the matching color CameraInfo. Section 3/4 fix:
-    # these previously pointed at generic /camera/image_raw-style topics that
-    # do not exist on a real D435 driver and are not geometrically compatible
-    # with RGB-based detection. Adjust only the camera_name/namespace portion
-    # Unified Workspace Standard topics (aligned with Gazebo, SLAM, and Perception)
-    # When deploying on physical rover with RealSense, remap RealSense topics to these names.
+    # Workspace camera aliases. Depth must be aligned to RGB, with matching
+    # RGB CameraInfo. For physical cameras, pass the driver's actual topics
+    # through launch arguments; renaming raw depth does not align its pixels.
     rgb_topic: "/camera/image_raw"
     depth_topic: "/camera/depth/image_raw"
     camera_info_topic: "/camera/camera_info"
@@ -17,6 +12,7 @@ marker_detection:
     # arrives. Matches this file's existing RGB/depth staleness convention (see
     # sync_stale_warn_s below).
     camera_info_max_age_s: 5.0
+    input_timeout_sec: 1.0
     debug_image_topic: "/marker_detection/debug_image"
     detection_topic: "/marker_detections"
     marker_3d_detection_topic: "/marker_3d_detections"

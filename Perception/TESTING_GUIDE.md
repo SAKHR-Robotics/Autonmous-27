@@ -1,190 +1,123 @@
-# Linux Testing & Validation Guide for Perception (`perception-jazzy-improvements`)
+# Perception validation and testing handoff
 
-This guide provides exact, reproducible steps to build and validate the Perception subsystem on a **Linux machine (Ubuntu 24.04 / ROS 2 Jazzy)** or inside the project's Linux Docker container (`apex_autonomous_lp:jazzy`).
+Validation targets the production Perception packages. Master-folder testing
+assets only provide controlled dependencies. Work here uses `autonomous27:jazzy`;
+no host Python/ROS installations or shared build directories are changed.
 
----
+## Production regression checks
 
-## 1. Prerequisites & Environment Setup
-
-- **OS**: Ubuntu 24.04 LTS (Noble Numbat)
-- **ROS 2**: Jazzy Jalisco
-- **Workspace Root**: The root of the repository (`Autonmous-27`).
-
-### Network & Process Isolation
-Set an isolated `ROS_DOMAIN_ID` to prevent cross-talk with other nodes or simulations on the local network:
-```bash
-export ROS_DOMAIN_ID=87
-source /opt/ros/jazzy/setup.bash
-```
-
-> [!WARNING]
-> **Clean Stale Build Symlinks**:
-> If packages or launch files were relocated (such as `test_perception_standalone.launch.py` moving to `testing/Perception/perception_test_tools`), always build in a fresh or cleaned build/install directory to prevent setuptools symlink collisions:
-> ```bash
-> rm -rf /tmp/perception-build /tmp/perception-install
-> ```
-
----
-
-## 2. Dependency Resolution
-
-From the repository root, install all declared package dependencies:
-```bash
-rosdep update
-rosdep install --from-paths \
-  Perception \
-  PathPlanning/erc_path_planner \
-  SLAM/rover_slam \
-  testing/Perception/perception_test_tools \
-  testing/SLAM/slam_test_tools \
-  --ignore-src --rosdistro jazzy -r -y
-```
-
----
-
-## 3. Isolated Build (`colcon`)
-
-Build the perception stack and its test tools into dedicated isolated directories (`/tmp/perception-build` and `/tmp/perception-install`) with `--symlink-install`:
+Build the five packages using the isolated Docker [runbook](RUNBOOK.md#1-open-an-isolated-validation-container).
+Inside that container, after sourcing `/validation/install/setup.bash`:
 
 ```bash
-colcon build \
-  --base-paths \
-    Perception \
-    PathPlanning/erc_path_planner \
-    SLAM/rover_slam \
-    testing/Perception/perception_test_tools \
-    testing/SLAM/slam_test_tools \
-  --build-base /tmp/perception-build \
-  --install-base /tmp/perception-install \
-  --symlink-install
+python3 -m pytest /workspace/Perception/perception_bringup/test \
+  /workspace/Perception/terrain_geometry/test \
+  /workspace/Perception/marker_detection/test -q -p no:cacheprovider
 ```
 
-After compilation succeeds, source the overlay:
-```bash
-source /tmp/perception-install/setup.bash
-```
+The package-local tests cover actual processing helpers and node contracts.
+They are not installed mock dependency providers. The optional test-launch
+compatibility check skips when `perception_test_tools` has not been built.
 
----
+Coverage includes cloud row padding/endianness/layout rejection, transform header
+preservation, unknown versus observed ground, unavailable terrain, dynamic TF,
+surface-risk and memory math, marker detection/PnP/tracking, calibration freshness
+and resolution, stale/future RGB rejection, action-target freshness and covariance,
+native landmark contracts, independent launch selection, configuration scoping,
+legacy forwarding and production RViz defaults.
 
-## 4. Automated Pytest Test Suites
-
-Run all unit and integration test suites:
-```bash
-python3 -m pytest \
-  Perception/terrain_geometry/test/ \
-  Perception/marker_detection/test/ \
-  testing/Perception/perception_test_tools/test/ \
-  -v --tb=short
-```
-
-### Expected Coverage
-- **`Perception/terrain_geometry/test/`**:
-  - `test_launch_contract.py`: Launch arguments, scoping, parameter file boundaries, and isolation.
-  - `test_observation_semantics.py`: Unknown space vs observed ground clearing, missing depth handling.
-  - `test_obstacle_memory.py`: Bounded odom-frame tracking and obstacle expiration.
-  - `test_surface_risk.py`: Slope, roughness, and step edge detection.
-  - `test_tf_temporal.py`: Dynamic TF lookup and clock-reversal recovery.
-- **`Perception/marker_detection/test/`** (109 unit tests):
-  - ArUco PnP / RGB-D detection, tracking, Kalman filtering, marker map composition, RTAB-Map landmark adapter, and action targets.
-- **`testing/Perception/perception_test_tools/test/`**:
-  - `test_scene.py`: Synthetic test fixtures.
-  - `test_bridge_integration.py`: Nav2 costmap bridge bounds, nan/inf handling, and rotated 3D box projection.
-  - `test_live_stack.py`: Headless live sensor-to-grid pipeline execution.
-
----
-
-## 5. Live Pipeline & Scenario Testing
-
-The `perception_test_tools` package provides reproducible scenarios without requiring Gazebo, hardware, or artificial `map` transforms.
-
-### A. Combined Perception (Terrain + Markers)
-```bash
-# With RViz GUI (on a system with active Linux display):
-ros2 launch perception_test_tools test_stack.launch.py \
-  pipeline:=all scenario:=rocks_and_marker launch_rviz:=true
-
-# Headless / Terminal only:
-ros2 launch perception_test_tools test_stack.launch.py \
-  pipeline:=all scenario:=rocks_and_marker launch_rviz:=false
-```
-
-### B. Terrain-Only Pipeline
-```bash
-ros2 launch perception_test_tools test_stack.launch.py \
-  pipeline:=terrain scenario:=rocks_and_marker launch_rviz:=false
-```
-Verify topic outputs:
-```bash
-ros2 topic hz /terrain/costmap
-ros2 topic echo /perception/local_bboxes --once
-ros2 topic echo /terrain/diagnostics --once
-```
-
-### C. Marker-Only Pipeline
-```bash
-ros2 launch perception_test_tools test_stack.launch.py \
-  pipeline:=markers scenario:=rocks_and_marker launch_rviz:=false
-```
-Verify marker detection:
-```bash
-ros2 topic echo /marker_poses --once
-ros2 topic echo /marker_detections --once
-```
-
-### D. Specific Robustness Scenarios
-Test failure semantics and edge cases:
-- `scenario:=dropout`: Simulates intermittent sensor loss; verify nodes don't crash.
-- `scenario:=invalid_cloud`: Simulates malformed sensor pointclouds; verify terrain marks unknown rather than free.
-- `scenario:=missing_depth`: Color image present without depth; verify RGB PnP fallback with diagnostics.
-- `scenario:=turn_occlusion`: Rotates the rover; verify obstacle memory persists obstacles outside current FOV.
-- `scenario:=terrain_hazard`: Steep slope/drop-off; verify hazard detection.
-
-Example:
-```bash
-ros2 launch perception_test_tools test_stack.launch.py \
-  pipeline:=terrain scenario:=invalid_cloud launch_rviz:=false
-```
-
----
-
-## 6. Nav2 Costmap Bridge Verification
-
-Verify that the C++ bridge properly bounds point output from 3D bounding boxes:
-```bash
-ros2 run erc_path_planner costmap_bridge_node --ros-args \
-  -p input_topic:=/testing/bridge/boxes \
-  -p output_topic:=/testing/bridge/cloud \
-  -p max_points:=100
-```
-
----
-
-## 7. Production Launch Cleanliness Check
-
-Ensure production launch configurations do not contain synthetic publishers or artificial transforms:
+Check the installed launch entry points:
 
 ```bash
-# Check available launch arguments for production perception system
-ros2 launch terrain_geometry perception_system.launch.py --show-args
+ros2 launch perception_bringup perception.launch.py --show-args
+ros2 launch terrain_geometry terrain.launch.py --show-args
+ros2 launch marker_detection marker_branch.launch.py --show-args
+# No sensors: check startup only, then Ctrl+C and inspect clean shutdown.
+ros2 launch perception_bringup perception.launch.py use_sim_time:=false
 ```
 
-Verify that:
-1. `perception_system.launch.py` starts real sensor subscribers (default `/camera/depth/color/points` and `/camera/color/image_raw`).
-2. No `sensor_inputs` mock node or fake `static_transform_publisher` (e.g. `map -> odom`) is started by production scripts.
-3. Test harnesses remain strictly isolated under `testing/`.
+Startup is not proof of correct processing. Test actual message flow separately.
+Logs/artifacts belong in the dedicated validation directory, not source packages
+or the other agent's master testing folder. Never use broad ROS/Gazebo kill commands.
+Stop only the processes started by this validation run.
 
----
+## Controlled production message flow
 
-## 8. RViz Visual Checks (Linux Display)
+**Current status:** the default Patchwork++ geometry check fails with the existing
+ground-at-base-origin fixture. These commands reproduce the case; they are not a
+passing terrain acceptance recipe. The frontal marker also retains
+`POSE_AMBIGUOUS`, so positive action/landmark acceptance needs a different coherent
+scene. See [the measured results and decision](INTEGRATION_REVIEW.md).
 
-If a physical or virtual X11/Wayland display is available (`echo $DISPLAY` is not empty):
+The current existing feeder is `testing/Perception/perception_test_tools`.
+Its layout is owned by the testing agent. Use it as-is or snapshot it into a
+scratch directory before building; do not change it as part of Perception work.
+Build that package into the same isolated overlay when deliberately selected:
+
 ```bash
-ros2 launch terrain_geometry perception_system.launch.py \
-  launch_rviz:=true enable_costmap:=true use_sim_time:=false
+colcon --log-base /validation/log build \
+  --base-paths /workspace/testing/Perception/perception_test_tools \
+  --build-base /validation/build --install-base /validation/install --symlink-install
+source /validation/install/setup.bash
 ```
-Inspect:
-1. **Camera Frame Alignment**: Point clouds and marker axes align with `camera_depth_optical_frame`.
-2. **Occupancy Grid**: Occupied cells (purple/red) accurately envelop detected rock bounding boxes.
-3. **Marker Display**: Marker bounding boxes and ID text render in RViz.
 
-*Note: In headless environments (such as Docker without X-forwarding), report GUI visual checks as untested and rely on ROS 2 topic echoes.*
+Terminal A supplies only controlled sensor inputs and its explicitly test-only
+camera mount TF; Terminal B runs the real production processing:
+
+```bash
+# A: the existing testing package, no production algorithms replaced.
+ros2 launch perception_test_tools sensor_inputs.launch.py scenario:=rocks_and_marker
+```
+
+```bash
+# B:
+ros2 launch perception_bringup perception.launch.py use_sim_time:=false \
+  enable_costmap:=true launch_landmark_adapter:=true \
+  input_pointcloud_topic:=/testing/perception/camera/points \
+  rgb_topic:=/testing/perception/camera/image_raw \
+  depth_topic:=/testing/perception/camera/depth \
+  camera_info_topic:=/testing/perception/camera/image_info
+```
+
+Never attach these synthetic providers to real rover hardware. The isolated
+container keeps this ROS graph separate. Expected scene evidence includes rock
+truth geometry near base (2.0, 0.6, 0.25) m, marker ID 0 near optical depth 2 m, occupied
+grid cells and healthy terrain diagnostics. For an accepted marker ID 0, native landmark ID is 1 with the
+default offset; the current frontal fixture is correctly rejected as ambiguous. Exact acceptance tolerances must account for sampled surfaces
+and the selected ground backend; these fixtures are not calibrated physical truth.
+
+Additional feeder scenarios already include `ground_only`, `missing_depth`,
+`invalid_cloud` and `dropout`. Ground-only is required to be a valid empty obstacle update (currently failing
+with native Patchwork++ and this fixture);
+invalid cloud/dropout must report unavailable perception and an unknown enabled
+grid. Missing depth must preserve RGB detection/PnP with calibration. A resumed
+stream must recover without restarting production. Inspect both data and health.
+Do not run two feeders simultaneously on the same topics/TF.
+
+## Testing-agent handoff
+
+No files under master `testing/` are edited by the Perception implementation.
+The following coordination remains before changing its layout:
+
+| Item | Required action by testing-folder owner |
+| --- | --- |
+| `Perception/terrain_geometry/terrain_geometry/benchmark.py` | Choose a testing package destination, move the synthetic generator/offline runner there, then remove it from the production package in a coordinated change. It is currently retained, unused by production nodes. |
+| Combined launch references | Prefer `perception_bringup perception.launch.py`. Existing `terrain_geometry perception_system.launch.py` includes still work after bringup is built. |
+| Combined view | Production view now lives in `perception_bringup/rviz/`. Truth overlays stay in the testing package's own RViz view. |
+| Dependency mocks | Match the documented topic types, QoS, units, timestamps and frames; provide only selected missing dependencies with one TF/output authority. |
+| Scenarios/referees | Cover normal inputs, missing/stale inputs, calibration mismatch, TF loss, recovery and clock reset; keep expected truth separate from algorithm inputs. |
+
+The printable ArUco image generator is a calibration utility, not a sensor mock;
+it remains in `marker_detection`. Test-only publisher nodes already reside in
+master `testing/`. Historical synthetic benchmark code is the outstanding move,
+not a reason to alter the other agent's files without its agreed destination.
+
+## Limits and next integration checks
+
+Passing regression tests and synthetic message flow does not establish hardware
+accuracy, outdoor performance, map quality, safe stopping or ERC compliance.
+Validate physical camera alignment/mounting, real scenes and target-computer
+latency. Then validate Nav2 obstacle marking/clearing and observation-loss behavior,
+RTAB-Map localization/loop closure, and mission target handling in their module
+reviews. Diagnostic timers follow ROS time; consumers need a policy for clock loss
+and stopped publishers. See [current evidence](INTEGRATION_REVIEW.md).

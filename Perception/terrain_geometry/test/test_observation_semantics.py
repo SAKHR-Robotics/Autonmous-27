@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import rclpy
 from std_msgs.msg import Header
-from sensor_msgs.msg import PointCloud2
+from sensor_msgs.msg import PointCloud2, PointField
 from rclpy.parameter import Parameter
 from terrain_geometry.occupancy_grid import OccupancyGridGenerator
 from terrain_geometry.terrain_node import TerrainGeometryNode
@@ -70,3 +70,19 @@ def test_healthy_diagnostics_do_not_replace_map_with_unknown(node):
     node._health_ok = True
     node._publish_health()
     assert unknown == []
+
+
+def test_invalid_field_datatype_reports_unavailable_instead_of_crashing(node):
+    cloud = PointCloud2(width=1, height=1, point_step=12, row_step=12, data=bytes(12),
+        fields=[PointField(name='x', offset=0, datatype=99, count=1)])
+    cloud.header.stamp = node.get_clock().now().to_msg()
+    node._cloud_callback(cloud)
+    assert not node._health_ok
+    assert 'processing failed' in node._health_reason
+
+
+def test_terrain_relinquishes_obstacle_publisher_when_memory_owns_output(node):
+    node.set_parameters([Parameter('publish_to_obstacles_only', value=False)])
+    assert not node.get_publishers_info_by_topic('/perception/obstacles_only')
+    node.set_parameters([Parameter('publish_to_obstacles_only', value=True)])
+    assert len(node.get_publishers_info_by_topic('/perception/obstacles_only')) == 1

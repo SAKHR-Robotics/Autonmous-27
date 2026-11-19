@@ -80,7 +80,11 @@ class MarkerDetectionNode(Node):
         self._camera_info_warned = False
         self._camera_info_received_monotonic: float | None = None
         self._camera_info_stale_warned = False
+        self._last_image_shape = None
+        self._input_error = ''
+        self._last_ros_time = self.get_clock().now().nanoseconds * 1e-9
         self._processing_times: deque[float] = deque(maxlen=300)
+        self._diagnostic_processing_times: deque[float] = deque(maxlen=300)
         self._last_stats_log = time.monotonic()
         # Part 2: RGB detection must not depend on depth. `_last_rgb_frame` tracks
         # overall pipeline liveness (any RGB frame); `_last_synchronized_frame`
@@ -216,8 +220,9 @@ class MarkerDetectionNode(Node):
 
     def _declare_parameters(self) -> None:
         defaults: dict[str, Any] = {
-            "rgb_topic": "/camera/color/image_raw", "depth_topic": "/camera/aligned_depth_to_color/image_raw",
-            "camera_info_topic": "/camera/color/camera_info", "debug_image_topic": "/marker_detection/debug_image",
+            "rgb_topic": "/camera/image_raw", "depth_topic": "/camera/depth/image_raw",
+            "camera_info_topic": "/camera/camera_info", "debug_image_topic": "/marker_detection/debug_image",
+            "input_timeout_sec": 1.0,
             # Priority 3 (engineering audit follow-up): CameraInfo's age was already reported
             # diagnostically but never enforced -- intrinsics received once could silently be
             # reused forever, including after the RealSense driver dies. Once CameraInfo is
@@ -344,6 +349,8 @@ class MarkerDetectionNode(Node):
             raise ValueError("marker_size_m and max_reprojection_error_px must be positive.")
         if p("camera_info_max_age_s").value <= 0:
             raise ValueError("camera_info_max_age_s must be positive.")
+        if not np.isfinite(p('input_timeout_sec').value) or p('input_timeout_sec').value <= 0:
+            raise ValueError('input_timeout_sec must be finite and positive.')
         if p("min_confirmations").value < 1 or p("confirmation_window_seconds").value <= 0:
             raise ValueError("Invalid tracking confirmation-window parameters.")
         if not (0.0 < p("degraded_after_seconds").value <= p("lost_timeout_seconds").value
@@ -404,7 +411,9 @@ class MarkerDetectionNode(Node):
         return self._pose_estimator_for_size(self._marker_sizes.get(marker_id, self._default_marker_size_m))
 
     def _camera_info_callback(self, message: CameraInfo) -> None:
-        if message.width == 0 or message.height == 0 or len(message.k) != 9 or message.k[0] <= 0 or message.k[4] <= 0:
+        if message.width == 0 or message.height == 0 or PoseEstimator.camera_parameters(message) is None:
+            self.camera_info = None
+            self._camera_info_received_monotonic = None
             self.get_logger().warning("Received invalid CameraInfo; retaining no calibration.")
             return
         self.camera_info = message
@@ -426,6 +435,13 @@ class MarkerDetectionNode(Node):
                 "until a fresh CameraInfo arrives. 2D detection is unaffected.")
             self._camera_info_stale_warned = True
         return stale
+
+    def _usable_camera_info(self, image_shape=None):
+        if self.camera_info is None or self._camera_info_is_stale():
+            return None
+        if image_shape is not None and (self.camera_info.height, self.camera_info.width) != tuple(image_shape):
+            return None
+        return self.camera_info
 
     def _to_bgr(self, message: Image) -> np.ndarray:
         image = self.bridge.imgmsg_to_cv2(message, desired_encoding="passthrough")
@@ -492,9 +508,21 @@ class MarkerDetectionNode(Node):
         fabricated). Depth returning simply means the next frame finds a
         match again; nothing needs to be explicitly "resumed"."""
         started = time.perf_counter()
-        self._last_rgb_frame = time.monotonic()
+        now = self.get_clock().now().nanoseconds * 1e-9
+        if now < self._last_ros_time:
+            self.tracker_manager.tracks.clear()
+            self._depth_buffer = DepthSyncBuffer(
+                int(self.get_parameter('sync_queue_size').value), float(self.get_parameter('sync_slop').value))
+        self._last_ros_time = now
+        stamp = rgb_message.header.stamp
+        timestamp = float(stamp.sec) + float(stamp.nanosec) * 1e-9
+        if timestamp <= 0 or not 0 <= now - timestamp <= self.get_parameter('input_timeout_sec').value:
+            self._input_error = 'RGB timestamp is zero, stale or in the future'
+            self.get_logger().warning(self._input_error, throttle_duration_sec=5.)
+            return
         try:
             bgr = self._to_bgr(rgb_message)
+            self._last_image_shape = bgr.shape[:2]
             markers, quality, rejected_by_quality = self._detect_markers(bgr)
             depth_match = self._depth_buffer.match(
                 float(rgb_message.header.stamp.sec) + float(rgb_message.header.stamp.nanosec) * 1e-9)
@@ -515,7 +543,7 @@ class MarkerDetectionNode(Node):
                     self._counts["frames_without_depth"] += 1
                 else:
                     depth_m = self.depth_processor.to_meters(depth, depth_message.encoding)
-                    associated = self._associate_3d(markers, depth_m, quality)
+                    associated = self._associate_3d(markers, depth_m, quality, bgr.shape[:2])
                     self._last_synchronized_frame = time.monotonic()
                     self._sync_deltas.append(depth_match.delta_s)
                     self._counts["frames_with_depth"] += 1
@@ -523,8 +551,11 @@ class MarkerDetectionNode(Node):
             if depth_elapsed_ms > self.get_parameter("max_depth_processing_time_ms").value:
                 self.get_logger().warning(f"Depth association took {depth_elapsed_ms:.2f} ms.")
         except (CvBridgeError, ValueError, cv2.error) as error:
+            self._input_error = f'Invalid camera input: {error}'
             self.get_logger().error(f"Skipping invalid RGB frame: {error}")
             return
+        self._last_rgb_frame = time.monotonic()
+        self._input_error = ''
         if self.camera_info is None and not self._camera_info_warned:
             self.get_logger().warning("No valid CameraInfo yet; 2D detections continue, but future pose estimation is unavailable.")
             self._camera_info_warned = True
@@ -534,7 +565,7 @@ class MarkerDetectionNode(Node):
         self._counts["rejected_quality"] += rejected_by_quality
         self._publish_detections(rgb_message, markers, quality)
         self._publish_3d_detections(rgb_message, associated)
-        poses = self._estimate_poses(associated, timestamp)
+        poses = self._estimate_poses(associated, timestamp, bgr.shape[:2])
         self._counts["rejected_pose"] += sum(1 for item in poses if not item.valid)
         self._publish_poses(rgb_message, poses)
         tracked, canonical_poses = self._track_poses(poses, rgb_message)
@@ -548,6 +579,7 @@ class MarkerDetectionNode(Node):
         self._publish_tracked_poses(rgb_message, tracked)
         elapsed = time.perf_counter() - started
         self._processing_times.append(elapsed)
+        self._diagnostic_processing_times.append(elapsed)
         if not self._competition_mode:
             if self.get_parameter("publish_debug_image").value:
                 self._publish_debug(rgb_message, bgr, canonical_poses, elapsed)
@@ -595,8 +627,9 @@ class MarkerDetectionNode(Node):
         return kept, quality
 
     def _associate_3d(self, markers: list[ValidatedMarker], depth_m: np.ndarray,
-                      quality: dict[int, tuple[float, int]]) -> list[AssociatedMarker]:
-        model = RgbCameraModel.from_camera_info(self.camera_info) if self.camera_info else None
+                      quality: dict[int, tuple[float, int]], image_shape=None) -> list[AssociatedMarker]:
+        info = self._usable_camera_info(image_shape)
+        model = RgbCameraModel.from_camera_info(info) if info is not None else None
         associated: list[AssociatedMarker] = []
         for marker in markers:
             estimate = self.depth_processor.estimate(depth_m, marker.corners)
@@ -637,12 +670,12 @@ class MarkerDetectionNode(Node):
             return None, None, None
         return track.filter.state[:3].copy(), track.orientation.copy(), max(0.0, timestamp - track.last_timestamp)
 
-    def _estimate_poses(self, associated: list[AssociatedMarker], timestamp: float) -> list[AssociatedPose]:
+    def _estimate_poses(self, associated: list[AssociatedMarker], timestamp: float, image_shape=None) -> list[AssociatedPose]:
         output: list[AssociatedPose] = []
         # Priority 3: computed once per frame, not per marker -- a stale check is a property
         # of the CameraInfo message, not of any individual detection.
         camera_info_stale = self._camera_info_is_stale()
-        effective_camera_info = None if camera_info_stale else self.camera_info
+        effective_camera_info = self._usable_camera_info(image_shape)
         for item in associated:
             estimator = self._pose_estimator_for_marker(item.marker.marker_id)
             depth_position = np.asarray(item.position) if item.position is not None else None
@@ -907,15 +940,16 @@ class MarkerDetectionNode(Node):
         values = list(self._processing_times)
         level = self.get_logger().debug if self._competition_mode else self.get_logger().info
         level("markers=%d, processing avg=%.2f ms max=%.2f ms, effective=%.1f Hz" % (
-            count, 1000 * sum(values) / len(values), 1000 * max(values), len(values) / 5.0))
+            count, 1000 * sum(values) / len(values), 1000 * max(values), len(values) / (now - self._last_stats_log)))
         self._last_stats_log = now
+        self._processing_times.clear()
 
     def _publish_diagnostics(self) -> None:
         """Improvements #14 (diagnostics) and #15 (performance): a single throttled
         DiagnosticArray summarizing sync health, latency percentiles, and pipeline counts."""
         now = time.monotonic()
         window = max(now - self._diag_window_start, 1e-6)
-        stats = diag.latency_stats(list(self._processing_times), window)
+        stats = diag.latency_stats(list(self._diagnostic_processing_times), window)
         # Part 8: RGB-depth sync-delta distribution over matched pairs, and
         # RGB/sync liveness reported as two independent gaps (Part 2: a depth
         # stall alone must not read as "the pipeline is unhealthy" the same
@@ -930,11 +964,20 @@ class MarkerDetectionNode(Node):
         # reported (sync_level) but does not by itself make the node ERROR,
         # since 2D detection is expected to keep working through it.
         level = diag.overall_level(rgb_level, latency_level)
+        calibration_available = self._usable_camera_info(self._last_image_shape) is not None
+        if not calibration_available:
+            level = max(level, diag.HealthLevel.WARN)
+        if self._input_error:
+            level = diag.HealthLevel.ERROR
         status = DiagnosticStatus()
         status.name, status.hardware_id = "marker_detection: pipeline", "realsense_d435"
         status.level = _DIAG_LEVEL[level]
         status.message = {diag.HealthLevel.OK: "Nominal", diag.HealthLevel.WARN: "Degraded",
                           diag.HealthLevel.ERROR: "Unhealthy"}[level]
+        if self._input_error:
+            status.message = self._input_error
+        elif not calibration_available:
+            status.message = 'Calibration unavailable, stale or incompatible with RGB dimensions; 2D only'
         camera_info_age_s = (now - self._camera_info_received_monotonic
                             if self.camera_info is not None and self._camera_info_received_monotonic is not None
                             else float("nan"))
@@ -956,6 +999,7 @@ class MarkerDetectionNode(Node):
             KeyValue(key="camera_info_age_s",
                     value=f"{camera_info_age_s:.2f}" if np.isfinite(camera_info_age_s) else "nan"),
             KeyValue(key="camera_info_received", value=str(self.camera_info is not None)),
+            KeyValue(key="calibration_usable", value=str(calibration_available)),
             KeyValue(key="camera_info_stale", value=str(self._camera_info_is_stale())),
             KeyValue(key="camera_info_max_age_s", value=f"{float(self.get_parameter('camera_info_max_age_s').value):.2f}"),
             KeyValue(key="detections", value=str(self._counts["detections"])),
@@ -972,6 +1016,7 @@ class MarkerDetectionNode(Node):
         message.status = [status]
         self.diagnostics_pub.publish(message)
         self._diag_window_start = now
+        self._diagnostic_processing_times.clear()
         self._sync_deltas.clear()
         self._counts = {key: 0 for key in self._counts}
 

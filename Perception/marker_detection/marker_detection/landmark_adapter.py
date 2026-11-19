@@ -9,9 +9,14 @@ def landmark_from_track(track, *, now, max_age=.5, min_confidence=.6, id_offset=
     from rtabmap_msgs.msg import LandmarkDetection
     stamp=track.header.stamp.sec+track.header.stamp.nanosec*1e-9
     identifier=int(track.id)+id_offset
-    if not (track.detection_valid and track.tracking_valid and track.track_state=='CONFIRMED'
-            and track.tracking_confidence >= min_confidence and track.age_seconds <= max_age
+    if not (np.isfinite([max_age,min_confidence,angular_variance,position_variance]).all()
+            and max_age > 0 and 0 <= min_confidence <= 1 and min(angular_variance,position_variance) > 0
+            and track.id >= 0 and stamp > 0 and track.header.frame_id.strip()
+            and track.detection_valid and track.tracking_valid and track.track_state=='CONFIRMED'
+            and np.isfinite(track.tracking_confidence) and min_confidence <= track.tracking_confidence <= 1
+            and track.age_seconds >= 0
             and 0 <= now-stamp <= max_age and 0 < identifier < 2**31
+            and track.age_seconds + now-stamp <= max_age
             and not (int(track.quality_flags) & int(_DISQUALIFYING_FLAGS))):
         return None
     position=np.array([track.position.x,track.position.y,track.position.z])
@@ -46,12 +51,15 @@ def main(args=None):
             super().__init__('marker_landmark_adapter')
             for key,value in {'max_age':.5,'min_confidence':.6,'id_offset':1,'angular_variance':.1}.items():
                 self.declare_parameter(key,value)
-            if self.get_parameter('max_age').value <= 0 or self.get_parameter('angular_variance').value <= 0:
+            age,variance=(self.get_parameter(key).value for key in ('max_age','angular_variance'))
+            confidence=self.get_parameter('min_confidence').value
+            if not np.isfinite([age,variance,confidence]).all() or min(age,variance) <= 0 or not 0 <= confidence <= 1:
                 raise ValueError('Positive landmark age and angular variance required')
             self.pub=self.create_publisher(LandmarkDetections,'/perception/landmark_detections',10)
             self.create_subscription(MarkerTrackedPoseArray,'/marker_poses',self.observe,10)
         def observe(self,msg):
             output=LandmarkDetections()
+            output.header=msg.header
             parameters={key:self.get_parameter(key).value for key in ('max_age','min_confidence','id_offset','angular_variance')}
             for track in msg.markers:
                 landmark=landmark_from_track(track,now=self.get_clock().now().nanoseconds*1e-9,**parameters)
@@ -63,9 +71,11 @@ def main(args=None):
     node=Adapter()
     try:
         rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        rclpy.try_shutdown()
 
 
 if __name__=='__main__':
