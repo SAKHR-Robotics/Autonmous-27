@@ -13,7 +13,8 @@ def setup(context):
     config=value('rviz_config') or os.path.join(get_package_share_directory('rover_slam'),'config',filename)
     return [Node(package='rviz2',executable='rviz2',name='slam_rviz',
         arguments=['-d',config,'-f',value('fixed_frame') or ('odom' if view=='local' else 'map')],
-        parameters=[{'use_sim_time':value('use_sim_time')=='true'}])]
+        parameters=[{'use_sim_time':value('use_sim_time')=='true'}],
+        remappings=[('/wheel/odom_raw', value('raw_odom_topic'))])]
 
 
 def generate_launch_description():
@@ -22,4 +23,5 @@ def generate_launch_description():
         DeclareLaunchArgument('rviz_view',default_value='global',choices=['local','global']),
         DeclareLaunchArgument('fixed_frame',default_value=''),
         DeclareLaunchArgument('rviz_config',default_value=''),
+        DeclareLaunchArgument('raw_odom_topic',default_value='/wheel/odom_raw'),
         OpaqueFunction(function=setup)])

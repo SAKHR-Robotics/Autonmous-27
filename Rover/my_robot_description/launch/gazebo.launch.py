@@ -12,6 +12,7 @@ Use this to test the robot in Gazebo simulation.
 """
 
 import os
+import shlex
 from launch import LaunchDescription
 from launch.actions import ExecuteProcess, IncludeLaunchDescription, RegisterEventHandler
 from launch.event_handlers import OnProcessExit
@@ -154,7 +155,7 @@ def launch_setup(context, *args, **kwargs):
                         'launch', 'gz_sim.launch.py')
         ]),
         launch_arguments={
-            'gz_args': f"-r {world_path}",
+            'gz_args': f"-r {shlex.quote(world_path)}",
             'on_exit_shutdown': 'true'
         }.items()
     )
@@ -181,7 +182,6 @@ def launch_setup(context, *args, **kwargs):
         '/cmd_vel@geometry_msgs/msg/Twist@gz.msgs.Twist',
         '/odom@nav_msgs/msg/Odometry@gz.msgs.Odometry',
         '/imu@sensor_msgs/msg/Imu[gz.msgs.IMU',
-        '/imu/data@sensor_msgs/msg/Imu[gz.msgs.IMU',
         f'/world/{world_name}/model/my_robot/joint_state@sensor_msgs/msg/JointState[gz.msgs.Model',
         f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/image@sensor_msgs/msg/Image[gz.msgs.Image',
         f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',

@@ -48,7 +48,7 @@ Visualization Manager:
       Enabled: false
       Topic:
         Value: /mapPath
-        Durability Policy: Transient Local
+        Durability Policy: Volatile
     - Class: rviz_default_plugins/PointCloud2
       Name: Perception obstacle bridge (marking only)
       Enabled: false

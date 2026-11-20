@@ -1,5 +1,10 @@
 # SLAM improvements: implementation and resume record
 
+Current review: [VALIDATION.md](VALIDATION.md), 2026-11-19/20 on
+`TestingValidation`. The sections below retain the historical implementation
+record and old folder/branch names. They do not supersede current runtime
+evidence or authorize pushing/merging this shared validation branch.
+
 Approved base: `origin/jazzy-port` at `d9c39d7`. Feature branch:
 `slam-jazzy-improvements`. Target: Ubuntu 24.04 / ROS 2 Jazzy on Linux.
 

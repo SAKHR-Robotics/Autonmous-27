@@ -9,8 +9,17 @@ Autonomous 4-wheeled skid-steer Mars rover simulation package for ROS 2 Jazzy an
 This package defines the robot kinematics, URDF/Xacro models, sensor transforms, and Gazebo world spawning orchestration:
 
 - **Robot Model**: 4-wheel skid-steer rover with chassis, suspension arms, drill motors, RealSense D435 RGB-D depth camera, and BNO055 IMU.
-- **Simulation Bridge**: ROS-GZ parameter bridge routing `/cmd_vel`, `/model/my_robot/odometry`, `/camera/*`, and `/imu/data`.
+- **Simulation Bridge**: ROS-GZ parameter bridge routing `/cmd_vel`, `/odom`, `/camera/*`, and `/imu/data`.
 - **TF Ownership**: Configured with `bridge_sim_tf:=false` in production so the EKF (`robot_localization`) holds sole transform authority over `odom ➔ base_link`.
+
+The description uses `base_link` as its root and a fixed child
+`base_footprint` 0.255 m below it. Sensor mounts remain relative to the chassis.
+Gazebo odometry uses `base_link` as its child frame, and the IMU explicitly
+reports `imu_link`. Only one bridge publishes `/imu/data`. Leave
+`publish_map_tf`, `publish_camera_tf` and `bridge_sim_tf` false with real SLAM.
+The selected validation world is `final_world_R&A.world`; quote its launch
+argument, for example `'world:=final_world_R&A.world'`.
+See [SLAM validation evidence](../../SLAM/VALIDATION.md) for remaining gates.
 
 ---
 
@@ -82,7 +91,7 @@ ros2 launch my_robot_description display.launch.py
 | `/camera/color/image_raw` | `sensor_msgs/msg/Image` | Output | 640x480 RGB camera stream |
 | `/camera/depth/color/points` | `sensor_msgs/msg/PointCloud2` | Output | RealSense 3D depth point cloud |
 | `/imu/data` | `sensor_msgs/msg/Imu` | Output | 100 Hz linear acceleration & angular velocity |
-| `/model/my_robot/odometry` | `nav_msgs/msg/Odometry` | Output | Raw wheel contact odometry from Gazebo diff-drive plugin |
+| `/odom` | `nav_msgs/msg/Odometry` | Output | Wheel-integrated odometry, not independent Gazebo entity truth |
 | `/tf` | `tf2_msgs/msg/TFMessage` | Output | Robot joint and body link transforms |
 
 ---

@@ -1,5 +1,10 @@
 # 🧠 SLAM Module AI Implementation & Architecture Guide (`SlamAiGuide.md`)
 
+> Historical design/task record. Current code, launches, interfaces and measured
+> status are documented in [the staged review](../VALIDATION.md). Old 100 Hz,
+> full-3D, PoseStamped landmark and completed benchmark claims below are not
+> current acceptance evidence.
+
 > 💡 **AI Assistant Directive:** This document is the primary reference and roadmap for AI assistants and human engineers developing the SLAM Subsystem (`rover_slam`). When completing a task or editing files, you **MUST update the task checkboxes (`- [✓]`) and validation milestone checkpoints** below.
 
 ---

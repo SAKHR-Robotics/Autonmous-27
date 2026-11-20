@@ -14,6 +14,7 @@ Developer Track: SLAM & Pre-Processing Subsystem
 """
 
 import math
+import numpy as np
 from typing import Optional, List, Tuple
 
 try:
@@ -104,6 +105,10 @@ class SlipCheckerCore:
             self.obstacle_blocked = False
             self.takeoff_start_time = None
             self.takeoff_accel_seen = True
+        dt = (current_time_sec - self.last_evaluation_time
+              if self.last_evaluation_time is not None else 0.)
+        wheel_accel = ((v_wheel - self.last_v_wheel) / dt
+                       if self.last_v_wheel is not None and dt > 0 else 0.)
         self.last_evaluation_time = current_time_sec
         raw_slip = False
         reason = "None"
@@ -163,15 +168,19 @@ class SlipCheckerCore:
                     self.takeoff_accel_seen = True
 
         # Rule 2: Collision Impact Detection
-        # Forward collision: driving forward while body suffers deceleration impact or pitch climb
+        # Matched braking is normal motion. Compare impact deceleration with
+        # measured wheel deceleration, not with zero acceleration. Do not let
+        # wheel spin-up hide a collision or replace the takeoff-stall check.
+        forward_impact = a_dynamic_x - min(wheel_accel, 0.)
+        reverse_impact = a_dynamic_x - max(wheel_accel, 0.)
         if not raw_slip:
-            if v_wheel > 0.10 and (a_dynamic_x < -self.slip_accel_threshold or (a_dynamic_x < -0.10 and abs(w_imu_y) > 0.08)):
+            if v_wheel > 0.10 and (forward_impact < -self.slip_accel_threshold or (forward_impact < -0.10 and abs(w_imu_y) > 0.08)):
                 raw_slip = True
                 self.obstacle_blocked = True
                 self.blocked_direction = 1
                 reason = f"ForwardCollision (v={v_wheel:.2f}, a_dyn={a_dynamic_x:.2f})"
             # Reverse collision: driving backward while body suffers severe forward deceleration impact
-            elif v_wheel < -0.10 and a_dynamic_x > self.slip_accel_threshold:
+            elif v_wheel < -0.10 and reverse_impact > self.slip_accel_threshold:
                 raw_slip = True
                 self.obstacle_blocked = True
                 self.blocked_direction = -1
@@ -226,6 +235,16 @@ def inflate_covariance(covariance, multiplier, linear_floor, angular_floor):
     if (len(covariance) != 36 or not all(math.isfinite(v) for v in covariance)
             or any(covariance[i*6+i] < 0 for i in range(6))):
         raise ValueError('Invalid odometry covariance')
+    matrix = np.asarray(covariance).reshape(6, 6)
+    if not np.allclose(matrix, matrix.T, rtol=1e-12, atol=1e-12):
+        raise ValueError('Asymmetric odometry covariance')
+    try:
+        eigenvalues = np.linalg.eigvalsh(matrix)
+    except np.linalg.LinAlgError as error:
+        raise ValueError('Invalid odometry covariance') from error
+    # Permit numerical roundoff in positive semidefinite, rank-deficient inputs.
+    if not np.isfinite(eigenvalues).all() or eigenvalues.min() < -1e-12 * max(1., np.abs(matrix).max()):
+        raise ValueError('Indefinite odometry covariance')
     result = [v*multiplier for v in covariance]
     for index, floor in ((0,linear_floor),(35,angular_floor)):
         result[index] = max(result[index],floor*multiplier)
@@ -345,6 +364,14 @@ class HeuristicSlipCheckerNode(Node):
                     twist.angular.x,twist.angular.y,twist.angular.z))):
             self.health = 'invalid or stale wheel odometry'
             return
+        # Reject malformed uncertainty before the observation can mutate the
+        # collision/takeoff state, not merely before publishing its output.
+        try:
+            nominal_covariance = inflate_covariance(msg.twist.covariance,1.,
+                self.settings['nominal_linear_covariance'],self.settings['nominal_angular_covariance'])
+        except ValueError as error:
+            self.health=str(error)
+            return
         slip = (self.single_wheel_slip and self._slip_receipt is not None
                 and 0 <= now-self._slip_receipt <= self.settings['slip_flag_timeout_sec'])
         imu_valid = False
@@ -354,13 +381,13 @@ class HeuristicSlipCheckerNode(Node):
             imu_valid = True
             slip,_,_ = self.core.evaluate(twist.linear.x,twist.angular.z,gyro[2],accel[0],stamp,
                 orientation_q=orientation,w_imu_y=gyro[1],single_wheel_slip=slip)
-            if slip: self.health='suspected slip; wheel covariance inflated'
+            if slip: self.health='suspected slip: '+self.core.last_slip_reason+'; wheel covariance inflated'
         except (ValueError,TransformException) as error:
             self.health='degraded: '+str(error)
         multiplier=self.settings['covariance_inflation_factor'] if slip or not imu_valid else 1.
         filtered = copy.deepcopy(msg)
         try:
-            filtered.twist.covariance = inflate_covariance(msg.twist.covariance,multiplier,
+            filtered.twist.covariance = inflate_covariance(nominal_covariance,multiplier,
                 self.settings['nominal_linear_covariance'],self.settings['nominal_angular_covariance'])
         except ValueError as error:
             self.health=str(error)
@@ -388,7 +415,7 @@ def main(args=None):
     except KeyboardInterrupt: pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        rclpy.try_shutdown()
 
 
 if __name__ == '__main__': main()

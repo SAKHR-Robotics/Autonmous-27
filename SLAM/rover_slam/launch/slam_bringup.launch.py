@@ -39,7 +39,7 @@ def setup(context):
         actions.append(include('costmap.launch.py', ('autostart', 'obstacle_topic', 'clearing_cloud_topic', 'base_frame', 'map_frame'),
                                {'params_file': value('costmap_params_file')}))
     if value('launch_rviz') == 'true':
-        actions.append(include('rviz.launch.py', ('rviz_view',), {'rviz_config': value('rviz_config'), 'fixed_frame':value('rviz_fixed_frame') or
+        actions.append(include('rviz.launch.py', ('rviz_view',), {'rviz_config': value('rviz_config'), 'raw_odom_topic':value('odom_topic'), 'fixed_frame':value('rviz_fixed_frame') or
             (value('odom_frame') if value('rviz_view')=='local' else value('map_frame'))}))
     return actions
 

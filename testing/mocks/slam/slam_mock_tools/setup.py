@@ -11,5 +11,5 @@ setup(
     maintainer='Rover team', maintainer_email='team@example.com',
     description='Test-only slam dependency mocks and fixtures',
     license='MIT',
-    entry_points={'console_scripts': ['mock_aruco_publisher = slam_mock_tools.mock_aruco_publisher:main', 'costmap_test_stub = slam_mock_tools.costmap_test_stub:main']},
+    entry_points={'console_scripts': ['mock_aruco_publisher = slam_mock_tools.mock_aruco_publisher:main', 'costmap_test_stub = slam_mock_tools.costmap_test_stub:main', 'rover_sensor_adapter = slam_mock_tools.rover_sensor_adapter:main', 'image_gate = slam_mock_tools.image_gate:main']},
 )
