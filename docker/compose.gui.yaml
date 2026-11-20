@@ -1,0 +1,35 @@
+name: rover-gui-teleop
+services:
+  gui_teleop:
+    image: autonomous27:gui
+    build:
+      context: .
+      dockerfile: Dockerfile.gui
+    network_mode: host
+    ipc: host
+    environment:
+      DISPLAY: ${DISPLAY:?DISPLAY must identify the desktop X server}
+      XAUTHORITY: /tmp/rover.xauthority
+      QT_X11_NO_MITSHM: '1'
+      ROS_DOMAIN_ID: ${ROVER_ROS_DOMAIN_ID:-174}
+      RMW_IMPLEMENTATION: rmw_fastrtps_cpp
+    volumes:
+      - ..:/workspace:ro
+      - ../../../GUI:/gui:ro
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+      - ${XAUTHORITY:?Set XAUTHORITY to your desktop Xauthority file}:/tmp/rover.xauthority:ro
+      - /dev/dri:/dev/dri
+    working_dir: /tmp/gui_ws
+    init: true
+    command:
+      - bash
+      - -lc
+      - >-
+        source /opt/ros/jazzy/setup.bash &&
+        colcon --log-base /tmp/gui_ws/log build
+        --base-paths /workspace/Rover/my_robot_description /workspace/worlds
+        --build-base /tmp/gui_ws/build --install-base /tmp/gui_ws/install
+        --symlink-install --cmake-args -DBUILD_TESTING=OFF &&
+        source /tmp/gui_ws/install/setup.bash &&
+        exec bash /workspace/Control/scripts/run_gui_teleop.sh
+        gui_dir:=/gui gui_python:=/usr/bin/python3

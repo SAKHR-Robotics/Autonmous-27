@@ -1,0 +1,11 @@
+# Build the base image using the existing docker/Dockerfile first.
+FROM autonomous27:jazzy
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libxcb-cursor0 libxkbcommon-x11-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Keep GUI Python dependencies separate from the ROS/system packages.
+RUN python3 -m pip install --no-cache-dir --target /opt/rover-gui \
+    PySide6==6.11.2 pygame==2.6.1
+ENV PYTHONPATH=/opt/rover-gui
