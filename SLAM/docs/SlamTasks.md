@@ -1,5 +1,10 @@
 # GitHub Issues / Task Breakdown: SLAM Subsystem (`rover_slam`)
 
+> Historical issue proposals, not current implementation requirements. Use
+> [VALIDATION.md](../VALIDATION.md) for confirmed findings and verification.
+> In particular, zero-stamped fixtures, PoseStamped landmarks and proposed
+> full-3D fusion below do not describe the current production contract.
+
 This document contains GitHub-ready issues for the SLAM subsystem. Each section is formatted to be copied and pasted directly into a new GitHub Issue or GitHub Projects card.
 
 ---

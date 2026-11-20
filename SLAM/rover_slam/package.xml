@@ -9,6 +9,7 @@
 
   <buildtool_depend>ament_python</buildtool_depend>
   <depend>rclpy</depend>
+  <exec_depend>python3-numpy</exec_depend>
   <depend>std_msgs</depend>
   <depend>nav_msgs</depend>
   <depend>sensor_msgs</depend>
@@ -34,6 +35,8 @@
   <test_depend>python3-pytest</test_depend>
   <test_depend>python3-numpy</test_depend>
   <test_depend>xacro</test_depend>
+  <test_depend>my_robot_description</test_depend>
+  <test_depend>rosgraph_msgs</test_depend>
 
   <export>
     <build_type>ament_python</build_type>

@@ -1,25 +1,41 @@
 # rover_slam running guide
 
 Target: **Linux, Ubuntu 24.04, ROS 2 Jazzy**. Run commands from the workspace
-root (`Autonmous-27`), not from this package directory. Source ROS and the
+root (`Autonmous_Ws`), not from this package directory. Source ROS and the
 workspace overlay in every terminal. See [the work record](../SLAMImprovments.md)
 for verification evidence and pending checks.
+The [current staged review](../VALIDATION.md) supersedes historical verification
+claims. The coordinated Rover description now leaves `base_link` unparented
+for EKF TF and publishes `base_link -> base_footprint`. Sensor startup passes
+are separate from the pending trajectory/map accuracy gates.
 
 ## 1. Build and understand the inputs
 
+For the prescribed unchanged Docker image, use [the isolated review commands](../VALIDATION.md)
+and its installed dependencies. The `rosdep` step below is for separately
+provisioning a deployment environment, not for altering the validation image.
+
 ```bash
 source /opt/ros/jazzy/setup.bash
-rosdep install --from-paths SLAM/rover_slam testing/SLAM/slam_test_tools \
+rosdep install --from-paths SLAM/rover_slam \
   --ignore-src -r -y
 colcon build --symlink-install \
-  --base-paths SLAM/rover_slam testing/SLAM/slam_test_tools \
-  --packages-select rover_slam slam_test_tools
+  --base-paths SLAM/rover_slam --packages-select rover_slam
 source install/setup.bash
 ```
 
 Gazebo workflows also require the existing `my_robot_description`, world assets
 and ros_gz installation. Perception/navigation workflows require their packages
 already built and sourced. The minimal command above does not build them.
+Production does not require test packages. For optional helpers and the
+Rover-dependent optical regression, also build:
+
+```bash
+colcon build --symlink-install --base-paths SLAM/rover_slam \
+  Rover/my_robot_description testing/mocks/slam/slam_mock_tools \
+  testing/benchmarking/slam/slam_test_tools
+source install/setup.bash
+```
 
 | Input | Type / requirement |
 | --- | --- |
@@ -55,6 +71,7 @@ marker or the stationary Perception image fixture cannot validate moving SLAM.
 source /opt/ros/jazzy/setup.bash
 source install/setup.bash
 ros2 launch my_robot_description gazebo.launch.py \
+  'world:=final_world_R&A.world' \
   bridge_sim_tf:=false publish_map_tf:=false publish_camera_tf:=false
 ```
 
@@ -118,7 +135,7 @@ Run each diagnostic command independently; stop streaming `hz`/`tf2_echo`
 with Ctrl+C before starting the next. For initial input diagnosis, inspect `/imu/data` and camera headers, their
 publisher QoS, and TF at those timestamps. A published map/odom message alone
 does not prove accurate localization. Detailed testers/referees/benchmarks are
-owned by the separate testing work; see [testing package guide](../../testing/SLAM/slam_test_tools/README.md).
+owned by the separate testing work; see [testing package guide](../../testing/benchmarking/slam/slam_test_tools/README.md).
 
 ## 3. Run independent stages or physical sensors
 
@@ -164,6 +181,8 @@ color, aligned depth and point-cloud topics to the interfaces above. Check the
 actual topic list and supported stream profiles on the installed driver/device.
 D435 has no IMU: this helper does not supply `/imu/data`; an external calibrated
 IMU is required. Its raw camera TF still needs a measured base-to-camera mount.
+The unchanged validation image lacks `realsense2_camera`; physical-camera
+startup is blocked there, even though the helper's launch arguments expand.
 Do not enable generic SLAM mount/optical fallbacks alongside the driver's TF.
 
 In `slip.yaml`, `imu_includes_gravity: true` assumes standard specific force.
@@ -254,7 +273,7 @@ Pure/static checks and ROS-dependent regressions:
 ```bash
 source /opt/ros/jazzy/setup.bash
 source install/setup.bash
-python3 -m pytest SLAM/rover_slam/test testing/SLAM/slam_test_tools/test -q
+python3 -m pytest SLAM/rover_slam/test testing/benchmarking/slam/slam_test_tools/test -q
 bash -n scripts/launch_slam.sh
 ```
 

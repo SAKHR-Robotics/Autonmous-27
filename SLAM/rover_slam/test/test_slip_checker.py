@@ -7,6 +7,16 @@ import pytest
 from rover_slam.heuristic_slip_checker import SlipCheckerCore
 
 
+@pytest.mark.parametrize('direction', [1., -1.])
+def test_matched_braking_does_not_latch_obstacle_stall(direction):
+    core = SlipCheckerCore()
+    core.evaluate(.2 * direction, 0., 0., 0., 1.)
+    slipping, _, _ = core.evaluate(.176 * direction, 0., 0., -1.2 * direction, 1.02)
+    assert not slipping
+    assert not core.obstacle_blocked
+    assert not core.evaluate(.176 * direction, 0., 0., 0., 2.)[0]
+
+
 def test_no_slip_stationary_no_drift():
     """Verify that stationary state with typical MEMS accelerometer bias never drifts into slip."""
     core = SlipCheckerCore(

@@ -1,5 +1,9 @@
 # SLAM System Nodes, Topics & Responsibilities Matrix
 
+> Historical matrix derived from design HTML. The current launch/interface
+> inventory is [VALIDATION.md](../VALIDATION.md); several topic types, rates,
+> fusion settings and mock locations below are obsolete.
+
 This document summarizes every node, its responsibilities, published topics, subscribed topics, and coordinate transforms extracted from `saif SLAM.html` and `SlamAIWorkingGuide.html`.
 
 ---

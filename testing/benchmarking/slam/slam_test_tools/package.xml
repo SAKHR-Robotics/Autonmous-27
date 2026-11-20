@@ -7,4 +7,6 @@
 <exec_depend>rover_slam</exec_depend><exec_depend>launch</exec_depend><exec_depend>launch_ros</exec_depend>
 <exec_depend>ament_index_python</exec_depend><exec_depend>tf2_ros</exec_depend>
 <exec_depend>slam_mock_tools</exec_depend>
+<exec_depend>pathplanner_mock_tools</exec_depend>
+<exec_depend>diagnostic_msgs</exec_depend>
 <export><build_type>ament_python</build_type></export></package>

@@ -99,7 +99,7 @@
       
       <!-- Frame IDs -->
       <frame_id>odom</frame_id>
-      <child_frame_id>base_footprint</child_frame_id>
+      <child_frame_id>base_link</child_frame_id>
     </plugin>
   </gazebo>
 
@@ -110,6 +110,7 @@
   <!-- ========================================== -->
   <gazebo reference="imu_link">
     <sensor name="imu_sensor" type="imu">
+      <gz_frame_id>imu_link</gz_frame_id>
       <always_on>1</always_on>
       <update_rate>100</update_rate>
       <visualize>true</visualize>
