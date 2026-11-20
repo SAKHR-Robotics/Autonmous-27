@@ -41,6 +41,19 @@ into the testing package; the master never starts it.
 
 ## Quick start with an already running Gazebo rover
 
+To test SLAM without real Perception or planning, choose one setup:
+
+| Test | Dependencies to run | What it covers |
+| --- | --- | --- |
+| Local estimation without Gazebo | Shared `pathplanner_mock_tools/mock_rover_sim` + `slam_mock_tools/rover_sensor_adapter`; both started by `slam_test_tools/local_mocked.launch.py` | Real encoder converter, slip filter and EKF; motion and IMU/wheel loss/recovery |
+| Full SLAM with Gazebo | Existing Rover/world launch supplies wheels, IMU, RGB-D, CameraInfo, clock and sensor TF; no mocks required | Real local estimation and RTAB-Map mapping |
+
+The local mocked setup does **not** supply camera/depth data and cannot test
+RTAB-Map mapping. Do not start an artificial localization/TF publisher, ArUco
+stub or costmap stub for either baseline. See the
+[standalone test commands and mock responsibilities](rover_slam/README.md#standalone-local-test-without-gazebo)
+before starting a test.
+
 The reviewed Rover description leaves `base_link` as the root for the EKF and
 places `base_footprint` below it. Start the selected `final_world_R&A.world`
 with all three optional Rover TF publishers disabled; see
