@@ -66,6 +66,7 @@ def generate_launch_description():
             'autostart': 'true',
             'odom_topic': LaunchConfiguration('odom_topic'),
             'params_file': LaunchConfiguration('params_file'),
+            'launch_bridge': LaunchConfiguration('launch_bridge'),
             'launch_rviz': LaunchConfiguration('launch_rviz'),
         }.items()
     )
@@ -73,6 +74,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('odom_topic', default_value='/odom'),
         DeclareLaunchArgument('params_file', default_value=os.path.join(pkg_share, 'config', 'nav2_params.yaml')),
+        DeclareLaunchArgument('launch_bridge', default_value='true', choices=['true', 'false']),
         DeclareLaunchArgument('launch_rviz', default_value='false'),
         declare_use_sim_time,
         declare_map,

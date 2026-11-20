@@ -1,15 +1,8 @@
 #!/usr/bin/env python3
-"""
-mock_aruco_publisher.py
-Standalone test script that publishes synthetic 6-DOF ArUco landmark poses on /perception/aruco_pose.
-Allows decoupled testing of RTAB-Map landmark graph-optimization channel without camera hardware.
-
-Developer Track: Person 2 / Track B (Task 3B.1 & Task 3B.2)
-"""
-
+"""Smoke landmark fixture with configurable current timestamps and valid PSD covariance."""
 import rclpy
 from rclpy.node import Node
-from rtabmap_msgs.msg import LandmarkDetection
+from rtabmap_msgs.msg import LandmarkDetection, LandmarkDetections
 
 
 class MockArucoPublisherNode(Node):
@@ -18,43 +11,68 @@ class MockArucoPublisherNode(Node):
 
         if not self.has_parameter('use_sim_time'):
             self.declare_parameter('use_sim_time', True)
-        self.declare_parameter('publish_rate', 10.0)  # Hz
+        self.declare_parameter('publish_rate', 10.0)
         self.declare_parameter('target_frame', 'camera_link')
+        self.declare_parameter('landmark_id', 1)
         self.declare_parameter('pos_x', 1.5)
         self.declare_parameter('pos_y', 0.2)
         self.declare_parameter('pos_z', 0.0)
+        self.declare_parameter('position_variance', 0.01)
+        self.declare_parameter('orientation_variance', 0.02)
+        self.declare_parameter('use_current_stamp', True)
+        self.declare_parameter('publish_array', False)
 
-        self.rate = self.get_parameter('publish_rate').get_parameter_value().double_value
-        self.target_frame = self.get_parameter('target_frame').get_parameter_value().string_value
-        self.pos_x = self.get_parameter('pos_x').get_parameter_value().double_value
-        self.pos_y = self.get_parameter('pos_y').get_parameter_value().double_value
-        self.pos_z = self.get_parameter('pos_z').get_parameter_value().double_value
+        self.rate = float(self.get_parameter('publish_rate').value)
+        self.target_frame = str(self.get_parameter('target_frame').value)
+        self.landmark_id = int(self.get_parameter('landmark_id').value)
+        self.pos_x = float(self.get_parameter('pos_x').value)
+        self.pos_y = float(self.get_parameter('pos_y').value)
+        self.pos_z = float(self.get_parameter('pos_z').value)
+        self.pos_var = float(self.get_parameter('position_variance').value)
+        self.ori_var = float(self.get_parameter('orientation_variance').value)
+        self.use_current_stamp = bool(self.get_parameter('use_current_stamp').value)
+        self.publish_array = bool(self.get_parameter('publish_array').value)
 
         self.publisher_ = self.create_publisher(LandmarkDetection, '/perception/landmark_detection', 10)
+        self.array_pub = (
+            self.create_publisher(LandmarkDetections, '/perception/landmark_detections', 10)
+            if self.publish_array
+            else None
+        )
         self.timer = self.create_timer(1.0 / self.rate, self.timer_callback)
 
         self.get_logger().info(
-            f"Mock ArUco Publisher Node Started (Rate: {self.rate} Hz, Frame: '{self.target_frame}', Pose: [{self.pos_x}, {self.pos_y}, {self.pos_z}])."
+            f"Mock ArUco Publisher Started (Rate: {self.rate} Hz, Frame: '{self.target_frame}', "
+            f"ID: {self.landmark_id}, Pose: [{self.pos_x}, {self.pos_y}, {self.pos_z}])."
         )
 
-    def timer_callback(self):
+    def build_message(self):
         msg = LandmarkDetection()
-        msg.id = 1
-        # Use Time(0) so RViz immediately displays using latest available transform
-        msg.header.stamp = rclpy.time.Time().to_msg()
+        msg.id = self.landmark_id
+        msg.header.stamp = (
+            self.get_clock().now().to_msg() if self.use_current_stamp else rclpy.time.Time().to_msg()
+        )
         msg.header.frame_id = self.target_frame
 
         msg.pose.pose.position.x = self.pos_x
         msg.pose.pose.position.y = self.pos_y
         msg.pose.pose.position.z = self.pos_z
-
-        msg.pose.pose.orientation.x = 0.0
-        msg.pose.pose.orientation.y = 0.0
-        msg.pose.pose.orientation.z = 0.0
         msg.pose.pose.orientation.w = 1.0
 
+        cov = [0.0] * 36
+        cov[0] = cov[7] = cov[14] = max(1e-6, self.pos_var)
+        cov[21] = cov[28] = cov[35] = max(1e-6, self.ori_var)
+        msg.pose.covariance = cov
+        return msg
+
+    def timer_callback(self):
+        msg = self.build_message()
         self.publisher_.publish(msg)
-        self.get_logger().debug(f"Published mock ArUco pose on /perception/aruco_pose: x={self.pos_x}, y={self.pos_y}")
+        if self.array_pub is not None:
+            arr = LandmarkDetections()
+            arr.header = msg.header
+            arr.landmarks = [msg]
+            self.array_pub.publish(arr)
 
 
 def main(args=None):
@@ -64,8 +82,9 @@ def main(args=None):
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
-    node.destroy_node()
-    rclpy.shutdown()
+    finally:
+        node.destroy_node()
+        rclpy.try_shutdown()
 
 
 if __name__ == '__main__':

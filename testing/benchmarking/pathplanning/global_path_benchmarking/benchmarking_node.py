@@ -22,6 +22,7 @@ from global_path_benchmarking.report_generator import (
     calculate_control_metrics,
     format_metric,
     is_number,
+    load_benchmark_config,
     record_outcome,
     generate_html_report,
     generate_pdf_report,
@@ -35,9 +36,13 @@ class BenchmarkingNode(Node):
         # Declare CLI / ROS Arguments for configs
         self.declare_parameter("config", "config/scenarios.yaml")
         self.declare_parameter("benchmark_config", "config/benchmark_config.yaml")
+        self.declare_parameter("output_dir", "reports")
+        self.declare_parameter("truth_map_topic", "/global_costmap/costmap")
         
         config_path = self.get_parameter("config").value
         bench_config_path = self.get_parameter("benchmark_config").value
+        self.output_dir = str(self.get_parameter("output_dir").value)
+        truth_map_topic = str(self.get_parameter("truth_map_topic").value)
         
         # Load configs
         self.scenarios = []
@@ -52,6 +57,8 @@ class BenchmarkingNode(Node):
             self.get_logger().warn(f"Scenarios file {config_path} not found.")
 
         # Default benchmark configs
+        self.evaluation_mode = "nav_closed_loop"
+        self.control_weights = None
         self.pass_threshold = 85.0
         self.weights = {
             "success": 0.25, "time": 0.15, "obstacle": 0.25,
@@ -64,15 +71,14 @@ class BenchmarkingNode(Node):
         }
         
         if os.path.exists(bench_config_path):
-            try:
-                with open(bench_config_path, "r") as f:
-                    b_cfg = yaml.safe_load(f).get("benchmark", {})
-                    self.pass_threshold = b_cfg.get("pass_threshold", self.pass_threshold)
-                    self.weights.update(b_cfg.get("weights", {}))
-                    self.limits.update(b_cfg.get("limits", {}))
-                self.get_logger().info(f"Loaded benchmark configuration from {bench_config_path}")
-            except Exception as e:
-                self.get_logger().error(f"Failed to load benchmark configuration: {e}")
+            raw_cfg = load_benchmark_config(bench_config_path)
+            self.evaluation_mode = raw_cfg.get("evaluation_mode", self.evaluation_mode)
+            self.control_weights = (raw_cfg.get("control_benchmarking", {}) or {}).get("weights")
+            b_cfg = raw_cfg.get("benchmark", {}) or {}
+            self.pass_threshold = b_cfg.get("pass_threshold", self.pass_threshold)
+            self.weights.update(b_cfg.get("weights", {}))
+            self.limits.update(b_cfg.get("limits", {}))
+            self.get_logger().info(f"Loaded benchmark configuration from {bench_config_path} (mode={self.evaluation_mode})")
         else:
             self.get_logger().warn(f"Benchmark config {bench_config_path} not found. Using defaults.")
 
@@ -101,7 +107,7 @@ class BenchmarkingNode(Node):
             String, "/test_name", self.test_name_callback, 10
         )
         self.map_sub = self.create_subscription(
-            OccupancyGrid, "/global_costmap/costmap", self.map_callback, 10
+            OccupancyGrid, truth_map_topic, self.map_callback, 10
         )
         self.start_sub = self.create_subscription(
             PoseStamped, "/start_pose", self.start_callback, 10
@@ -378,12 +384,21 @@ class BenchmarkingNode(Node):
         replan_path_coords = self.replan_eval.get("coords", []) if self.replan_eval else []
 
         # Calculate MPPI Controller metrics
-        ctrl_res = calculate_control_metrics(self.cmd_history, self.odom_history, plan_coords, self.goal_pose)
+        ctrl_res = calculate_control_metrics(
+            self.cmd_history,
+            self.odom_history,
+            plan_coords,
+            self.goal_pose,
+            weights=getattr(self, "control_weights", None),
+        )
         controller_score = ctrl_res["controller_score"]
+        eval_mode = getattr(self, "evaluation_mode", "nav_closed_loop")
         
-        # Combined Overall System Score (50% Planning + 50% Control)
+        # Combined Overall System Score (mode-aware; never penalize planner_only for missing control)
         overall_score = None
-        if is_number(planner_score) and is_number(controller_score):
+        if eval_mode == "planner_only":
+            overall_score = planner_score
+        elif is_number(planner_score) and is_number(controller_score):
             overall_score = 0.50 * planner_score + 0.50 * controller_score
         invalid_path = (eval_res['success'] is False or
                         (self.replan_eval is not None and self.replan_eval['success'] is False))
@@ -440,8 +455,9 @@ class BenchmarkingNode(Node):
         }
         
         # Save temp JSON
-        os.makedirs("reports", exist_ok=True)
-        temp_file = f"reports/temp_{scenario['id']}.json"
+        out_dir = getattr(self, "output_dir", "reports")
+        os.makedirs(out_dir, exist_ok=True)
+        temp_file = os.path.join(out_dir, f"temp_{scenario['id']}.json")
         try:
             with open(temp_file, "w") as f:
                 json.dump(scenario_res, f, indent=4, allow_nan=False)
@@ -558,7 +574,9 @@ class BenchmarkingNode(Node):
             ax.legend(loc='lower right')
             ax.grid(True, alpha=0.3)
             
-            out_file = f"reports/result_scenario_{scenario['id']}.png"
+            out_dir = getattr(self, "output_dir", "reports")
+            os.makedirs(out_dir, exist_ok=True)
+            out_file = os.path.join(out_dir, f"result_scenario_{scenario['id']}.png")
             plt.savefig(out_file, bbox_inches='tight')
             plt.close()
             self.get_logger().info(f"Saved result comparison plot to: {out_file}")
@@ -570,7 +588,8 @@ class BenchmarkingNode(Node):
             print("[INFO] [benchmarking_node]: No runs recorded. Skipping report generation.")
             return
             
-        os.makedirs("reports", exist_ok=True)
+        out_dir = getattr(self, "output_dir", "reports")
+        os.makedirs(out_dir, exist_ok=True)
         
         # Group runs by test_name
         grouped_runs = {}
@@ -585,9 +604,9 @@ class BenchmarkingNode(Node):
             grouped_runs[safe_name].append(r)
             
         for safe_name, runs in grouped_runs.items():
-            csv_path = f"reports/{safe_name}.csv"
-            html_path = f"reports/{safe_name}.html"
-            pdf_path = f"reports/{safe_name}.pdf"
+            csv_path = os.path.join(out_dir, f"{safe_name}.csv")
+            html_path = os.path.join(out_dir, f"{safe_name}.html")
+            pdf_path = os.path.join(out_dir, f"{safe_name}.pdf")
             
             # 1. Generate CSV
             try:

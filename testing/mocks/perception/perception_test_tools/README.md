@@ -1,23 +1,29 @@
 # perception_test_tools
 
-Test-only ament_python package. See [the testing guide](../Readme.md) and the
-[perception runbook](../../../../Perception/RUNBOOK.md) for build prerequisites,
-inputs, expected observations, isolated ROS-domain usage and limitations.
+Test-only `ament_python` package supplying synthetic RGB, aligned 32FC1 depth,
+PointCloud2, `CameraInfo`, sensor TF, and machine-readable ground truth to the
+real production Perception stack. Production packages do not depend on it.
 
 ```bash
-ros2 launch perception_test_tools test_stack.launch.py pipeline:=all
-ros2 launch perception_test_tools test_stack.launch.py pipeline:=terrain
-ros2 launch perception_test_tools test_stack.launch.py pipeline:=markers
+# Run real Perception + synthetic sensor suite
+ros2 launch perception_test_tools test_stack.launch.py pipeline:=all scenario:=clear_aruco_nav
+ros2 launch perception_test_tools test_stack.launch.py pipeline:=terrain scenario:=ground_only ground_z_offset:=-0.255
+ros2 launch perception_test_tools test_stack.launch.py pipeline:=markers scenario:=clear_aruco_nav launch_landmark_adapter:=true
 ros2 launch perception_test_tools sensor_inputs.launch.py scenario:=missing_depth
 ```
 
-`test_stack` supplies explicit test topics to real perception. `sensor_inputs`
-starts only the feeder. Scenarios are deterministic, not photorealistic. Runtime
-fixtures stay in this testing package; production packages do not depend on it.
+Supported launch arguments (`test_stack.launch.py`): `pipeline` (`all|terrain|markers`),
+`scenario` (`rocks_and_marker`, `clear_aruco_nav`, `ground_only`, `missing_depth`,
+`invalid_cloud`, `dropout`, `turn_occlusion`, `terrain_hazard`), `ground_z_offset` (`0.0`,
+use `-0.255` to match Rover URDF ground plane below `base_link`), `seed` (`0`),
+`rate` (`10.0`), `launch_memory` (`false`), `launch_landmark_adapter` (`false`),
+`launch_marker_mapping` (`false`), `launch_rviz` (`true`).
 
-`perception_test_tools.terrain_scene.synthetic_frames` is the relocated offline
-floor-and-moving-box XYZ generator. It publishes no ROS messages and preserves
-the legacy geometry and fixed-seed behavior. The timing runner that consumes it
-is the separate `perception_benchmark_tools` package under
-`testing/benchmarking/perception/`. The existing `scene.py` / `sensor_inputs`
-live feeder is unchanged; this offline generator has a different purpose.
+Ground truth is published both visually on `/testing/perception/ground_truth`
+(`MarkerArray`) and programmatically on `/testing/perception/ground_truth_json`
+(`std_msgs/String`, containing obstacle boxes in `base_link` and 6-DoF marker pose
+in `test_camera_optical_frame`).
+
+`perception_test_tools.terrain_scene.synthetic_frames` remains the offline
+floor-and-moving-box XYZ generator consumed by `perception_benchmark_tools`.
+See [the scenario guide](../Readme.md) and [Perception runbook](../../../../Perception/RUNBOOK.md).

@@ -1,11 +1,69 @@
 #!/usr/bin/env python3
 
+import html
 import os
 import math
 import time
 import json
 import csv
 import numpy as np
+import yaml
+
+from global_path_benchmarking.schema import VALID_OUTCOMES
+
+DEFAULT_CONTROL_WEIGHTS = {
+    "cte": 0.35,
+    "smoothness": 0.25,
+    "control_effort": 0.20,
+    "heading_accuracy": 0.10,
+    "goal_accuracy": 0.10,
+}
+
+SUPPORTED_EVALUATION_MODES = ("planner_only", "nav_closed_loop", "mixed")
+SUPPORTED_GOAL_TYPES = ("auto", "action", "topic")
+SUPPORTED_CMD_VEL_TYPES = ("auto", "twist", "twist_stamped")
+SUPPORTED_CONTROL_MODES = ("cmd_vel", "motor_rpm")
+SUPPORTED_STALE_MODES = ("stop_and_wait_then_cancel", "stop_and_cancel", "stop_and_wait")
+
+
+def load_benchmark_config(config_path):
+    """Load and strictly validate benchmark_config.yaml options (P06)."""
+    with open(config_path, "r") as stream:
+        raw = yaml.safe_load(stream) or {}
+
+    eval_mode = raw.get("evaluation_mode", "nav_closed_loop")
+    if eval_mode not in SUPPORTED_EVALUATION_MODES:
+        raise ValueError(
+            f"Unsupported evaluation_mode {eval_mode!r}; expected {SUPPORTED_EVALUATION_MODES}"
+        )
+
+    interfaces = raw.get("interfaces", {}) or {}
+    goal_type = interfaces.get("goal_type", "auto")
+    if goal_type not in SUPPORTED_GOAL_TYPES:
+        raise ValueError(
+            f"Unsupported interfaces.goal_type {goal_type!r}; expected {SUPPORTED_GOAL_TYPES}"
+        )
+    cmd_vel_type = interfaces.get("cmd_vel_type", "auto")
+    if cmd_vel_type not in SUPPORTED_CMD_VEL_TYPES:
+        raise ValueError(
+            f"Unsupported interfaces.cmd_vel_type {cmd_vel_type!r}; expected {SUPPORTED_CMD_VEL_TYPES}"
+        )
+
+    ctrl = raw.get("control_benchmarking", {}) or {}
+    control_mode = ctrl.get("control_mode", "cmd_vel")
+    if control_mode not in SUPPORTED_CONTROL_MODES:
+        raise ValueError(
+            f"Unsupported control_benchmarking.control_mode {control_mode!r}; expected {SUPPORTED_CONTROL_MODES}"
+        )
+
+    stale_cfg = raw.get("stale_input_policy", {}) or {}
+    stale_mode = stale_cfg.get("mode", "stop_and_wait_then_cancel")
+    if stale_mode not in SUPPORTED_STALE_MODES:
+        raise ValueError(
+            f"Unsupported stale_input_policy.mode {stale_mode!r}; expected {SUPPORTED_STALE_MODES}"
+        )
+
+    return raw
 
 # Try importing ReportLab components
 try:
@@ -194,7 +252,7 @@ def calculate_path_metrics(coords, start_pose=None, goal_pose=None, costmap=None
     }
 
 def calculate_control_metrics(cmd_history, odom_history, planned_coords, goal_pose=None,
-                              *, execution_complete=False):
+                              *, execution_complete=False, weights=None):
     """
     Computes MPPI Controller tracking, stability, and kinematic control metrics:
     - Cross-Track Error (CTE): Mean, Max, RMS (distance to planned reference path)
@@ -347,18 +405,29 @@ def calculate_control_metrics(cmd_history, odom_history, planned_coords, goal_po
 
     heading_rmse_deg = float(np.sqrt(np.mean(np.array(heading_errors_deg)**2))) if heading_errors_deg else None
 
-    # Legacy diagnostic weighting only applies to a completed, fully observed run.
-    # The current path-arrival runner does not establish execution completion.
+    # Diagnostic weighting only applies to a completed, fully observed run.
     controller_score = None
     required = (mean_cte, lin_jerk_std, control_effort, heading_rmse_deg, goal_acc)
     if execution_complete and all(is_number(value) for value in required):
-        s_cte = max(0.0, 100.0 * (1.0 - mean_cte / 0.50))
-        s_smooth = max(0.0, 100.0 * (1.0 - min(5.0, lin_jerk_std) / 5.0))
-        s_effort = max(0.0, 100.0 * (1.0 - min(50.0, control_effort) / 50.0))
-        s_heading = max(0.0, 100.0 * (1.0 - min(45.0, heading_rmse_deg) / 45.0))
-        s_acc = max(0.0, 100.0 * (1.0 - min(1.0, goal_acc)))
-        controller_score = (0.30 * s_cte + 0.25 * s_smooth + 0.20 * s_effort
-                            + 0.15 * s_heading + 0.10 * s_acc)
+        w = dict(DEFAULT_CONTROL_WEIGHTS)
+        if isinstance(weights, dict):
+            for key in w:
+                if key in weights and is_number(weights[key]) and weights[key] >= 0:
+                    w[key] = float(weights[key])
+        w_sum = sum(w.values())
+        if w_sum > 0:
+            s_cte = max(0.0, 100.0 * (1.0 - mean_cte / 0.50))
+            s_smooth = max(0.0, 100.0 * (1.0 - min(5.0, lin_jerk_std) / 5.0))
+            s_effort = max(0.0, 100.0 * (1.0 - min(50.0, control_effort) / 50.0))
+            s_heading = max(0.0, 100.0 * (1.0 - min(45.0, heading_rmse_deg) / 45.0))
+            s_acc = max(0.0, 100.0 * (1.0 - min(1.0, goal_acc)))
+            controller_score = (
+                w["cte"] * s_cte
+                + w["smoothness"] * s_smooth
+                + w["control_effort"] * s_effort
+                + w["heading_accuracy"] * s_heading
+                + w["goal_accuracy"] * s_acc
+            ) / w_sum
 
     result = {
         "mean_cte": mean_cte,
@@ -1209,7 +1278,9 @@ def generate_pdf_report(history, output_path):
             story.append(det_table)
             story.append(Spacer(1, 15))
             
-            plot_file = f"reports/result_scenario_{safe_s_name}.png"
+            plot_file = os.path.join(os.path.dirname(output_path) or ".", f"result_scenario_{safe_s_name}.png")
+            if not os.path.exists(plot_file):
+                plot_file = f"reports/result_scenario_{safe_s_name}.png"
             if os.path.exists(plot_file):
                 story.append(Paragraph("Path Visualization", h1_style))
                 story.append(Spacer(1, 5))
@@ -1302,7 +1373,9 @@ def generate_pdf_report(history, output_path):
         story.append(metric_table)
         
         # Path Visualization Plot Image (on page 2)
-        plot_file = f"reports/result_scenario_{safe_name}.png"
+        plot_file = os.path.join(os.path.dirname(output_path) or ".", f"result_scenario_{safe_name}.png")
+        if not os.path.exists(plot_file):
+            plot_file = f"reports/result_scenario_{safe_name}.png"
         if os.path.exists(plot_file):
             story.append(PageBreak())
             story.append(Paragraph("Path Visualization", h1_style))
@@ -1343,3 +1416,210 @@ def generate_csv_report(history, output_path):
     except Exception as e:
         print(f"[ERROR] Failed to generate CSV report: {e}")
         return False
+
+
+def _v2_counts(records):
+    counts = {name: 0 for name in VALID_OUTCOMES}
+    for rec in records:
+        outcome = rec.get("outcome", "INCOMPLETE")
+        counts[outcome] = counts.get(outcome, 0) + 1
+    return counts
+
+
+def _gate_summary_text(gates):
+    if not gates:
+        return "none"
+    failed = [name for name, val in gates.items() if val.get("passed") is False]
+    unknown = [name for name, val in gates.items() if val.get("passed") is None]
+    if failed:
+        return "FAIL: " + ", ".join(failed)
+    if unknown:
+        return "INCOMPLETE: " + ", ".join(unknown)
+    return f"PASS ({len(gates)}/{len(gates)})"
+
+
+def generate_v2_csv_report(records, output_path):
+    """Export v2.0.0 Two-Tier trial records to CSV with N/A for missing metrics."""
+    if not records:
+        return False
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+    with open(output_path, "w", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow([
+            "Scenario ID", "Category", "Outcome", "Tier A Gates",
+            "Planning Time (s)", "Path Length (m)", "Ref Length Ratio",
+            "Swept Min Clearance (m)", "Mean CTE (m)", "RMS CTE (m)",
+            "Goal Error Truth (m)", "Cmd Rate (Hz)", "Diagnostic Score",
+        ])
+        for rec in records:
+            scen = rec.get("scenario", {})
+            m = rec.get("metrics", {})
+            writer.writerow([
+                scen.get("id", "unknown"),
+                scen.get("category", "unknown"),
+                rec.get("outcome", "INCOMPLETE"),
+                _gate_summary_text(rec.get("gates", {})),
+                format_metric(m.get("planning_time_s"), ".4f"),
+                format_metric(m.get("path_length_m"), ".2f"),
+                format_metric(m.get("reference_length_ratio"), ".3f"),
+                format_metric(m.get("swept_min_clearance_m"), ".3f"),
+                format_metric(m.get("mean_cte_m"), ".3f"),
+                format_metric(m.get("rms_cte_m"), ".3f"),
+                format_metric(m.get("goal_error_truth_m"), ".3f"),
+                format_metric(m.get("cmd_freq_hz"), ".1f"),
+                format_metric(rec.get("diagnostic_score"), ".2f"),
+            ])
+    return True
+
+
+def generate_v2_markdown_report(records, provenance, output_path):
+    """Export v2.0.0 Two-Tier summary with explicit provenance and gate status."""
+    if not records:
+        return False
+    counts = _v2_counts(records)
+    deps = provenance.get("dependency_manifest", {})
+    dep_line = ", ".join(f"{k}={v}" for k, v in deps.items())
+    lines = [
+        "# PathPlanner & Controller Benchmark Report (Schema v2.0.0)\n\n",
+        "## Provenance & Claim Scope\n",
+        f"- **Run ID:** `{provenance.get('run_id')}`\n",
+        f"- **Evaluation Mode:** `{provenance.get('evaluation_mode')}` | **ROS:** `{provenance.get('ros_distro')}` | **Seed:** `{provenance.get('seed')}`\n",
+        f"- **Dependencies:** `{dep_line}`\n",
+        f"- **Truth Source:** `{provenance.get('truth_source')}`\n",
+        f"- **Claim Scope:** {provenance.get('claim_scope')}\n\n",
+        "## Outcome Summary\n",
+        f"- **Total:** {len(records)} | **PASS:** {counts['PASS']} | **FAIL:** {counts['FAIL']} | "
+        f"**TIMEOUT:** {counts['TIMEOUT']} | **INVALID:** {counts['INVALID']} | "
+        f"**INCOMPLETE:** {counts['INCOMPLETE']} | **BLOCKED:** {counts['BLOCKED']}\n\n",
+        "| Scenario | Category | Outcome | Tier A Gates | Plan Time | Length | Ref Ratio | Swept Clearance | Mean CTE | Goal Err (Truth) | Score |\n",
+        "| :--- | :--- | :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n",
+    ]
+    for rec in records:
+        scen = rec.get("scenario", {})
+        m = rec.get("metrics", {})
+        lines.append(
+            f"| `{scen.get('id')}` | `{scen.get('category')}` | **{rec.get('outcome')}** | "
+            f"{_gate_summary_text(rec.get('gates', {}))} | "
+            f"{format_metric(m.get('planning_time_s'), '.3f')} s | "
+            f"{format_metric(m.get('path_length_m'), '.2f')} m | "
+            f"{format_metric(m.get('reference_length_ratio'), '.2f')} | "
+            f"{format_metric(m.get('swept_min_clearance_m'), '.3f')} m | "
+            f"{format_metric(m.get('mean_cte_m'), '.3f')} m | "
+            f"{format_metric(m.get('goal_error_truth_m'), '.3f')} m | "
+            f"{format_metric(rec.get('diagnostic_score'), '.1f')} |\n"
+        )
+    lines.append("\n## Scenario Details\n")
+    for rec in records:
+        scen = rec.get("scenario", {})
+        lines.append(f"\n### `{scen.get('id')}` ({rec.get('outcome')})\n")
+        for gname, gval in rec.get("gates", {}).items():
+            mark = "PASS" if gval.get("passed") is True else "FAIL" if gval.get("passed") is False else "N/A"
+            lines.append(f"- Gate `{gname}`: **{mark}** ({gval.get('detail', '')})\n")
+        plot_rel = rec.get("artifacts", {}).get("plot_png")
+        if plot_rel:
+            lines.append(f"\n![{scen.get('id')}]({plot_rel})\n")
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+    with open(output_path, "w") as stream:
+        stream.writelines(lines)
+    return True
+
+
+def generate_v2_html_report(records, provenance, output_path):
+    """Export self-contained v2.0.0 HTML report with explicit provenance and gates."""
+    if not records:
+        return False
+    counts = _v2_counts(records)
+    deps = ", ".join(f"{k}={v}" for k, v in provenance.get("dependency_manifest", {}).items())
+    rows_html = []
+    plots_html = []
+    for rec in records:
+        scen = rec.get("scenario", {})
+        m = rec.get("metrics", {})
+        outcome = rec.get("outcome", "INCOMPLETE")
+        badge = "pass" if outcome == "PASS" else "warn" if outcome in ("INCOMPLETE", "BLOCKED") else "fail"
+        rows_html.append(
+            f"<tr><td><b>{html.escape(str(scen.get('id')))}</b></td>"
+            f"<td>{html.escape(str(scen.get('category')))}</td>"
+            f"<td><span class='badge badge-{badge}'>{html.escape(outcome)}</span></td>"
+            f"<td>{html.escape(_gate_summary_text(rec.get('gates', {})))}</td>"
+            f"<td class='num'>{format_metric(m.get('planning_time_s'), '.3f')} s</td>"
+            f"<td class='num'>{format_metric(m.get('path_length_m'), '.2f')} m</td>"
+            f"<td class='num'>{format_metric(m.get('reference_length_ratio'), '.2f')}</td>"
+            f"<td class='num'>{format_metric(m.get('swept_min_clearance_m'), '.3f')} m</td>"
+            f"<td class='num'>{format_metric(m.get('mean_cte_m'), '.3f')} m</td>"
+            f"<td class='num'>{format_metric(m.get('goal_error_truth_m'), '.3f')} m</td>"
+            f"<td class='num'>{format_metric(rec.get('diagnostic_score'), '.1f')}</td></tr>"
+        )
+        plot_rel = rec.get("artifacts", {}).get("plot_png")
+        if plot_rel:
+            plots_html.append(
+                f"<div class='plot-card'><img src='{html.escape(str(plot_rel))}' "
+                f"alt='{html.escape(str(scen.get('id')))}'/>"
+                f"<div class='plot-title'>{html.escape(str(scen.get('id')))} ({html.escape(outcome)})</div></div>"
+            )
+
+    doc = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>PathPlanner Benchmark Report v2.0.0</title>
+  <style>
+    body {{ font-family: system-ui, -apple-system, sans-serif; margin: 28px; background: #f8fafc; color: #0f172a; }}
+    .wrap {{ max-width: 1120px; margin: 0 auto; background: #fff; padding: 28px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }}
+    .banner {{ background: #0f172a; color: #f8fafc; padding: 18px 22px; border-bottom: 4px solid #ef4444; border-radius: 4px; }}
+    .meta {{ margin: 16px 0; padding: 12px 16px; background: #f1f5f9; border-left: 4px solid #334155; font-size: 13px; }}
+    .counts {{ display: flex; gap: 12px; flex-wrap: wrap; margin: 14px 0; }}
+    .pill {{ padding: 6px 12px; border-radius: 4px; font-weight: 700; font-size: 13px; background: #e2e8f0; }}
+    table {{ width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 13px; }}
+    th {{ background: #0f172a; color: #fff; padding: 9px 10px; text-align: left; }}
+    td {{ padding: 8px 10px; border-bottom: 1px solid #e2e8f0; }}
+    .num {{ text-align: right; font-variant-numeric: tabular-nums; }}
+    .badge {{ padding: 2px 8px; border-radius: 3px; font-weight: 700; font-size: 11px; }}
+    .badge-pass {{ background: #dcfce7; color: #166534; }}
+    .badge-fail {{ background: #fee2e2; color: #991b1b; }}
+    .badge-warn {{ background: #fef3c7; color: #92400e; }}
+    .plot-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 18px; }}
+    .plot-card {{ border: 1px solid #cbd5e1; border-radius: 4px; padding: 10px; text-align: center; }}
+    .plot-card img {{ max-width: 100%; height: auto; }}
+    .plot-title {{ margin-top: 6px; font-weight: 600; font-size: 13px; }}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="banner">
+      <h1 style="margin:0;font-size:22px;">PathPlanner &amp; Controller Benchmark Report (Schema v2.0.0)</h1>
+      <div style="font-size:12px;color:#cbd5e1;margin-top:4px;">Run ID: {html.escape(str(provenance.get('run_id')))} | Mode: {html.escape(str(provenance.get('evaluation_mode')))}</div>
+    </div>
+    <div class="meta">
+      <div><b>Dependencies:</b> {html.escape(deps)}</div>
+      <div><b>Truth Source:</b> {html.escape(str(provenance.get('truth_source')))} | <b>ROS:</b> {html.escape(str(provenance.get('ros_distro')))} | <b>Seed:</b> {html.escape(str(provenance.get('seed')))}</div>
+      <div><b>Claim Scope:</b> {html.escape(str(provenance.get('claim_scope')))}</div>
+    </div>
+    <div class="counts">
+      <div class="pill">TOTAL: {len(records)}</div>
+      <div class="pill">PASS: {counts['PASS']}</div>
+      <div class="pill">FAIL: {counts['FAIL']}</div>
+      <div class="pill">TIMEOUT: {counts['TIMEOUT']}</div>
+      <div class="pill">INVALID: {counts['INVALID']}</div>
+      <div class="pill">INCOMPLETE: {counts['INCOMPLETE']}</div>
+      <div class="pill">BLOCKED: {counts['BLOCKED']}</div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Scenario</th><th>Category</th><th>Outcome</th><th>Tier A Gates</th>
+          <th class="num">Plan Time</th><th class="num">Length</th><th class="num">Ref Ratio</th>
+          <th class="num">Swept Clear.</th><th class="num">Mean CTE</th><th class="num">Truth Goal Err</th><th class="num">Score</th>
+        </tr>
+      </thead>
+      <tbody>{"".join(rows_html)}</tbody>
+    </table>
+    <div class="plot-grid">{"".join(plots_html)}</div>
+  </div>
+</body>
+</html>
+"""
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+    with open(output_path, "w") as stream:
+        stream.write(doc)
+    return True

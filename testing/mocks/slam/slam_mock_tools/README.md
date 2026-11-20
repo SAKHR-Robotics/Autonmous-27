@@ -13,37 +13,31 @@ It preserves original image timestamps and data and never produces SLAM output.
 The old `slam_test_tools` executable names/imports remain compatibility entry points.
 Both names start the same implementation; do not run both together.
 
-The landmark/obstacle stubs remain fixed smoke fixtures, not moving-scene truth.
-Their zero-stamped landmark/marker behavior is not a valid positive landmark or
-trajectory acceptance test. Both remain off in the existing standalone wrapper.
+`mock_aruco_publisher` and `costmap_test_stub` remain fixed sensor-relative smoke
+fixtures (never moving-scene truth). Both now default `use_current_stamp:=true` (`S08`),
+and `mock_aruco_publisher` emits valid PSD diagonal `position_variance`/`orientation_variance`
+plus optional `publish_array:=true` (`/perception/landmark_detections`).
 
 ## Shared-rover sensor adapter
 
-`rover_sensor_adapter` is used by
-`ros2 launch slam_test_tools local_mocked.launch.py`. It reuses the existing
-`pathplanner_mock_tools/mock_rover_sim` rather than implementing another rover.
-The launch disables mock TF, isolates its outputs and selects the explicit
-nominal geometry: radius 0.06 m, track 0.49 m, zero noise and zero slip.
+`rover_sensor_adapter` is used by `ros2 launch slam_test_tools local_mocked.launch.py`.
+It reuses `pathplanner_mock_tools/mock_rover_sim` (with TF disabled and `0.06 m`
+radius / `0.49 m` track) rather than duplicating another rover plant.
 
 | Interface | Type / semantics |
 | --- | --- |
 | Input `/testing/slam/truth` | Odometry from the shared kinematic rover, never the production EKF |
-| Input `/testing/slam/side_joints` | JointState with `left_wheel_joint` and `right_wheel_joint` positions in radians |
-| Output `/joint_states` | Four wheel positions in the converter's documented order; original header retained |
-| Output `/imu/data` | Best Effort Imu in the truth body frame; yaw orientation/rate, differentiated forward speed, lateral `v * yaw_rate`, and +9.81 m/s² gravity |
+| Input `/testing/slam/side_joints` | `JointState` with `left_wheel_joint` and `right_wheel_joint` positions in radians |
+| Output `/joint_states` or `/wheel/ticks*` | Selected via `wheel_output_mode`: `joint_states` (4-wheel `JointState`), `ticks_array` (`/wheel/ticks`), or `individual_ticks` (`/wheel/ticks/{left_front,right_front,left_rear,right_rear}`) |
+| Output `/imu/data` | Best Effort `Imu` in `imu_frame_id` (defaults to `base_link`); yaw orientation/rate, forward accel, centripetal `v * yaw_rate`, and `gravity_sign * 9.81 m/s²`, transformed by `imu_mount_{roll,pitch,yaw}_rad` with optional `imu_accel_noise_std`, `imu_gyro_noise_std`, `imu_gyro_bias_z` |
+| Output `/testing/slam/fault_state` | `std_msgs/String` JSON summarizing active `drop_imu`, `drop_wheels`, `wheel_slip_scale`, `single_wheel_slip_index`, and `wheel_output_mode` |
 
-No input is published as `/odometry/filtered`, and the adapter publishes no TF.
-It emits no acceleration sample before a second valid timestamp, or across a
-backward clock jump/gap over 0.5 s. It does not integrate acceleration into truth.
-The `drop_imu` and `drop_wheels` Boolean parameters deliberately stop the selected
-output. IMU history continues during deliberate loss, avoiding an artificial
-acceleration impulse at recovery. Incomplete/nonfinite wheel sides are rejected.
+Additional adapter parameters: `seed` (`0`), `ticks_per_revolution` (`1024`),
+`wheel_slip_scale` (`1.0`), `single_wheel_slip_index` (`-1` for all wheels, `0..3` for
+single-wheel slip injection), `drop_imu` (`false`), and `drop_wheels` (`false`).
 
-Source timestamps and coherent fixture physics are regression checked, including
-centripetal acceleration and dropout/clock-reset baselines. This is a nominal
-synthetic consistency fixture: IMU and comparison truth originate in the same
-model. It does not establish physical accuracy, real slip detection quality,
-sensor noise/calibration robustness, moving RGB-D or loop closure.
+It emits no IMU acceleration sample before a second valid timestamp, or across a
+backward clock jump/gap over 0.5 s. It publishes no `/odometry/filtered` and no TF.
 
 ```bash
 python3 -m pytest testing/mocks/slam/slam_mock_tools/test -q -p no:cacheprovider

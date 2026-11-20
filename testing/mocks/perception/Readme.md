@@ -30,17 +30,21 @@ for the separate-terminal feeder/master recipe.
 
 | Scenario | Expected evidence |
 | --- | --- |
-| rocks_and_marker | A rock near base (2,.6,.25) m; marker ID 0 at about optical depth 2 m; occupied grid cells and healthy diagnostics |
-| ground_only | Observed ground cells only; no fabricated rock or marker |
+| rocks_and_marker | A rock near base (2,.6,.25 + `ground_z_offset`) m; frontal marker ID 0 at optical depth 2 m (`POSE_AMBIGUOUS` — verifies ambiguity rejection); occupied grid cells and healthy diagnostics |
+| clear_aruco_nav | Perspective-tilted 0.21 m `DICT_4X4_50` marker ID 0 (`t=[0.15, -0.05, 1.50] m`, ~34° viewing angle) with exact analytic planar depth + rock at `(2.2, 0.7, 0.25 + ground_z_offset) m`; exercises positive non-ambiguous marker PnP, tracking, and landmark adapter |
+| ground_only | Observed ground cells at `z = ground_z_offset` only (set `ground_z_offset:=-0.255` for Rover height); no fabricated rock or marker |
 | missing_depth | RGB/PnP continues; depth fusion unavailable and quality flags reflect it |
 | invalid_cloud | Terrain unavailable; no successful clear-terrain claim |
 | dropout | Intermittent input loss; freshness times out and optional grid becomes unknown |
 | turn_occlusion | Object leaves the synthetic view; compare memory on/off in terrain-only mode |
 | terrain_hazard | Geometric raised/ramped patch; risk interpretation requires explicitly calibrated limits and gravity TF |
 
-Select `pipeline:=terrain` or `pipeline:=markers`. Optional memory test:
+Select `pipeline:=terrain` or `pipeline:=markers`, and optionally set `ground_z_offset:=-0.255`
+or `launch_landmark_adapter:=true`:
 
 ```bash
+ros2 launch perception_test_tools test_stack.launch.py \
+  pipeline:=markers scenario:=clear_aruco_nav launch_landmark_adapter:=true
 ros2 launch perception_test_tools test_stack.launch.py \
   pipeline:=terrain scenario:=turn_occlusion launch_memory:=true
 ```
@@ -57,8 +61,9 @@ published under base_link. These are fixture coordinates, not physical rover
 calibration values. Depth is aligned 32FC1 metres; intrinsics are 640x480 with
 fx=fy=600. The 0.21 m DICT_4X4_50 marker is generated deterministically.
 
-Green expected boxes are published on `/testing/perception/ground_truth`. The
-test view overlays these with actual detector results. No synthetic publisher
+Green expected boxes are published on `/testing/perception/ground_truth`, and structured
+obstacle/marker JSON ground truth is published on `/testing/perception/ground_truth_json`. The
+test view overlays expected boxes with actual detector results. No synthetic publisher
 writes perception outputs. Existing SLAM output mocks are separately packaged
 under `testing/mocks/slam/slam_mock_tools` and must never be mixed with live producers.
 

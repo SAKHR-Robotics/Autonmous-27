@@ -33,40 +33,61 @@ echo "📁 Workspace root: $WORKSPACE_ROOT"
 echo "📁 Project dir:    $PROJECT_DIR"
 
 # ==============================================================================
-# Cleanup Function: Automatically terminates all Gazebo, ROS 2, and Teleop nodes
+# Cleanup Function: Terminates ONLY processes owned by this launcher run
 # ==============================================================================
+GZ_PID=""
+GZ_HAS_PGID=0
+
+terminate_owned_group() {
+    local sig="$1"
+    if [ -n "$GZ_PID" ]; then
+        if [ "$GZ_HAS_PGID" -eq 1 ]; then
+            kill "-${sig}" -- "-${GZ_PID}" 2>/dev/null || true
+        else
+            kill "-${sig}" "${GZ_PID}" 2>/dev/null || true
+        fi
+    fi
+}
+
 cleanup() {
     echo ""
-    echo "🛑 Cleaning up and terminating all Gazebo & ROS 2 simulation processes..."
-    
-    # 1. Terminate background Gazebo launch process
+    echo "Stopping Gazebo and ROS 2 processes owned by this launcher..."
+
     if [ -n "$GZ_PID" ] && kill -0 "$GZ_PID" 2>/dev/null; then
-        kill -SIGINT "$GZ_PID" 2>/dev/null || true
+        terminate_owned_group INT
+        for _ in $(seq 1 25); do
+            if ! kill -0 "$GZ_PID" 2>/dev/null; then
+                break
+            fi
+            sleep 0.2
+        done
+        if kill -0 "$GZ_PID" 2>/dev/null; then
+            terminate_owned_group TERM
+            for _ in $(seq 1 15); do
+                if ! kill -0 "$GZ_PID" 2>/dev/null; then
+                    break
+                fi
+                sleep 0.2
+            done
+        fi
+        if kill -0 "$GZ_PID" 2>/dev/null; then
+            terminate_owned_group KILL
+        fi
+        wait "$GZ_PID" 2>/dev/null || true
     fi
-    
-    # 2. Terminate background child processes
-    pkill -P $$ 2>/dev/null || true
-    
-    # 3. Cleanly kill all lingering simulation nodes
-    pkill -9 -f "ign gazebo" 2>/dev/null || true
-    pkill -9 -f "gz sim" 2>/dev/null || true
-    pkill -9 -f "parameter_bridge" 2>/dev/null || true
-    pkill -9 -f "robot_state_publisher" 2>/dev/null || true
-    pkill -9 -f "teleop_gui.py" 2>/dev/null || true
-    pkill -9 -f "ros_gz_sim" 2>/dev/null || true
-    
-    echo "✅ All processes terminated cleanly."
+
+    echo "Owned simulation processes stopped."
 }
 trap cleanup EXIT INT TERM
 
-# Step 1: Source ROS 2 base installation
-if [ -z "$ROS_DISTRO" ]; then
-    if [ -f "/opt/ros/humble/setup.bash" ]; then
-        echo "[1/4] Sourcing ROS 2 Humble (/opt/ros/humble/setup.bash)..."
-        source /opt/ros/humble/setup.bash
-    elif [ -f "/opt/ros/jazzy/setup.bash" ]; then
+# Step 1: Source ROS 2 base installation (prefer Jazzy)
+if [ -z "${ROS_DISTRO:-}" ]; then
+    if [ -f "/opt/ros/jazzy/setup.bash" ]; then
         echo "[1/4] Sourcing ROS 2 Jazzy (/opt/ros/jazzy/setup.bash)..."
         source /opt/ros/jazzy/setup.bash
+    elif [ -f "/opt/ros/humble/setup.bash" ]; then
+        echo "[1/4] Sourcing ROS 2 Humble (/opt/ros/humble/setup.bash)..."
+        source /opt/ros/humble/setup.bash
     else
         echo "[1/4] Searching for ROS 2 installation..."
         for ros_setup in /opt/ros/*/setup.bash; do
@@ -116,21 +137,33 @@ EXTRA_PATHS="$MODELS_DIR:$MODELS_DIR/rocks:$MODELS_DIR/aruco:$INSTALL_MODELS_DIR
 export GZ_SIM_RESOURCE_PATH="$EXTRA_PATHS:${GZ_SIM_RESOURCE_PATH:-}"
 export IGN_GAZEBO_RESOURCE_PATH="$EXTRA_PATHS:${IGN_GAZEBO_RESOURCE_PATH:-}"
 
-# Optional TF flags (default: false to prevent conflicts with RTAB-Map SLAM and EKF)
+# Optional world & TF flags (defaults preserve SLAM/EKF TF ownership)
+WORLD_NAME="${WORLD_NAME:-final_world_R&A.world}"
 PUBLISH_MAP_TF="${PUBLISH_MAP_TF:-false}"
 PUBLISH_CAMERA_TF="${PUBLISH_CAMERA_TF:-false}"
+BRIDGE_SIM_TF="${BRIDGE_SIM_TF:-false}"
 
-# Step 4: Launch Gazebo Simulation in Background
-echo "[4/4] Starting Gazebo simulation with rover and final_world_RA.world..."
-echo "ℹ️  TF Configuration: publish_map_tf=$PUBLISH_MAP_TF, publish_camera_tf=$PUBLISH_CAMERA_TF"
-echo "ℹ️  (Default is 'false' for full SLAM/Nav2 pipeline; set to 'true' for standalone teleop testing)."
-# Forward TF flags and any additional CLI flags directly to gazebo.launch.py
-ros2 launch my_robot_description gazebo.launch.py \
-    "world:=final_world_RA.world" \
-    "publish_map_tf:=$PUBLISH_MAP_TF" \
-    "publish_camera_tf:=$PUBLISH_CAMERA_TF" \
-    "bridge_sim_tf:=true" \
-    "$@" &
+# Step 4: Launch Gazebo Simulation in its own process group
+echo "[4/4] Starting Gazebo simulation with rover and ${WORLD_NAME}..."
+echo "TF Configuration: publish_map_tf=$PUBLISH_MAP_TF, publish_camera_tf=$PUBLISH_CAMERA_TF, bridge_sim_tf=$BRIDGE_SIM_TF"
+echo "(Defaults preserve SLAM/Nav2 TF ownership; export BRIDGE_SIM_TF=true PUBLISH_MAP_TF=true for standalone teleop.)"
+if command -v setsid >/dev/null 2>&1; then
+    GZ_HAS_PGID=1
+    setsid ros2 launch my_robot_description gazebo.launch.py \
+        "world:=$WORLD_NAME" \
+        "publish_map_tf:=$PUBLISH_MAP_TF" \
+        "publish_camera_tf:=$PUBLISH_CAMERA_TF" \
+        "bridge_sim_tf:=$BRIDGE_SIM_TF" \
+        "$@" &
+else
+    GZ_HAS_PGID=0
+    ros2 launch my_robot_description gazebo.launch.py \
+        "world:=$WORLD_NAME" \
+        "publish_map_tf:=$PUBLISH_MAP_TF" \
+        "publish_camera_tf:=$PUBLISH_CAMERA_TF" \
+        "bridge_sim_tf:=$BRIDGE_SIM_TF" \
+        "$@" &
+fi
 GZ_PID=$!
 
 # Wait briefly for ROS nodes and Gazebo to initialize
