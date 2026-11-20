@@ -60,6 +60,83 @@ while RTAB-Map runs. One `/clock` bridge serves every simulated module.
 
 ## 2. Run SLAM alone with Gazebo and testing helpers
 
+### Standalone local test without Gazebo
+
+Use this to test the **real encoder converter, slip filter and EKF** without
+Rover hardware, Gazebo, Perception or planning. The required dependency mocks
+are started together by `local_mocked.launch.py`; do not launch them again.
+
+| Component | Role and interfaces |
+| --- | --- |
+| Shared `pathplanner_mock_tools/mock_rover_sim` | Kinematic dependency fixture; publishes isolated truth `/testing/slam/truth` and wheel sides `/testing/slam/side_joints`. Mock TF is disabled. |
+| `slam_mock_tools/rover_sensor_adapter` | Converts those inputs into four-wheel `/joint_states` and `/imu/data`; supports deliberate IMU/wheel loss. It publishes neither localization nor TF. |
+| Real `rover_slam` stages | Converter produces `/wheel/odom_raw`; slip filter produces `/wheel/odom_filtered`; EKF alone produces `/odometry/filtered` and `odom -> base_link`. |
+| `slam_test_tools/local_estimator_probe` | Test observer and command source, not a sensor mock. Runs stationary, straight, turn, IMU loss/recovery and wheel loss/recovery phases and writes results. |
+
+Run the commands below **inside the existing `autonomous27:jazzy` Docker
+environment**, with the workspace mounted at `/workspace` and a writable
+artifact directory at `/validation`. Container creation/entry commands are in
+[the Docker validation record](../VALIDATION.md#reproduction-commands-and-shutdown).
+Use the same isolated `ROS_DOMAIN_ID` in every terminal, with no other sensor
+or localization publishers. This profile uses wall time; it needs no `/clock`.
+
+Build once in the container (the shared mock requires `terrain_geometry_msgs`):
+
+```bash
+source /opt/ros/jazzy/setup.bash
+mkdir -p /validation/slam-alone/results
+colcon --log-base /validation/slam-alone/log build --symlink-install \
+  --base-paths /workspace/SLAM/rover_slam \
+  /workspace/Perception/terrain_geometry_msgs \
+  /workspace/testing/mocks/pathplanning/pathplanner_mock_tools \
+  /workspace/testing/mocks/slam/slam_mock_tools \
+  /workspace/testing/benchmarking/slam/slam_test_tools \
+  --build-base /validation/slam-alone/build \
+  --install-base /validation/slam-alone/install
+```
+
+In **each** container terminal, first source ROS and this overlay:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source /validation/slam-alone/install/setup.bash
+export ROS_DOMAIN_ID=88
+```
+
+Terminal A starts the two required mocks and real local estimation:
+
+```bash
+ros2 launch slam_test_tools local_mocked.launch.py
+```
+
+Terminal B runs the bounded test (about 18 seconds after initialization):
+
+```bash
+ros2 run slam_test_tools local_estimator_probe \
+  --output /validation/slam-alone/results/local-run.json
+```
+
+Optional terminal C displays the real EKF output:
+
+```bash
+ros2 launch rover_slam rviz.launch.py use_sim_time:=false rviz_view:=local \
+  raw_odom_topic:=/wheel/odom_raw
+```
+
+Expected: eight input/loss/recovery contracts pass; wheel output stops during
+wheel loss and resumes after recovery; IMU loss produces degraded diagnostics.
+A nonzero probe exit or false contract is a failure. Successful exit proves
+these contracts, **not physical localization accuracy**. The unchanged
+production EKF still shows the documented nominal turn drift. This synthetic
+fixture shares its sensor/truth model and supplies no RGB-D or CameraInfo;
+RTAB-Map, map accuracy and loop closure are not tested here.
+
+On interruption, stop B first, then C and A with Ctrl+C. Stop only your own
+launches. The probe sends zero command on exit; the shared rover has a command
+timeout. Results stay outside source packages.
+
+### Full SLAM with Gazebo sensors
+
 These terminals run real SLAM without running real Perception or navigation.
 Gazebo supplies its sensors and wheel odometry; a landmark is optional.
 A textured RGB-D scene is necessary for meaningful mapping. A constant fake
@@ -90,6 +167,15 @@ ros2 launch slam_test_tools test_slam_standalone.launch.py \
 This wrapper starts the production master and global RViz. Both mocks are
 **off**. It requires the external simulator; it is not a complete synthetic
 SLAM tester. For EKF-only observation, add `launch_rtabmap:=false rviz_view:=local`.
+No mocks are required for this baseline: Gazebo replaces the missing physical
+sensor dependencies. Leave `launch_aruco_stub:=false` and
+`launch_costmap_stub:=false`. The legacy ArUco fixture publishes a singular,
+zero-stamped landmark on `/perception/landmark_detection`, whereas production
+expects `LandmarkDetections` on `/perception/landmark_detections`; it cannot
+validate that interface or replace camera/depth inputs. The costmap stub is
+also an optional smoke fixture, not a mapping dependency. `image_gate` is only
+needed for deliberate real-camera input loss injection, not normal standalone
+operation. There is currently no complete mock-only RGB-D mapping setup.
 Without testing orchestration, run the production equivalent directly:
 
 ```bash
