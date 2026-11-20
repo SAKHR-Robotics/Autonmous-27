@@ -35,8 +35,10 @@ their own. Production modules remain separate ROS 2 packages.
 ## Launch contract to settle before implementation
 
 Confirm unknown values once for a profile and reuse the recorded decision.
-The environment is currently awaiting confirmation; the repository contains both
-Jazzy and Humble instructions. No runtime profile is approved by this document.
+Current recorded validation uses the existing `autonomous27:jazzy` Docker image.
+Historical Humble instructions are not the current validation environment.
+Module-specific clock/TF/input choices remain explicit in their running guides;
+this index does not approve additional launch profiles.
 
 | Decision | Required record |
 | --- | --- |
@@ -49,7 +51,7 @@ Jazzy and Humble instructions. No runtime profile is approved by this document.
 Launch files should not prompt interactively. Resolve choices in conversation,
 then represent them through arguments/configuration so runs remain repeatable.
 
-## Current layout — 2026-11-19
+## Current layout — 2026-11-20
 
 ```text
 testing/
@@ -60,7 +62,7 @@ testing/
 ├── benchmarking/
 │   ├── pathplanning/                 # global_path_benchmarking package
 │   ├── slam/slam_test_tools/
-│   └── perception/                   # documentation; observer not implemented
+│   └── perception/perception_benchmark_tools/  # offline helper timing only
 └── validation_bringup/               # documented future shared orchestration
 ```
 
@@ -75,7 +77,8 @@ Original ROS package names and launch defaults are preserved. Mock implementatio
 were extracted into `pathplanner_mock_tools` and `slam_mock_tools`; old Python
 imports and executable names delegate to those packages. Rebuild in a separate
 build/install directory after relocation; an old symlink overlay can still point
-to deleted source paths. No new launch profile or GUI has been implemented.
+to deleted source paths. SLAM now has an isolated `local_mocked.launch.py` profile
+in `slam_test_tools`; shared bringup and its future GUI remain unimplemented.
 
 Historical benchmark reports remain in `benchmarking/pathplanning/reports/` and
 historical design documents remain beside their modules. Neither establishes
@@ -94,23 +97,24 @@ Known behavior defects remain open; folder organization does not fix scoring.
 | T02 | `benchmarking/pathplanning/launch/live_test.launch.py` declares `target_package` and `target_launch` but includes the hardcoded ERC launch. Missing ERC can silently produce an empty group. | Confirm supported target modes, honor their arguments, and fail clearly for a missing selected target. Check both internal and external modes. |
 | T03 | The same live launch adds a costmap bridge while `PathPlanning/erc_path_planner/launch/path_planning.launch.py` already starts one. | Agree one bridge owner per profile. Confirm one authoritative bridge-cloud publisher and the expected message contract. |
 | T04 | `benchmarking/pathplanning/global_path_benchmarking/testing_node.py` uses global `pkill -9` with `clean`; `launch_world_and_rover.sh` also kills processes by name. | Replace cleanup with tracking/stopping run-owned processes. Verify a separate unrelated process survives stopping the test run. Keep `clean` disabled meanwhile. |
-| T05 | `benchmarking/slam/slam_test_tools/launch/test_slam_standalone.launch.py` does not supply complete SLAM sensor inputs. Existing stubs are fixed smoke fixtures. | Agree local-EKF versus RGB-D SLAM stages, then supply coherent missing inputs and separate ground truth. Do not claim trajectory accuracy from the current stubs. |
+| T05 | The standalone SLAM wrapper still requires external RGB-D sensors. A separate nominal local-EKF profile now reuses the shared rover and a sensor adapter. | See the [SLAM evidence](../SLAM/VALIDATION.md) for tested cases, lateral-fusion drift and clock-reset recovery failures. Legacy landmark/obstacle stubs remain unvalidated smoke fixtures. |
 | T06 | `PathPlanning/erc_path_planner/launch/test_planner_standalone.launch.py` publishes a synthetic map anchor from a production package; its default map is `config/dummy_map.yaml`. | Move test orchestration and synthetic assets under the appropriate testing package, updating install rules and references; agree whether a compatibility wrapper is needed. |
 | T07 | `mocks/pathplanning/pathplanner_mock_tools/custom_maps/` now has package installation. PathPlanner still generates `maps/` and `reports/` relative to the caller's working directory. | Assign fixture ownership to a test package, resolve installed resources through package share, and expose a separate run output directory. Check launching from outside the source tree. |
 
-## Validation sequence
+## Current guides and evidence
 
-| Stage | Bounded result | Completion gate |
+| Area | Active guide | What exists / remaining limit |
 | --- | --- | --- |
-| 0 — Foundation (documented) | Inventory, rules, issue list and runtime decision | Review this document and confirm the runtime; no runtime pass claimed. |
-| 1 — Package discovery and installation | Layout reorganized; discovery passed; installation pending | Selected packages build and their executables, launch files and fixtures resolve from the overlay. |
-| 2 — Mock feeders alone | Validate one feeder at a time before consuming its data | Expected message types, QoS, rates, timestamps, frames, deterministic truth and dropout behavior. |
-| 3 — One real module with mocked dependencies | Dedicated agreed launch and RViz profile for that module | Expected real outputs, failure/recovery behavior, no duplicate owners, visual checks recorded separately. |
-| 4 — Replace mocks with real dependencies | Integrate only modules that passed their isolated stage | Repeat boundary checks and compare against agreed tolerances; document remaining gaps. |
+| Perception mocks | [Package README](mocks/perception/perception_test_tools/README.md), [scenarios and commands](mocks/perception/Readme.md) | Live synthetic sensor scenes and offline terrain generator. Historical synthetic checks do not establish real perception or mission accuracy. |
+| SLAM mocks | [Package README](mocks/slam/slam_mock_tools/README.md) | Shared-rover sensor adapter, RGB dropout gate and legacy smoke stubs. Adapter consistency is checked; fixed landmark stubs are not positive landmark acceptance. |
+| PathPlanner benchmark | [README](benchmarking/pathplanning/README.md), [evidence](benchmarking/pathplanning/VALIDATION.md) | Evaluator/report corrections checked; complete mission, trial accounting and swept-footprint validation remain pending. |
+| SLAM validation | [Testing guide](benchmarking/slam/slam_test_tools/README.md), [production evidence](../SLAM/VALIDATION.md) | Local mocked and Gazebo stages recorded; drift, reset recovery and other accuracy/visual gates remain open. |
+| Perception timing | [Package README](benchmarking/perception/perception_benchmark_tools/README.md) | Offline helper timings only; not a mission accuracy observer or production-node rate. |
 
-Run Stage 3 separately for each module, rather than treating a combined stack as
-proof that each module works. Each implementation step must supply its own
-commands and observations before proceeding.
+Shared rules remain: document a boundary, check inputs/mocks, evaluate one real
+module, then replace mocks with real dependencies during mission integration.
+Each stage provides its own commands, expected results and remaining limits.
+Passing one stage does not establish whole-mission readiness.
 
 ## Commands to validate the layout
 
@@ -119,15 +123,14 @@ From the repository root on the host (or `/workspace` in the agreed container):
 ```bash
 cd /home/saif/Desktop/MESEKET/Autonmous-27/Autonmous_Ws
 colcon list --base-paths testing
-git show --stat HEAD
 ```
 
-Expected: five `ros.ament_python` packages: `global_path_benchmarking`,
-`pathplanner_mock_tools`, `perception_test_tools`, `slam_mock_tools`, and
-`slam_test_tools`. No duplicate package names. Discovery is not a build/runtime
-pass. See the [PathPlanner validation record](benchmarking/pathplanning/VALIDATION.md)
-for offline benchmark checks and known failures.
+Expected: six `ros.ament_python` packages: `global_path_benchmarking`,
+`pathplanner_mock_tools`, `perception_benchmark_tools`, `perception_test_tools`,
+`slam_mock_tools`, and `slam_test_tools`, without duplicate package names.
+Discovery is not a build/runtime pass. Use the area-specific commands linked
+above for validation; the old broad-cleanup shell scripts are not recommended.
 
-Production documentation outside `testing/` has intentionally not been edited.
-Commands there using `testing/PathPlanner`, `testing/SLAM` or `testing/Perception`
-need the new paths above; the other agent owns those documentation updates.
+Production documentation outside `testing/` is owned by the corresponding module
+agent. New commands must use the current paths above; old paths in historical
+validation logs describe the layout used when that evidence was recorded.

@@ -1,22 +1,27 @@
 # Dependency mocks and synthetic fixtures
 
-| Consumer / purpose | Package or directory | Contents |
+Use the package READMEs below for inputs, outputs, scenarios and limitations.
+These packages supply dependencies; observers evaluate the real module outputs.
+
+| Consumer / purpose | Active guide | Implemented contents and limits |
 | --- | --- | --- |
-| Perception inputs | `perception/perception_test_tools` | Existing sensor scenes, feeder, integration checks and RViz view |
-| Planning dependencies | `pathplanning/pathplanner_mock_tools` | Existing mock rover, obstacle feeder, sample planner, obstacle injection, map assets and generators |
-| SLAM dependencies | `slam/slam_mock_tools` | Existing landmark and bridge-cloud stubs; neither is a complete SLAM sensor simulation |
+| Perception inputs | [perception_test_tools](perception/perception_test_tools/README.md), [scenario guide](perception/Readme.md) | Synthetic RGB/depth/cloud/calibration scenes, ground-truth markers and offline floor/box generator. Not calibrated physical sensors or full mission truth. |
+| Planning dependencies | [pathplanner_mock_tools](pathplanning/pathplanner_mock_tools/README.md) | Shared mock rover, obstacle feeder, sample planner, map assets and generators. Full mission mock contracts remain pending. |
+| SLAM dependencies | [slam_mock_tools](slam/slam_mock_tools/README.md) | Shared-rover wheel/IMU adapter, real-image dropout gate, legacy landmark/cloud stubs. Nominal synthetic consistency differs from physical accuracy; legacy stubs remain unvalidated. |
 
-These are relocated existing implementations, not newly validated mission mocks.
-The mock-development agent can extend these packages without editing observers.
-Group fixtures by the dependency they simulate as new shared contracts emerge;
-do not duplicate a producer simply because two modules consume it.
+SLAM's local mocked launch and detailed evidence are in
+[slam_test_tools](../benchmarking/slam/slam_test_tools/README.md) and
+[SLAM/VALIDATION.md](../../SLAM/VALIDATION.md). Perception's current system limits
+are recorded in [Perception/INTEGRATION_REVIEW.md](../../Perception/INTEGRATION_REVIEW.md);
+[the older synthetic validation](perception/VALIDATION.md) is historical evidence.
+Neither package is a complete, accepted navigation mission simulator.
 
-Legacy executable/import adapters remain in the old ROS packages so launch
-commands do not change during the folder migration. They delegate here. Running
-both the legacy and new executable would duplicate publishers.
+The mock-development agents can extend their packages without editing shared
+observers. Reuse a dependency producer between consumers; do not duplicate it.
+Legacy executable/import adapters remain in the original ROS packages. They
+delegate to the relocated implementations; running both would duplicate publishers.
 
-Installed static map assets belong to `pathplanner_mock_tools`, in its `maps/`
-and `custom_maps/` share directories. Legacy scene generators still create
-`maps/`, `config/` and `reports/` relative to the run directory; correcting this
-behavior remains part of benchmark validation. Generate only in a dedicated run
-directory, never inside installed package data.
+Installed static maps belong to `pathplanner_mock_tools`, in its `maps/` and
+`custom_maps/` share directories. Legacy scene generators still create `maps/`,
+`config/` and `reports/` relative to the run directory. Use a dedicated output
+directory, never installed package data; path/output cleanup remains open.
