@@ -1,7 +1,13 @@
 # SLAM — ROS 2 Jazzy / Ubuntu 24.04
 
-Start with [the running guide](rover_slam/README.md). It covers standalone
-Gazebo, hardware, each processing stage, testing helpers and whole-system use.
+**Start with [info.md](info.md)**: the consolidated module specification and
+operating guide. It contains architecture/flowcharts, publishers/subscribers,
+types/QoS, TF/clock ownership, launch options, required mocks, Docker/Gazebo/RViz
+steps, test commands and explicit failed/blocked/pending work. Agents should read
+it before routine work and update it alongside interface/behavior changes.
+
+[The running guide](rover_slam/README.md) provides additional usage examples for
+standalone Gazebo, hardware, individual stages and whole-system use.
 Implementation status and remaining checks: [SLAMImprovments.md](SLAMImprovments.md).
 Current launch inventory, staged review and Docker evidence:
 [VALIDATION.md](VALIDATION.md).
@@ -32,7 +38,7 @@ marker landmarks are not automatically surveyed global-position fixes.
 | `rover_slam/rover_slam/` | Encoder processing, pure wheel math, slip assessment |
 | `rover_slam/launch/` | Independent stages, production master, optional sensor driver/TF/RViz |
 | `rover_slam/config/` | Geometry profiles, EKF/RTAB-Map settings, optional costmap, RViz views |
-| `../testing/mocks/slam/slam_mock_tools/` | Landmark and obstacle smoke fixtures |
+| `../testing/mocks/slam/slam_mock_tools/` | Dependency sensor adapter, RGB loss gate, landmark/obstacle smoke fixtures |
 | `../testing/benchmarking/slam/slam_test_tools/` | EKF monitor, wrappers, compatibility adapters and regressions |
 
 Production starts no synthetic inputs or artificial map/odom localization.
@@ -71,6 +77,12 @@ TF. It does not start Gazebo or generate those inputs. The full guide below
 explains the terminal sequence and expected outputs.
 
 ## Changes and limits
+
+The production fusion default remains unchanged. Turning drift, remaining
+Gazebo localization error and failed full clock-reset recovery are unresolved.
+The newer PathPlanner stationary-drift report is also tracked in
+[info.md](info.md#1-current-status-and-open-decisions). Contract/startup passes
+do not establish trajectory/map accuracy or real-camera landmark acceptance.
 
 Wheel input is selected explicitly; rates use measurement intervals. Missing
 input stops wheel output rather than becoming a newly stamped zero velocity.

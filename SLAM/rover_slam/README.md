@@ -1,5 +1,11 @@
 # rover_slam running guide
 
+**Read [SLAM/info.md](../info.md) first** for the consolidated specification,
+architecture, topics/publishers/subscribers, QoS/TF, launch defaults, required
+mocks, current readiness and the complete Docker-to-RViz procedure. This guide
+retains focused usage examples. The fusion default is unchanged; localization
+accuracy and full clock-reset recovery remain unresolved.
+
 Target: **Linux, Ubuntu 24.04, ROS 2 Jazzy**. Run commands from the workspace
 root (`Autonmous_Ws`), not from this package directory. Source ROS and the
 workspace overlay in every terminal. See [the work record](../SLAMImprovments.md)
@@ -289,7 +295,7 @@ ros2 launch rover_slam slam_bringup.launch.py use_sim_time:=true \
   odom_topic:=/odom launch_encoder:=false launch_costmap:=false launch_rviz:=true
 
 # Terminal B: real Perception; enable its native RTAB-Map adapter explicitly.
-ros2 launch terrain_geometry perception_system.launch.py use_sim_time:=true \
+ros2 launch perception_bringup perception.launch.py use_sim_time:=true \
   launch_landmark_adapter:=true launch_marker_mapping:=true
 
 # Terminal C: existing navigation entry point; starts the obstacle bridge too.
