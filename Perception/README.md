@@ -1,5 +1,11 @@
 # Perception
 
+**Start with [info.md](info.md).** It is the consolidated module specification
+and operating guide: all production nodes, publishers/subscribers, topics/types,
+QoS/frames, launch options, required mocks, test steps and open work. Agents
+should read it first for routine operation and update it when contracts change.
+This README remains an overview; the detailed evidence records are linked there.
+
 Current status: package/regression checks pass; terrain ground classification
 still fails controlled geometry checks, including with a matching height
 reference. Positive camera-to-action/landmark acceptance also needs a suitable
