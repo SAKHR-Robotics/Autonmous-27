@@ -112,6 +112,8 @@ Use the software installed in `autonomous27:jazzy`, not host Python or ROS.
 The [runbook](RUNBOOK.md) has Docker setup, isolated build commands, independent
 and combined startup, sensor requirements and the complete launch inventory.
 The [validation guide](TESTING_GUIDE.md) records checks and the testing-agent handoff.
+For world, rover, sensor, terrain, marker and combined checks in order, follow
+the [live Gazebo procedure](RUNBOOK.md#5-existing-world-validate-one-branch-at-a-time).
 
 ```bash
 # Inside the sourced Jazzy container, with sensors and calibrated TF available:
