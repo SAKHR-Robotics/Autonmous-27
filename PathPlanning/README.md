@@ -1,16 +1,16 @@
 # PathPlanning
 
-Production navigation lives in [`erc_path_planner`](erc_path_planner/README.md).
-It runs the real obstacle bridge and Nav2 Smac Hybrid A*, MPPI, costmaps,
-navigation/recovery behaviors and velocity smoother. Motor hardware drivers,
-SLAM, Perception, sensor drivers and robot TF are external dependencies.
+**Start with [info.md](info.md).** It is the single module handoff and operating
+guide: specifications, packages, publisher/subscriber contracts, actions, clock/TF
+ownership, launch arguments, required mocks, testing steps and pending work.
 
-There are no runtime mocks, synthetic maps or artificial localization launches
-inside this module. Those live in
-[`testing/mocks/pathplanning/pathplanner_mock_tools`](../testing/mocks/pathplanning/pathplanner_mock_tools/README.md).
-Testing includes the production launch; it does not replace Smac with a toy planner.
+Production contains only real PathPlanner components. Independent testing uses
+the existing `testing/mocks/pathplanning/pathplanner_mock_tools` package and runs
+the real production planner with mocked dependencies.
 
-Read the [current validation record](VALIDATION.md) before interpreting a
-successful launch as navigation correctness. Boundary collision and stale-input
-safe-stopping checks currently fail; hardware readiness is not established.
-Older material in `docs/` and `Prop&Solu.md` is historical, not the current runbook.
+Current checkpoint: builds and isolated mocked operation pass; boundary and
+stale-input stopping gates fail, and Gazebo motion validation is blocked by EKF
+drift. See [info.md](info.md#1-current-status-and-next-work) before testing.
+
+The [validation record](VALIDATION.md) retains detailed evidence. Older `docs/`
+and `Prop&Solu.md` are historical references, not the current runbook.

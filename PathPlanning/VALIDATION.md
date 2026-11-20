@@ -80,7 +80,7 @@ runtime reset; their earlier observed results remain historical evidence above.
 ## Reproduce the supported mocked stage
 
 Prepare/build the disposable container using the
-[production guide](erc_path_planner/README.md#docker-build-and-real-launch) and
+[production guide](info.md#8-see-real-pathplanner-in-action-with-mocked-dependencies) and
 [mock build instructions](../testing/mocks/pathplanning/pathplanner_mock_tools/README.md#build-inside-the-existing-jazzy-image).
 Run only one dependency profile in each ROS domain/container.
 

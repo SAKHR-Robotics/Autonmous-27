@@ -1,5 +1,8 @@
 # PathPlanner dependency mocks
 
+Start with the consolidated [module info](../../../../PathPlanning/info.md) for
+the complete specification, interface contract, current status and demonstration.
+
 Everything here is test-only. The supported `mocked_planner.launch.py` starts
 **real `erc_path_planner`/Nav2**, with a synthetic map, localization/motion and
 Perception inputs. Production does not depend on this package.
@@ -32,7 +35,7 @@ start both names simultaneously.
 ## Build inside the existing Jazzy image
 
 Use the container preparation in the
-[production guide](../../../../PathPlanning/erc_path_planner/README.md#docker-build-and-real-launch).
+[production guide](../../../../PathPlanning/info.md#8-see-real-pathplanner-in-action-with-mocked-dependencies).
 Inside that container:
 
 ```bash
