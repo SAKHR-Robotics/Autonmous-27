@@ -29,6 +29,7 @@ from rclpy.node import Node
 from geometry_msgs.msg import Point, PointStamped
 from sensor_msgs.msg import PointCloud2, PointField, LaserScan
 from visualization_msgs.msg import Marker, MarkerArray
+from vision_msgs.msg import Detection3D, Detection3DArray
 from terrain_geometry_msgs.msg import ObstacleFeature, ObstacleFeatureArray
 
 
@@ -43,6 +44,7 @@ class MockPerception(Node):
         self.declare_parameter('enable_dynamic_spawning', True)
         self.declare_parameter('scan_frame_id', 'base_link')
         self.declare_parameter('publish_bridge_cloud', False)
+        self.declare_parameter('publish_detections', False)
 
         self.publish_rate = float(self.get_parameter('publish_rate').value)
         self.frame_id = self.get_parameter('frame_id').value
@@ -62,6 +64,10 @@ class MockPerception(Node):
         # Scheduled dynamic obstacles from scenario
         self.pending_dynamic_obstacles = []
         self.load_scenario_obstacles()
+
+        # Opt-in real bridge input; legacy/shared mock defaults are preserved.
+        self.detection_pub = self.create_publisher(Detection3DArray,
+            '/perception/obstacles_only', 10) if self.get_parameter('publish_detections').value else None
 
         # Publishers
         self.feature_pub = self.create_publisher(
@@ -203,6 +209,8 @@ class MockPerception(Node):
         array_msg.header.stamp = current_time.to_msg()
         array_msg.header.frame_id = self.frame_id
 
+        detections = Detection3DArray()
+        detections.header = array_msg.header
         markers = MarkerArray()
         point_bytes = bytearray()
         num_points = 0
@@ -231,6 +239,17 @@ class MockPerception(Node):
             feature.depth = float(2.0 * r)
             feature.distance = float(math.sqrt(cx**2 + cy**2))
             array_msg.obstacles.append(feature)
+            detection = Detection3D()
+            detection.header = array_msg.header
+            detection.id = str(obs['id'])
+            detection.bbox.center.position.x = cx
+            detection.bbox.center.position.y = cy
+            detection.bbox.center.position.z = cz
+            detection.bbox.center.orientation.w = 1.0
+            detection.bbox.size.x = 2.0 * r
+            detection.bbox.size.y = 2.0 * r
+            detection.bbox.size.z = h
+            detections.detections.append(detection)
 
             # Generate boundary points for PointCloud2
             cx, cy, cz = float(obs['x']), float(obs['y']), float(obs['z'])
@@ -268,6 +287,8 @@ class MockPerception(Node):
             marker.color.a = 0.75
             markers.markers.append(marker)
 
+        if self.detection_pub is not None:
+            self.detection_pub.publish(detections)
         self.feature_pub.publish(array_msg)
         self.marker_pub.publish(markers)
 
@@ -339,7 +360,7 @@ def main(args=None):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        rclpy.try_shutdown()
 
 
 if __name__ == '__main__':

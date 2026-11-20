@@ -81,7 +81,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'clean',
             default_value='false',
-            description='Kill old benchmarking/ROS 2 processes before launch'
+            description='Disabled legacy flag: true is rejected without stopping other processes'
         ),
         DeclareLaunchArgument(
             'use_rviz',

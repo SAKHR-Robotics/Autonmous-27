@@ -1,3 +1,5 @@
+> Historical design notes. Launch paths and findings below may be obsolete; use the current [PathPlanning guide](../README.md) and validation record.
+
 # Path Planning Module: AI Implementation Guide
 
 This document serves as the master guide and checklist for AI agents working on the Path Planning module for the ERC 2026 Rover. It includes the architectural context, the target folder structure, and a highly detailed breakdown of implementation tasks, specifically designed for **two developers working in parallel**.

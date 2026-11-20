@@ -12,7 +12,7 @@ This directory contains interactive bash orchestrators designed to streamline de
 | [`launch_sim.sh`](launch_sim.sh) | **Simulation & World Bringup** | • Option 1: Mars Yard + Rover (SLAM Mode, `bridge_sim_tf:=false`)<br>• Option 2: Mars Yard + Rover (Standalone Teleop, `bridge_sim_tf:=true`)<br>• Option 3: Mars Yard World Only<br>• Option 4: Empty World + Rover |
 | [`launch_slam.sh`](launch_slam.sh) | **State Estimation & SLAM** | • Option 1: Full SLAM Stack (Slip Checker + EKF + RTAB-Map)<br>• Option 2: Standalone Test Launcher (`test_slam_standalone.launch.py`)<br>• Option 3: EKF & Slip Checker Only (No RTAB-Map) |
 | [`launch_perception.sh`](launch_perception.sh) | **Perception & Clustering** | • Option 1: Full Perception (Rocks + ArUco Tags)<br>• Option 2: Standalone Test Launcher (`test_perception_standalone.launch.py`)<br>• Option 3: ArUco Tag Marker Detection Only<br>• Option 4: Terrain Point Cloud DBSCAN Node Only |
-| [`launch_planning.sh`](launch_planning.sh) | **Nav2 Path Planning** | • Option 1: Full Nav2 with Live SLAM Map (`use_slam:=true`)<br>• Option 2: Standalone Nav2 with Dummy Map (`test_planner_standalone.launch.py`)<br>• Option 3: 3D Costmap Bridge Node Only |
+| [`launch_planning.sh`](launch_planning.sh) | **Nav2 Path Planning** | • Option 1: Full Nav2 with Live SLAM Map (`use_slam:=true`)<br>• Option 2: Standalone Nav2 with Dummy Map (`pathplanner_mock_tools test_planner_standalone.launch.py`)<br>• Option 3: 3D Costmap Bridge Node Only |
 
 ---
 
