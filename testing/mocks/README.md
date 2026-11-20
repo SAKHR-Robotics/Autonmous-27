@@ -1,27 +1,22 @@
 # Dependency mocks and synthetic fixtures
 
 Use the package READMEs below for inputs, outputs, scenarios and limitations.
-These packages supply dependencies; observers evaluate the real module outputs.
+These packages supply missing upstream/downstream surroundings so the **real production
+modules** run unmodified and emit their real outputs for assessment.
 
 | Consumer / purpose | Active guide | Implemented contents and limits |
 | --- | --- | --- |
-| Perception inputs | [perception_test_tools](perception/perception_test_tools/README.md), [scenario guide](perception/Readme.md) | Synthetic RGB/depth/cloud/calibration scenes, ground-truth markers and offline floor/box generator. Not calibrated physical sensors or full mission truth. |
-| Planning dependencies | [pathplanner_mock_tools](pathplanning/pathplanner_mock_tools/README.md) | Shared mock rover, obstacle feeder, sample planner, map assets and generators. Full mission mock contracts remain pending. |
-| SLAM dependencies | [slam_mock_tools](slam/slam_mock_tools/README.md) | Shared-rover wheel/IMU adapter, real-image dropout gate, legacy landmark/cloud stubs. Nominal synthetic consistency differs from physical accuracy; legacy stubs remain unvalidated. |
+| Planning dependencies | [pathplanner_mock_tools](pathplanning/pathplanner_mock_tools/README.md) | Shared `mock_rover_sim` (with `production_rover` / `nav2_nominal` presets, deterministic seeding, and `freeze_odom` / `drop_tf` / `drop_joints` / live slip overrides), `mock_perception` (`Detection3DArray`, `spawn_obstacle_full`, `clear_obstacles`, `freeze_perception`), map assets, and `mocked_planner.launch.py` |
+| Perception inputs | [perception_test_tools](perception/perception_test_tools/README.md), [scenario guide](perception/Readme.md) | Synthetic RGB/depth/cloud/calibration scenes (`rocks_and_marker`, `ground_only`, `missing_depth`, `invalid_cloud`, `dropout`, `turn_occlusion`, `terrain_hazard`, and non-ambiguous tilted `clear_aruco_nav`), configurable `ground_z_offset` (e.g. `-0.255 m`), `/testing/perception/ground_truth_json`, and offline `terrain_scene.py` |
+| SLAM dependencies | [slam_mock_tools](slam/slam_mock_tools/README.md) | Shared-rover `rover_sensor_adapter` (`joint_states`, `ticks_array`, `individual_ticks`, slip scaling, rotated IMU mounts, gravity sign, noise/bias, `drop_imu`/`drop_wheels`), `image_gate`, and stamped/PSD-covariance smoke fixtures (`mock_aruco_publisher`, `costmap_test_stub`) |
 
-SLAM's local mocked launch and detailed evidence are in
+SLAM's local mocked launch and evidence are in
 [slam_test_tools](../benchmarking/slam/slam_test_tools/README.md) and
-[SLAM/VALIDATION.md](../../SLAM/VALIDATION.md). Perception's current system limits
-are recorded in [Perception/INTEGRATION_REVIEW.md](../../Perception/INTEGRATION_REVIEW.md);
-[the older synthetic validation](perception/VALIDATION.md) is historical evidence.
-Neither package is a complete, accepted navigation mission simulator.
+[SLAM/VALIDATION.md](../../SLAM/VALIDATION.md). Perception's system limits
+are in [Perception/INTEGRATION_REVIEW.md](../../Perception/INTEGRATION_REVIEW.md).
+Global RTAB-Map mapping requires Gazebo (`final_world_R&A.world`) or `rosbag2`
+playback for coherent moving RGB-D imagery.
 
-The mock-development agents can extend their packages without editing shared
-observers. Reuse a dependency producer between consumers; do not duplicate it.
-Legacy executable/import adapters remain in the original ROS packages. They
-delegate to the relocated implementations; running both would duplicate publishers.
-
-Installed static maps belong to `pathplanner_mock_tools`, in its `maps/` and
-`custom_maps/` share directories. Legacy scene generators still create `maps/`,
-`config/` and `reports/` relative to the run directory. Use a dedicated output
-directory, never installed package data; path/output cleanup remains open.
+Do not duplicate dependency producers across packages, and do not run relocated
+compatibility aliases (`global_path_benchmarking` or `slam_test_tools` old names)
+alongside the primary mock executables.

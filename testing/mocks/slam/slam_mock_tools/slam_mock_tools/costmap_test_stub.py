@@ -26,10 +26,12 @@ class CostmapTestStubNode(Node):
         self.declare_parameter('publish_rate', 5.0)       # Hz
         self.declare_parameter('frame_id', 'base_link')    # Target coordinate frame
         self.declare_parameter('num_rocks', 3)
+        self.declare_parameter('use_current_stamp', True)
 
         self.rate = self.get_parameter('publish_rate').get_parameter_value().double_value
         self.frame_id = self.get_parameter('frame_id').get_parameter_value().string_value
         self.num_rocks = self.get_parameter('num_rocks').get_parameter_value().integer_value
+        self.use_current_stamp = bool(self.get_parameter('use_current_stamp').value)
 
         self.publisher_ = self.create_publisher(PointCloud2, '/bridge/pointcloud', 10)
         self.marker_publisher_ = self.create_publisher(MarkerArray, '/terrain/obstacle_markers', 10)
@@ -85,9 +87,11 @@ class CostmapTestStubNode(Node):
     def create_synthetic_markers(self):
         """Generates bright wireframe bounding box and text markers corresponding to the synthetic rocks."""
         marker_array = MarkerArray()
-        # Using time zero (Time(0)) tells RViz to always use the latest available TF,
-        # completely eliminating extrapolation delay and marker flickering!
-        stamp = rclpy.time.Time().to_msg()
+        stamp = (
+            self.get_clock().now().to_msg()
+            if self.use_current_stamp
+            else rclpy.time.Time().to_msg()
+        )
 
         rocks = [
             {'id': 1, 'name': 'Rock A (0.5m)', 'center': (2.0, 0.5, 0.15), 'size': (0.5, 0.5, 0.35)},
@@ -180,8 +184,9 @@ def main(args=None):
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
-    node.destroy_node()
-    rclpy.shutdown()
+    finally:
+        node.destroy_node()
+        rclpy.try_shutdown()
 
 
 if __name__ == '__main__':

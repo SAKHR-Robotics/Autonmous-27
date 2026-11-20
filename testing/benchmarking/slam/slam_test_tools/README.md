@@ -23,6 +23,8 @@ packages before using this profile. In separate sourced container terminals:
 ```bash
 # A: real local estimation plus explicit upstream dependencies.
 ros2 launch slam_test_tools local_mocked.launch.py
+# Optional tick/mount/gravity checks:
+ros2 launch slam_test_tools local_mocked.launch.py wheel_output_mode:=ticks_array imu_mount_yaw_rad:=1.5708
 ```
 
 ```bash

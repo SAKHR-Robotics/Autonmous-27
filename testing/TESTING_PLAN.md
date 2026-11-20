@@ -412,9 +412,9 @@ Please confirm or adjust these choices before we begin **Phase 0**:
 
 | Phase | Scope | Status | Key Deliverables | Sign-Off |
 | :--- | :--- | :--- | :--- | :--- |
-| **Phase 0** | Criteria sign-off, v2.0.0 schema, `T01`/`T04`/`T07` hygiene | Planned | `TESTING_PLAN.md` approved, clean `package.xml`, safe launcher, stale reports cleared | Pending |
-| **Phase 1** | PathPlanner & Controller benchmarker (`P02`–`P08`) | Planned | Action-correlated batch runner, `swept_collision`, `NavigateThroughPoses`, unified reports | Pending |
-| **Phase 2** | Shared dependency mocks & fault injection | Planned | Rover geometry presets, fault triggers, non-ambiguous ArUco, Rover-Z floor, SLAM slip/mount injection | Pending |
+| **Phase 0** | Criteria sign-off, v2.0.0 schema, `T01`/`T04`/`T07` hygiene | Implemented (static) | `schema.py`, `test_schema_v2.py`, clean `package.xml`, safe PGID `launch_world_and_rover.sh` | Pending Jazzy runtime |
+| **Phase 1** | PathPlanner & Controller benchmarker (`P02`–`P08`) | Implemented (static) | `scenario_benchmark_runner.py`, v2.0.0 reports, `NavigateThroughPoses`, `benchmark.launch.py`, `test_scenario_runner_contract.py` | Pending Jazzy runtime |
+| **Phase 2** | Shared dependency mocks & fault injection | Implemented (static) | Rover presets + freeze/drop faults, `clear_aruco_nav` + `-0.255 m` floor + GT JSON, SLAM slip/mount/tick modes, `S08` stamps/cov | Pending Jazzy runtime |
 | **Phase 3** | SLAM & state estimation benchmarker | Planned | Packaged `gazebo_truth_bridge`, ATE/RPE/slip-F1/loop/map-sanity evaluator, §9 checks | Pending |
 | **Phase 4** | Live Perception accuracy & runtime benchmarker | Planned | Hungarian + 3D IoU + ground IoU + ArUco pose accuracy + TF-aware bag replay | Pending |
 | **Phase 5** | Shared `validation_bringup` & Mission Referee | Planned | `M1`–`M4` launch profiles, scoped supervisor, cross-module fault attribution | Pending |

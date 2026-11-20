@@ -66,40 +66,48 @@ testing/
 └── validation_bringup/               # documented future shared orchestration
 ```
 
-[Mock ownership](mocks/README.md), [benchmark status](benchmarking/README.md) and
-[bringup boundaries](validation_bringup/README.md) describe what actually exists.
+[Mock ownership](mocks/README.md), [benchmark status](benchmarking/README.md),
+[bringup boundaries](validation_bringup/README.md), and the
+[phased completion plan & criteria](TESTING_PLAN.md) describe the layout and evaluation model.
 The mission is the evaluation goal: module observers explain route quality,
 tracking, perception and localization across the same mission. Mocked and real
 runs must identify their dependencies; mission success with mocked inputs does
 not establish full-stack readiness.
 
+## Real module + completing mock quick-start
+
+Each module pair runs the **real production module** alongside test-only inputs
+and/or plant kinematics so you can evaluate real outputs end-to-end:
+
+| Module under test | Real nodes | Completing mock / launch command | What it evaluates |
+| :--- | :--- | :--- | :--- |
+| **PathPlanner + Controller** | `erc_path_planner` (Smac, MPPI, smoother, C++ bridge) | `ros2 launch pathplanner_mock_tools mocked_planner.launch.py use_rviz:=true`<br>`ros2 run global_path_benchmarking scenario_benchmark_runner --output-dir /validation/pp` | Plan validity, `0.90 × 0.70 m` swept clearance, `NavigateToPose` / `NavigateThroughPoses`, dynamic replanning, cancellation & stale-input stopping (`PP10`/`PP11` gates) |
+| **Perception** | `terrain_geometry`, `marker_detection` | `ros2 launch perception_test_tools test_stack.launch.py pipeline:=all scenario:=clear_aruco_nav` | Real terrain boxes/costmap (`ground_z_offset` configurable), non-ambiguous tilted ArUco 6-DoF pose, dropout/missing-depth/invalid-cloud degradation |
+| **SLAM (Local EKF)** | `rover_slam` (encoder, slip filter, EKF) | `ros2 launch slam_test_tools local_mocked.launch.py`<br>`ros2 run slam_test_tools local_estimator_probe --output /validation/local-run.json` | 4-wheel odometry, slip diagnostics, IMU/wheel dropout & recovery, rotated mount / gravity sign, tick vs joint input modes |
+| **SLAM (Global RTAB-Map)** | `rover_slam` (`ekf` + `rtabmap`) | `./testing/launch_world_and_rover.sh` + `ros2 launch slam_test_tools test_slam_standalone.launch.py` | Requires Gazebo (`final_world_R&A.world`) or `rosbag2` for coherent moving RGB-D imagery (no Python 3D RGB-D renderer) |
+
 Original ROS package names and launch defaults are preserved. Mock implementations
 were extracted into `pathplanner_mock_tools` and `slam_mock_tools`; old Python
 imports and executable names delegate to those packages. Rebuild in a separate
-build/install directory after relocation; an old symlink overlay can still point
-to deleted source paths. SLAM now has an isolated `local_mocked.launch.py` profile
-in `slam_test_tools`; shared bringup and its future GUI remain unimplemented.
+build/install directory after changes; an old symlink overlay can still point
+to deleted source paths. `launch_world_and_rover.sh` now uses scoped process-group
+cleanup instead of global `pkill`; historical `reports/` remain archived and new
+runs require an external `--output-dir`.
 
-Historical benchmark reports remain in `benchmarking/pathplanning/reports/` and
-historical design documents remain beside their modules. Neither establishes
-current readiness. The legacy `launch_world_and_rover.sh` remains at its existing
-path while its unsafe cleanup awaits a separate fix.
+## Open issues and implementation status
 
-## Open issues and proposed fixes
+Phases 0, 1, and 2 of [TESTING_PLAN.md](TESTING_PLAN.md) are **implemented in source**
+and awaiting clean Jazzy Docker build/runtime verification:
 
-These are findings to resolve in bounded implementation steps. The layout step
-preserves launch defaults and mock algorithms.
-Known behavior defects remain open; folder organization does not fix scoring.
-
-| ID | Location / finding | Proposed resolution and acceptance check |
+| ID | Location / finding | Resolution status |
 | --- | --- | --- |
-| T01 | `benchmarking/pathplanning/package.xml` now declares `ament_python`; remaining launch/report dependencies still need reconciliation, including launch libraries, NumPy, YAML, Matplotlib and Pillow. | Reconcile imports against declared dependencies, distinguish optional report tools, then build/discover the package in the chosen clean environment. |
-| T02 | `benchmarking/pathplanning/launch/live_test.launch.py` declares `target_package` and `target_launch` but includes the hardcoded ERC launch. Missing ERC can silently produce an empty group. | Confirm supported target modes, honor their arguments, and fail clearly for a missing selected target. Check both internal and external modes. |
-| T03 | The same live launch adds a costmap bridge while `PathPlanning/erc_path_planner/launch/path_planning.launch.py` already starts one. | Agree one bridge owner per profile. Confirm one authoritative bridge-cloud publisher and the expected message contract. |
-| T04 | `benchmarking/pathplanning/global_path_benchmarking/testing_node.py` uses global `pkill -9` with `clean`; `launch_world_and_rover.sh` also kills processes by name. | Replace cleanup with tracking/stopping run-owned processes. Verify a separate unrelated process survives stopping the test run. Keep `clean` disabled meanwhile. |
-| T05 | The standalone SLAM wrapper still requires external RGB-D sensors. A separate nominal local-EKF profile now reuses the shared rover and a sensor adapter. | See the [SLAM evidence](../SLAM/VALIDATION.md) for tested cases, lateral-fusion drift and clock-reset recovery failures. Legacy landmark/obstacle stubs remain unvalidated smoke fixtures. |
-| T06 | Standalone synthetic map/TF launch and maps moved to `testing/mocks/pathplanning/pathplanner_mock_tools`. | Production has no testing dependency or wrapper; use `ros2 launch pathplanner_mock_tools test_planner_standalone.launch.py`. See `PathPlanning/VALIDATION.md` for remaining navigation failures. |
-| T07 | `mocks/pathplanning/pathplanner_mock_tools/custom_maps/` now has package installation. PathPlanner still generates `maps/` and `reports/` relative to the caller's working directory. | Assign fixture ownership to a test package, resolve installed resources through package share, and expose a separate run output directory. Check launching from outside the source tree. |
+| T01 | `benchmarking/pathplanning/package.xml` | **Implemented (static):** Added `launch`, `launch_ros`, `ament_index_python`, and `python3-matplotlib`; documented optional `python3-reportlab`. Clean `rosdep`/colcon verification in Jazzy pending. |
+| T02 | `live_test.launch.py` / `mocked_planner.launch.py` target handling | **Implemented (static):** `live_test.launch.py` forwards all documented args; `mocked_planner.launch.py` fails explicitly if target launch file is missing. Runtime check pending. |
+| T03 | Duplicate costmap bridge risk in `live_test.launch.py` | **Implemented (static):** Compatibility wrapper delegates solely to `mocked_planner.launch.py` (`use_costmap_bridge` forwarded once to `erc_path_planner`). |
+| T04 | Global `pkill -9` in `testing_node.py` / `launch_world_and_rover.sh` | **Implemented (static):** `--clean` remains rejected in `testing_node.py` and `benchmark.launch.py`; `launch_world_and_rover.sh` uses `setsid` + process-group `cleanup()` without global `pkill`. |
+| T05 | Standalone SLAM sensors & nominal local-EKF adapter | **Extended (static):** `rover_sensor_adapter` now supports slip scaling, rotated IMU mounts, gravity sign, and `joint_states` / `ticks_array` / `individual_ticks`; global SLAM evaluator remains Phase 3. |
+| T06 | Standalone synthetic map/TF launch ownership | **Resolved:** Lives in `pathplanner_mock_tools/launch/test_planner_standalone.launch.py` with `launch_bridge` arg; production has zero test dependencies. |
+| T07 | CWD-relative `maps/` and `reports/` generation | **Implemented (static):** `scenario_benchmark_runner` resolves installed shares via `ament_index_python` and requires `--output-dir` outside source; `scene_assets.py` accepts `output_dir`. |
 
 ## Current guides and evidence
 

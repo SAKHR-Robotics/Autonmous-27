@@ -1,15 +1,19 @@
-"""Legacy synthetic asset generators; output paths remain relative to the run directory."""
+"""Synthetic asset generators with explicit output_dir support (falls back to CWD)."""
 import os
+from pathlib import Path
 import yaml
 from PIL import Image, ImageDraw
 
 
-def generate_synthetic_maps():
-    os.makedirs("maps", exist_ok=True)
-    os.makedirs("reports", exist_ok=True)
+def generate_synthetic_maps(output_dir=None):
+    base = Path(output_dir) if output_dir else Path(".")
+    maps_dir = base / "maps"
+    reports_dir = base / "reports"
+    maps_dir.mkdir(parents=True, exist_ok=True)
+    reports_dir.mkdir(parents=True, exist_ok=True)
 
     # 1. Empty World
-    empty_path = "maps/empty_world.png"
+    empty_path = str(maps_dir / "empty_world.png")
     if not os.path.exists(empty_path):
         img = Image.new("L", (200, 200), 255)
         draw = ImageDraw.Draw(img)
@@ -18,7 +22,7 @@ def generate_synthetic_maps():
         print(f"[INFO] Generated synthetic map: {empty_path}")
 
     # 2. Scattered Rocks
-    rocks_path = "maps/scattered_rocks.png"
+    rocks_path = str(maps_dir / "scattered_rocks.png")
     if not os.path.exists(rocks_path):
         img = Image.new("L", (200, 200), 255)
         draw = ImageDraw.Draw(img)
@@ -32,7 +36,7 @@ def generate_synthetic_maps():
         print(f"[INFO] Generated synthetic map: {rocks_path}")
 
     # 3. Canyon Gate
-    canyon_path = "maps/canyon_gate.png"
+    canyon_path = str(maps_dir / "canyon_gate.png")
     if not os.path.exists(canyon_path):
         img = Image.new("L", (200, 200), 255)
         draw = ImageDraw.Draw(img)
@@ -44,7 +48,7 @@ def generate_synthetic_maps():
         print(f"[INFO] Generated synthetic map: {canyon_path}")
 
     # 4. Slopes
-    slopes_path = "maps/marsyard_slopes.png"
+    slopes_path = str(maps_dir / "marsyard_slopes.png")
     if not os.path.exists(slopes_path):
         img = Image.new("L", (200, 200), 255)
         draw = ImageDraw.Draw(img)
@@ -57,7 +61,7 @@ def generate_synthetic_maps():
         print(f"[INFO] Generated synthetic map: {slopes_path}")
 
     # 5. Labyrinth
-    lab_path = "maps/marsyard_labyrinth.png"
+    lab_path = str(maps_dir / "marsyard_labyrinth.png")
     if not os.path.exists(lab_path):
         img = Image.new("L", (200, 200), 255)
         draw = ImageDraw.Draw(img)
@@ -69,7 +73,7 @@ def generate_synthetic_maps():
         print(f"[INFO] Generated synthetic map: {lab_path}")
 
     # 6. Snake Passage
-    snake_path = "maps/snake_passage.png"
+    snake_path = str(maps_dir / "snake_passage.png")
     if not os.path.exists(snake_path):
         img = Image.new("L", (200, 200), 255)
         draw = ImageDraw.Draw(img)
@@ -80,7 +84,7 @@ def generate_synthetic_maps():
         print(f"[INFO] Generated synthetic map: {snake_path}")
 
     # 7. Dead End Trap
-    trap_path = "maps/dead_end_trap.png"
+    trap_path = str(maps_dir / "dead_end_trap.png")
     if not os.path.exists(trap_path):
         img = Image.new("L", (200, 200), 255)
         draw = ImageDraw.Draw(img)
@@ -92,7 +96,7 @@ def generate_synthetic_maps():
         print(f"[INFO] Generated synthetic map: {trap_path}")
 
     # 8. Crater Field
-    field_path = "maps/crater_field.png"
+    field_path = str(maps_dir / "crater_field.png")
     if not os.path.exists(field_path):
         img = Image.new("L", (200, 200), 255)
         draw = ImageDraw.Draw(img)
@@ -103,9 +107,11 @@ def generate_synthetic_maps():
         img.save(field_path)
         print(f"[INFO] Generated synthetic map: {field_path}")
 
-def generate_default_scenarios_yaml():
-    os.makedirs("config", exist_ok=True)
-    config_path = "config/scenarios.yaml"
+def generate_default_scenarios_yaml(output_dir=None):
+    base = Path(output_dir) if output_dir else Path(".")
+    cfg_dir = base / "config"
+    cfg_dir.mkdir(parents=True, exist_ok=True)
+    config_path = str(cfg_dir / "scenarios.yaml")
     if not os.path.exists(config_path):
         scenarios = {
             "scenarios": [

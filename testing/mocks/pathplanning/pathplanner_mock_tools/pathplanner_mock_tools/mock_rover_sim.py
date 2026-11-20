@@ -66,7 +66,9 @@ class MockRoverSim(Node):
         self.declare_parameter('base_frame', 'base_link')
         self.declare_parameter('publish_tf', True)
 
-        # Vehicle Physical Dimensions
+        # Vehicle Physical Dimensions & Presets
+        self.declare_parameter('geometry_profile', 'custom')  # 'custom', 'production_rover', 'nav2_nominal'
+        self.declare_parameter('seed', -1)
         self.declare_parameter('rover_length', 0.8)
         self.declare_parameter('rover_width', 0.65)
         self.declare_parameter('rover_height', 0.3)
@@ -86,6 +88,13 @@ class MockRoverSim(Node):
         self.declare_parameter('noise_std_v', 0.02)          # m/s
         self.declare_parameter('noise_std_w', 0.03)          # rad/s
 
+        # Dynamic Fault-Injection Parameters (toggled live via ros2 param set)
+        self.declare_parameter('freeze_odom', False)
+        self.declare_parameter('drop_tf', False)
+        self.declare_parameter('drop_joints', False)
+        self.declare_parameter('slip_override_linear', -1.0)
+        self.declare_parameter('slip_override_angular', -1.0)
+
         # Interface Options
         self.declare_parameter('cmd_vel_topic', '/cmd_vel')
         self.declare_parameter('use_stamped_cmd_vel', False)
@@ -97,6 +106,10 @@ class MockRoverSim(Node):
         self.base_frame = self.get_parameter('base_frame').value
         self.publish_tf = self.get_parameter('publish_tf').value
         self.update_rate = float(self.get_parameter('update_rate').value)
+
+        self.geometry_profile = str(self.get_parameter('geometry_profile').value)
+        seed = int(self.get_parameter('seed').value)
+        self._rng = np.random.default_rng(seed) if seed >= 0 else np.random.default_rng()
 
         self.rover_length = float(self.get_parameter('rover_length').value)
         self.rover_width = float(self.get_parameter('rover_width').value)
@@ -114,6 +127,21 @@ class MockRoverSim(Node):
         self.slip_ratio_angular = float(self.get_parameter('slip_ratio_angular').value)
         self.noise_std_v = float(self.get_parameter('noise_std_v').value)
         self.noise_std_w = float(self.get_parameter('noise_std_w').value)
+
+        if self.geometry_profile == 'production_rover':
+            self.rover_length = 0.90
+            self.rover_width = 0.70
+            self.wheel_radius = 0.06
+            self.track_width = 0.49
+        elif self.geometry_profile == 'nav2_nominal':
+            self.rover_length = 0.90
+            self.rover_width = 0.70
+            self.slip_ratio_linear = 0.0
+            self.slip_ratio_angular = 0.0
+            self.noise_std_v = 0.0
+            self.noise_std_w = 0.0
+        elif self.geometry_profile != 'custom':
+            raise ValueError(f"Unsupported geometry_profile: {self.geometry_profile!r}")
 
         self.cmd_vel_topic = self.get_parameter('cmd_vel_topic').value
         self.use_stamped_cmd_vel = self.get_parameter('use_stamped_cmd_vel').value
@@ -151,6 +179,7 @@ class MockRoverSim(Node):
 
         # Publishers
         self.odom_pub = self.create_publisher(Odometry, '/odometry/filtered', 10)
+        self.truth_odom_pub = self.create_publisher(Odometry, '/testing/mock_rover/truth_odom', 10)
         self.marker_pub = self.create_publisher(MarkerArray, '/rover_marker', 10)
         self.rpm_pub = self.create_publisher(Float32MultiArray, '/rover/motor_rpm', 10)
         self.joint_pub = self.create_publisher(JointState, '/rover/joint_states', 10)
@@ -313,11 +342,16 @@ class MockRoverSim(Node):
             achieved_wz = (v_right_achieved - v_left_achieved) / self.track_width
 
         # 4. Realistic Terrain Interaction (Longitudinal & Rotational Slip + Sensor Noise)
-        slip_v_factor = max(0.0, 1.0 - self.slip_ratio_linear)
-        slip_w_factor = max(0.0, 1.0 - self.slip_ratio_angular)
+        slip_lin_ovr = float(self.get_parameter('slip_override_linear').value)
+        slip_ang_ovr = float(self.get_parameter('slip_override_angular').value)
+        eff_slip_v = slip_lin_ovr if slip_lin_ovr >= 0.0 else self.slip_ratio_linear
+        eff_slip_w = slip_ang_ovr if slip_ang_ovr >= 0.0 else self.slip_ratio_angular
 
-        noise_v = float(np.random.normal(0.0, self.noise_std_v)) if (abs(achieved_vx) > 0.01) else 0.0
-        noise_w = float(np.random.normal(0.0, self.noise_std_w)) if (abs(achieved_wz) > 0.01) else 0.0
+        slip_v_factor = max(0.0, 1.0 - eff_slip_v)
+        slip_w_factor = max(0.0, 1.0 - eff_slip_w)
+
+        noise_v = float(self._rng.normal(0.0, self.noise_std_v)) if (abs(achieved_vx) > 0.01 and self.noise_std_v > 0.0) else 0.0
+        noise_w = float(self._rng.normal(0.0, self.noise_std_w)) if (abs(achieved_wz) > 0.01 and self.noise_std_w > 0.0) else 0.0
 
         self.actual_vx = achieved_vx * slip_v_factor + noise_v
         self.actual_wz = achieved_wz * slip_w_factor + noise_w
@@ -337,7 +371,7 @@ class MockRoverSim(Node):
 
         qx, qy, qz, qw = euler_to_quaternion(0.0, 0.0, self.yaw)
 
-        # 6. Publish Odometry
+        # 6. Publish Odometry (truth stream always emits; /odometry/filtered honors freeze_odom)
         odom = Odometry()
         odom.header.stamp = current_time.to_msg()
         odom.header.frame_id = self.odom_frame
@@ -355,25 +389,28 @@ class MockRoverSim(Node):
         odom.twist.twist.linear.y = 0.0
         odom.twist.twist.angular.z = self.actual_wz
 
-        self.odom_pub.publish(odom)
+        self.truth_odom_pub.publish(odom)
+        if not bool(self.get_parameter('freeze_odom').value):
+            self.odom_pub.publish(odom)
 
         # 7. Publish Diagnostics (Motor RPM & JointStates)
         rpm_msg = Float32MultiArray()
         rpm_msg.data = [self.rpm_left, self.rpm_right]
         self.rpm_pub.publish(rpm_msg)
 
-        joint_msg = JointState()
-        joint_msg.header.stamp = current_time.to_msg()
-        joint_msg.name = ['left_wheel_joint', 'right_wheel_joint']
-        joint_msg.position = [self.wheel_pos_left, self.wheel_pos_right]
-        joint_msg.velocity = [
-            (self.rpm_left * 2.0 * math.pi) / 60.0,
-            (self.rpm_right * 2.0 * math.pi) / 60.0
-        ]
-        self.joint_pub.publish(joint_msg)
+        if not bool(self.get_parameter('drop_joints').value):
+            joint_msg = JointState()
+            joint_msg.header.stamp = current_time.to_msg()
+            joint_msg.name = ['left_wheel_joint', 'right_wheel_joint']
+            joint_msg.position = [self.wheel_pos_left, self.wheel_pos_right]
+            joint_msg.velocity = [
+                (self.rpm_left * 2.0 * math.pi) / 60.0,
+                (self.rpm_right * 2.0 * math.pi) / 60.0
+            ]
+            self.joint_pub.publish(joint_msg)
 
-        # 8. Broadcast Dynamic TF Transforms
-        if self.publish_tf:
+        # 8. Broadcast Dynamic TF Transforms (honors drop_tf fault flag)
+        if self.publish_tf and not bool(self.get_parameter('drop_tf').value):
             t_map_odom = TransformStamped()
             t_map_odom.header.stamp = current_time.to_msg()
             t_map_odom.header.frame_id = self.map_frame

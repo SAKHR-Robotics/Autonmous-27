@@ -1,5 +1,9 @@
 scenarios:
   - id: "empty_straight"
+    category: "positive_static"
+    expected_outcome: "PASS"
+    allow_unknown: false
+    footprint: [0.90, 0.70]
     map_image: "maps/empty_world.png"
     resolution: 0.05
     origin: [-5.0, -5.0]
@@ -17,8 +21,12 @@ scenarios:
       - [0.0, 0.0, 0.785]
       - [1.5, 1.5, 0.785]
       - [3.0, 3.0, 0.785]
-  
+
   - id: "scattered_rocks_detour"
+    category: "dynamic_replan"
+    expected_outcome: "PASS"
+    allow_unknown: false
+    footprint: [0.90, 0.70]
     map_image: "maps/scattered_rocks.png"
     resolution: 0.05
     origin: [-5.0, -5.0]
@@ -43,6 +51,10 @@ scenarios:
         radius: 0.4
 
   - id: "canyon_gate_passage"
+    category: "positive_static"
+    expected_outcome: "PASS"
+    allow_unknown: false
+    footprint: [0.90, 0.70]
     map_image: "maps/canyon_gate.png"
     resolution: 0.05
     origin: [-5.0, -5.0]
@@ -62,6 +74,10 @@ scenarios:
       - [0.0, 4.0, 1.57]
 
   - id: "marsyard_rough_slopes"
+    category: "positive_static"
+    expected_outcome: "PASS"
+    allow_unknown: false
+    footprint: [0.90, 0.70]
     map_image: "maps/marsyard_slopes.png"
     resolution: 0.05
     origin: [-5.0, -5.0]
@@ -81,6 +97,10 @@ scenarios:
       - [4.0, 4.0, 0.0]
 
   - id: "marsyard_labyrinth"
+    category: "positive_static"
+    expected_outcome: "PASS"
+    allow_unknown: false
+    footprint: [0.90, 0.70]
     map_image: "maps/marsyard_labyrinth.png"
     resolution: 0.05
     origin: [-5.0, -5.0]
@@ -103,6 +123,11 @@ scenarios:
       - [4.0, 4.0, 0.785]
 
   - id: "canyon_gate_blocked"
+    category: "dynamic_replan"
+    expected_outcome: "PASS"
+    post_obstacle_expected: "ABORTED"
+    allow_unknown: false
+    footprint: [0.90, 0.70]
     map_image: "maps/canyon_gate.png"
     resolution: 0.05
     origin: [-5.0, -5.0]
@@ -124,6 +149,10 @@ scenarios:
         radius: 1.5
 
   - id: "marsyard_snake_passage"
+    category: "positive_static"
+    expected_outcome: "PASS"
+    allow_unknown: false
+    footprint: [0.90, 0.70]
     map_image: "maps/snake_passage.png"
     resolution: 0.05
     origin: [-5.0, -5.0]
@@ -144,6 +173,10 @@ scenarios:
       - [4.0, 4.0, 0.785]
 
   - id: "dead_end_trap"
+    category: "positive_static"
+    expected_outcome: "PASS"
+    allow_unknown: false
+    footprint: [0.90, 0.70]
     map_image: "maps/dead_end_trap.png"
     resolution: 0.05
     origin: [-5.0, -5.0]
@@ -163,6 +196,10 @@ scenarios:
       - [0.0, 4.0, 3.14]
 
   - id: "crater_field"
+    category: "positive_static"
+    expected_outcome: "PASS"
+    allow_unknown: false
+    footprint: [0.90, 0.70]
     map_image: "maps/crater_field.png"
     resolution: 0.05
     origin: [-5.0, -5.0]
@@ -181,3 +218,87 @@ scenarios:
       - [0.0, -2.5, -0.3]
       - [2.5, 0.0, 0.8]
       - [4.0, 4.0, 0.785]
+
+  - id: "wide_passage_2_4m"
+    category: "positive_static"
+    expected_outcome: "PASS"
+    allow_unknown: false
+    footprint: [0.90, 0.70]
+    synthetic_barrier:
+      size_px: 240
+      resolution: 0.05
+      origin: [-6.0, -6.0]
+      gap_m: 2.4
+    resolution: 0.05
+    origin: [-6.0, -6.0]
+    start: [-3.0, -3.0]
+    goal: [3.0, -3.0]
+    reference_path:
+      - [-3.0, -3.0]
+      - [3.0, -3.0]
+
+  - id: "blocked_wall"
+    category: "negative_infeasible"
+    expected_outcome: "PASS"
+    allow_unknown: false
+    footprint: [0.90, 0.70]
+    synthetic_barrier:
+      size_px: 240
+      resolution: 0.05
+      origin: [-6.0, -6.0]
+      gap_m: 0.0
+    resolution: 0.05
+    origin: [-6.0, -6.0]
+    start: [-3.0, -3.0]
+    goal: [3.0, -3.0]
+
+  - id: "too_narrow_0_6m"
+    category: "negative_infeasible"
+    expected_outcome: "PASS"
+    allow_unknown: false
+    footprint: [0.90, 0.70]
+    synthetic_barrier:
+      size_px: 240
+      resolution: 0.05
+      origin: [-6.0, -6.0]
+      gap_m: 0.6
+    resolution: 0.05
+    origin: [-6.0, -6.0]
+    start: [-3.0, -3.0]
+    goal: [3.0, -3.0]
+
+  - id: "out_of_map_goal"
+    category: "negative_infeasible"
+    expected_outcome: "PASS"
+    allow_unknown: false
+    footprint: [0.90, 0.70]
+    map_image: "maps/empty_world.png"
+    resolution: 0.05
+    origin: [-5.0, -5.0]
+    start: [0.0, 0.0]
+    goal: [20.0, 20.0]
+
+  - id: "cancel_mid_run"
+    category: "safety_cancel"
+    expected_outcome: "PASS"
+    allow_unknown: false
+    footprint: [0.90, 0.70]
+    map_image: "maps/empty_world.png"
+    resolution: 0.05
+    origin: [-5.0, -5.0]
+    start: [-3.0, -3.0]
+    goal: [3.0, 3.0]
+    cancel_after_s: 0.5
+
+  - id: "stale_input_stop"
+    category: "safety_stale_input"
+    expected_outcome: "PASS"
+    allow_unknown: false
+    footprint: [0.90, 0.70]
+    map_image: "maps/empty_world.png"
+    resolution: 0.05
+    origin: [-5.0, -5.0]
+    start: [-3.0, -3.0]
+    goal: [3.0, 3.0]
+    fault_trigger_s: 0.5
+    fault_duration_s: 2.5

@@ -18,6 +18,7 @@ Supports:
 - Scenario loading from scenarios.yaml
 """
 
+import json
 import os
 import math
 import yaml
@@ -26,6 +27,7 @@ import numpy as np
 
 import rclpy
 from rclpy.node import Node
+from std_msgs.msg import Empty, String
 from geometry_msgs.msg import Point, PointStamped
 from sensor_msgs.msg import PointCloud2, PointField, LaserScan
 from visualization_msgs.msg import Marker, MarkerArray
@@ -45,6 +47,8 @@ class MockPerception(Node):
         self.declare_parameter('scan_frame_id', 'base_link')
         self.declare_parameter('publish_bridge_cloud', False)
         self.declare_parameter('publish_detections', False)
+        self.declare_parameter('freeze_perception', False)
+        self.declare_parameter('clear_default_obstacles', False)
 
         self.publish_rate = float(self.get_parameter('publish_rate').value)
         self.frame_id = self.get_parameter('frame_id').value
@@ -54,12 +58,15 @@ class MockPerception(Node):
         self.scan_frame_id = self.get_parameter('scan_frame_id').value
         self.publish_bridge_cloud = bool(self.get_parameter('publish_bridge_cloud').value)
 
-        # Initial default obstacles
-        self.obstacles = [
-            {'id': 1, 'x': 1.0, 'y': 1.0, 'z': 0.15, 'radius': 0.35, 'height': 0.4, 'class': 'rock', 'conf': 0.95},
-            {'id': 2, 'x': -1.5, 'y': 0.5, 'z': 0.10, 'radius': 0.25, 'height': 0.3, 'class': 'crater', 'conf': 0.90},
-            {'id': 3, 'x': 2.5, 'y': 2.0, 'z': 0.20, 'radius': 0.45, 'height': 0.5, 'class': 'boulder', 'conf': 0.98},
-        ]
+        # Initial default obstacles (can be suppressed via clear_default_obstacles)
+        if bool(self.get_parameter('clear_default_obstacles').value):
+            self.obstacles = []
+        else:
+            self.obstacles = [
+                {'id': 1, 'x': 1.0, 'y': 1.0, 'z': 0.15, 'radius': 0.35, 'height': 0.4, 'class': 'rock', 'conf': 0.95},
+                {'id': 2, 'x': -1.5, 'y': 0.5, 'z': 0.10, 'radius': 0.25, 'height': 0.3, 'class': 'crater', 'conf': 0.90},
+                {'id': 3, 'x': 2.5, 'y': 2.0, 'z': 0.20, 'radius': 0.45, 'height': 0.5, 'class': 'boulder', 'conf': 0.98},
+            ]
 
         # Scheduled dynamic obstacles from scenario
         self.pending_dynamic_obstacles = []
@@ -100,11 +107,23 @@ class MockPerception(Node):
             10
         )
 
-        # On-demand obstacle spawn subscriber
+        # On-demand obstacle spawn & reset subscribers
         self.spawn_sub = self.create_subscription(
             Point,
             '/mock_perception/spawn_obstacle',
             self.spawn_obstacle_callback,
+            10
+        )
+        self.spawn_full_sub = self.create_subscription(
+            String,
+            '/mock_perception/spawn_obstacle_full',
+            self.spawn_full_callback,
+            10
+        )
+        self.clear_sub = self.create_subscription(
+            Empty,
+            '/mock_perception/clear_obstacles',
+            self.clear_obstacles_callback,
             10
         )
         # RViz 'Publish Point' interactive obstacle spawner
@@ -125,13 +144,32 @@ class MockPerception(Node):
             f"Frame: {self.frame_id}, Scan Frame: {self.scan_frame_id}"
         )
 
+    def _resolve_scenarios_path(self):
+        if not self.scenarios_file:
+            return None
+        if os.path.exists(self.scenarios_file):
+            return self.scenarios_file
+        try:
+            from ament_index_python.packages import get_package_share_directory
+            for pkg in ('global_path_benchmarking', 'pathplanner_mock_tools'):
+                try:
+                    candidate = os.path.join(get_package_share_directory(pkg), self.scenarios_file)
+                    if os.path.exists(candidate):
+                        return candidate
+                except Exception:
+                    pass
+        except ImportError:
+            pass
+        return None
+
     def load_scenario_obstacles(self):
         """Loads dynamic obstacles from scenarios.yaml if matching scenario_id."""
-        if not self.scenario_id or not os.path.exists(self.scenarios_file):
+        resolved = self._resolve_scenarios_path() if self.scenario_id else None
+        if not self.scenario_id or not resolved:
             return
 
         try:
-            with open(self.scenarios_file, 'r') as f:
+            with open(resolved, 'r') as f:
                 data = yaml.safe_load(f)
                 scenarios = data.get('scenarios', [])
                 for s in scenarios:
@@ -172,8 +210,50 @@ class MockPerception(Node):
 
     def clicked_point_callback(self, msg: PointStamped):
         pt = Point(x=float(msg.point.x), y=float(msg.point.y), z=float(msg.point.z) if msg.point.z != 0.0 else 0.20)
-        self.get_logger().info(f"🖱️ Clicked point received from RViz at ({pt.x:.2f}, {pt.y:.2f})")
+        self.get_logger().info(f"Clicked point received from RViz at ({pt.x:.2f}, {pt.y:.2f})")
         self.spawn_obstacle_callback(pt)
+
+    def spawn_full_callback(self, msg: String):
+        try:
+            payload = json.loads(msg.data)
+        except Exception as exc:
+            self.get_logger().warn(f"Ignoring invalid spawn_obstacle_full JSON: {exc}")
+            return
+        new_id = len(self.obstacles) + 1
+        rad = float(payload.get('radius', 0.35))
+        height = float(payload.get('height', 0.45))
+        obs = {
+            'id': new_id,
+            'x': float(payload['x']),
+            'y': float(payload['y']),
+            'z': float(payload.get('z', height / 2.0)),
+            'radius': rad,
+            'height': height,
+            'class': str(payload.get('class', 'dynamic_hazard')),
+            'conf': 0.99,
+        }
+        self.obstacles.append(obs)
+        self.get_logger().info(f"Spawned obstacle #{new_id} at ({obs['x']:.2f}, {obs['y']:.2f}, r={rad:.2f})")
+
+    def clear_obstacles_callback(self, _msg: Empty):
+        self.obstacles = []
+        self.pending_dynamic_obstacles = []
+        self.start_time = self.get_clock().now()
+        markers = MarkerArray()
+        clear_marker = Marker()
+        clear_marker.header.stamp = self.start_time.to_msg()
+        clear_marker.header.frame_id = self.frame_id
+        clear_marker.action = Marker.DELETEALL
+        markers.markers.append(clear_marker)
+        self.marker_pub.publish(markers)
+        if self.detection_pub is not None:
+            empty_det = Detection3DArray()
+            empty_det.header = clear_marker.header
+            self.detection_pub.publish(empty_det)
+        empty_feat = ObstacleFeatureArray()
+        empty_feat.header = clear_marker.header
+        self.feature_pub.publish(empty_feat)
+        self.get_logger().info("Cleared all mock perception obstacles.")
 
     def check_dynamic_triggers(self, elapsed_sec: float):
         """Triggers scheduled obstacles based on elapsed scenario time."""
@@ -200,6 +280,8 @@ class MockPerception(Node):
                 )
 
     def publish_perception_data(self):
+        if bool(self.get_parameter('freeze_perception').value):
+            return
         current_time = self.get_clock().now()
         elapsed_sec = (current_time - self.start_time).nanoseconds * 1e-9
         self.check_dynamic_triggers(elapsed_sec)

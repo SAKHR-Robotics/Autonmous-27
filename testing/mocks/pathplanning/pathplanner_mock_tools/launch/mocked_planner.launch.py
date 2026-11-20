@@ -21,8 +21,14 @@ def setup(context):
                           param_rewrites={'observation_sources': 'obstacles'}, convert_types=True)
     target = os.path.join(production, 'launch', 'path_planning.launch.py')
     if LaunchConfiguration('use_external_module').perform(context).lower() == 'false':
-        target = os.path.join(get_package_share_directory(LaunchConfiguration('target_package').perform(context)),
-                              'launch', LaunchConfiguration('target_launch').perform(context))
+        target_pkg = LaunchConfiguration('target_package').perform(context)
+        target_launch = LaunchConfiguration('target_launch').perform(context)
+        target = os.path.join(get_package_share_directory(target_pkg), 'launch', target_launch)
+        if not os.path.isfile(target):
+            raise FileNotFoundError(
+                f"Target launch file not found: {target} (target_package={target_pkg}, target_launch={target_launch})"
+            )
+
     return [
         Node(package='rviz2', executable='rviz2', name='pathplanner_test_rviz',
              arguments=['-d', os.path.join(mock_share, 'rviz', 'mocked_planner.rviz')],
@@ -36,7 +42,10 @@ def setup(context):
                               'launch_rviz': 'false'}.items()),
         Node(package='pathplanner_mock_tools', executable='mock_rover_sim', name='mock_rover_sim',
              output='screen', condition=IfCondition(LaunchConfiguration('use_mock_rover')),
-             parameters=[{'use_sim_time': False, 'publish_tf': True,
+             parameters=[{
+                 'use_sim_time': False, 'publish_tf': True,
+                 'geometry_profile': LaunchConfiguration('geometry_profile'),
+                 'seed': ParameterValue(LaunchConfiguration('seed'), value_type=int),
                  'initial_x': ParameterValue(LaunchConfiguration('initial_x'), value_type=float),
                  'initial_y': ParameterValue(LaunchConfiguration('initial_y'), value_type=float),
                  'initial_yaw': ParameterValue(LaunchConfiguration('initial_yaw'), value_type=float),
@@ -47,19 +56,27 @@ def setup(context):
                  'noise_std_v': 0.0, 'noise_std_w': 0.0}]),
         Node(package='pathplanner_mock_tools', executable='mock_perception', name='mock_perception',
              output='screen', condition=IfCondition(LaunchConfiguration('use_mock_perception')),
-             parameters=[{'use_sim_time': False, 'publish_detections': True,
-                 'publish_bridge_cloud': False, 'scenario_id': LaunchConfiguration('scenario_id'),
+             parameters=[{
+                 'use_sim_time': False,
+                 'publish_detections': ParameterValue(LaunchConfiguration('publish_detections'), value_type=bool),
+                 'publish_bridge_cloud': False,
+                 'clear_default_obstacles': ParameterValue(LaunchConfiguration('clear_default_obstacles'), value_type=bool),
+                 'scenario_id': LaunchConfiguration('scenario_id'),
                  'scenarios_file': LaunchConfiguration('scenarios_file')}])]
 
 
 def generate_launch_description():
     share = get_package_share_directory('pathplanner_mock_tools')
-    defaults = {'map': os.path.join(share, 'custom_maps', 'dummy_map.yaml'),
+    defaults = {
+        'map': os.path.join(share, 'custom_maps', 'dummy_map.yaml'),
         'use_rviz': 'false', 'use_mock_rover': 'true', 'use_mock_perception': 'true',
         'use_costmap_bridge': 'true', 'use_external_module': 'false',
         'target_package': 'erc_path_planner', 'target_launch': 'path_planning.launch.py',
         'cmd_vel_topic': '/cmd_vel', 'control_mode': 'cmd_vel',
         'initial_x': '0.0', 'initial_y': '0.0', 'initial_yaw': '0.0',
-        'scenario_id': '', 'scenarios_file': ''}
+        'scenario_id': '', 'scenarios_file': '',
+        'geometry_profile': 'nav2_nominal', 'seed': '0',
+        'clear_default_obstacles': 'false', 'publish_detections': 'true',
+    }
     return LaunchDescription([DeclareLaunchArgument(k, default_value=v) for k, v in defaults.items()]
                              + [OpaqueFunction(function=setup)])
