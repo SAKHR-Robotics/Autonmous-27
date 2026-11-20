@@ -19,7 +19,7 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     pkg_share = get_package_share_directory('erc_path_planner')
-    default_map = os.path.join(pkg_share, 'config', 'dummy_map.yaml')
+    default_map = os.path.join(get_package_share_directory('pathplanner_mock_tools'), 'custom_maps', 'dummy_map.yaml')
 
     use_sim_time = LaunchConfiguration('use_sim_time')
     map_file = LaunchConfiguration('map')
@@ -64,10 +64,16 @@ def generate_launch_description():
             'map': map_file,
             'use_sim_time': use_sim_time,
             'autostart': 'true',
+            'odom_topic': LaunchConfiguration('odom_topic'),
+            'params_file': LaunchConfiguration('params_file'),
+            'launch_rviz': LaunchConfiguration('launch_rviz'),
         }.items()
     )
 
     return LaunchDescription([
+        DeclareLaunchArgument('odom_topic', default_value='/odom'),
+        DeclareLaunchArgument('params_file', default_value=os.path.join(pkg_share, 'config', 'nav2_params.yaml')),
+        DeclareLaunchArgument('launch_rviz', default_value='false'),
         declare_use_sim_time,
         declare_map,
         declare_publish_map_anchor,

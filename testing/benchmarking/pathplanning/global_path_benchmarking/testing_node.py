@@ -14,6 +14,7 @@ from PIL import Image
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
+from rclpy.qos import QoSProfile, DurabilityPolicy
 from nav_msgs.msg import OccupancyGrid, Path
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from visualization_msgs.msg import Marker, MarkerArray
@@ -42,15 +43,7 @@ from pathplanner_mock_tools.scene_assets import (
 
 # Helper function to kill old processes
 def clean_old_processes():
-    print("[INFO] Cleaning up stale ROS 2 processes...")
-    current_pid = str(os.getpid())
-    targets = ["path_planning.launch.py", "planner_server", "controller_server", "bt_navigator", "benchmarking_node", "mock_rover_sim", "mock_perception", "amcl", "map_server"]
-    for target in targets:
-        try:
-            subprocess.run(["pkill", "-f", "-9", target], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except Exception:
-            pass
-    time.sleep(1.0)
+    raise RuntimeError('--clean is disabled: stop only processes owned by your validation run')
 
 # Helper to generate maps if missing
 class TestingNode(Node):
@@ -64,8 +57,9 @@ class TestingNode(Node):
             
         # Publishers
         self.name_pub = self.create_publisher(String, "/test_name", 10)
-        self.costmap_pub = self.create_publisher(OccupancyGrid, "/global_costmap/costmap", 10)
-        self.std_map_pub = self.create_publisher(OccupancyGrid, "/map", 10)
+        self.costmap_pub = self.create_publisher(OccupancyGrid, "/testing/pathplanner/scenario_truth", 10)
+        self.std_map_pub = self.create_publisher(OccupancyGrid, "/map",
+            QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self.trav_pub = self.create_publisher(OccupancyGrid, "/traversability_map", 10)
         self.start_pub = self.create_publisher(PoseStamped, "/start_pose", 10)
         self.initialpose_pub = self.create_publisher(PoseWithCovarianceStamped, "/initialpose", 10)

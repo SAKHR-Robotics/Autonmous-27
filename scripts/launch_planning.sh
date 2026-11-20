@@ -18,9 +18,12 @@ WORKSPACE_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 if [ -z "$ROS_DISTRO" ]; then
     if [ -f "/opt/ros/jazzy/setup.bash" ]; then
         source /opt/ros/jazzy/setup.bash
-    elif [ -f "/opt/ros/humble/setup.bash" ]; then
-        source /opt/ros/humble/setup.bash
     fi
+fi
+
+if [ "${ROS_DISTRO:-}" != "jazzy" ]; then
+    echo "Run this launcher inside autonomous27:jazzy with the Jazzy overlay sourced." >&2
+    exit 1
 fi
 
 # Source workspace install
@@ -74,16 +77,16 @@ case "$NODE" in
         ;;
     planner)
         echo "📐 Starting Smac Planner Server only..."
-        ros2 run nav2_planner planner_server --ros-args --params-file "$WORKSPACE_ROOT/PathPlanning/erc_path_planner/config/nav2_params.yaml" -p use_sim_time:=true
+        ros2 launch erc_path_planner planner.launch.py use_sim_time:=true
         ;;
     controller)
         echo "🎮 Starting MPPI Controller Server only..."
-        ros2 run nav2_controller controller_server --ros-args --params-file "$WORKSPACE_ROOT/PathPlanning/erc_path_planner/config/nav2_params.yaml" -p use_sim_time:=true
+        ros2 launch erc_path_planner controller.launch.py use_sim_time:=true
         ;;
     full|*)
         if [ "$MODE" = "test" ]; then
             echo "🗺️ Launching Nav2 Stack in STANDALONE TESTING mode (dummy map)..."
-            ros2 launch erc_path_planner test_planner_standalone.launch.py use_sim_time:=true
+            ros2 launch pathplanner_mock_tools test_planner_standalone.launch.py use_sim_time:=true
         else
             echo "🗺️ Launching Nav2 Stack in PRODUCTION mode (RTAB-Map SLAM map)..."
             ros2 launch erc_path_planner path_planning.launch.py \

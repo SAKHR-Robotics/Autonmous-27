@@ -96,7 +96,7 @@ def launch_setup(context, *args, **kwargs):
 
     bridge_arguments = [
         '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
-        '/cmd_vel@geometry_msgs/msg/Twist@gz.msgs.Twist',
+        '/cmd_vel@geometry_msgs/msg/Twist]gz.msgs.Twist',
         '/odom@nav_msgs/msg/Odometry@gz.msgs.Odometry',
         '/imu@sensor_msgs/msg/Imu[gz.msgs.IMU',
         f'/world/{world_name}/model/my_robot/link/camera_link/sensor/camera/image@sensor_msgs/msg/Image[gz.msgs.Image',

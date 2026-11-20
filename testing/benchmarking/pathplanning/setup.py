@@ -27,6 +27,8 @@ setup(
         'console_scripts': [
             'benchmarking_node = global_path_benchmarking.benchmarking_node:main',
             'testing_node = global_path_benchmarking.testing_node:main',
+            'navigation_probe = global_path_benchmarking.navigation_probe:main',
+            'planner_map_probe = global_path_benchmarking.planner_map_probe:main',
             'mock_rover_sim = global_path_benchmarking.mock_rover_sim:main',
             'mock_perception = global_path_benchmarking.mock_perception:main',
             'drop_stone = global_path_benchmarking.drop_stone:main',

@@ -1,3 +1,5 @@
+> Historical design notes. Launch paths and findings below may be obsolete; use the current [PathPlanning guide](README.md) and validation record.
+
 # ERC Path Planning: Problems & Complete Solutions Guide (Prop&Solu)
 
 This document provides an exhaustive breakdown of every architectural, algorithmic, and configuration problem identified in the **ERC 2026 Path Planning Subsystem**, along with the exact, step-by-step engineering solutions to resolve them.
