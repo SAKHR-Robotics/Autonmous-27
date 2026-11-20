@@ -4,6 +4,7 @@ import os
 import sys
 import time
 import json
+import math
 import yaml
 import numpy as np
 import matplotlib.pyplot as plt
@@ -17,7 +18,11 @@ from std_msgs.msg import String, Float32
 # Import custom report generator functions
 from global_path_benchmarking.report_generator import (
     calculate_path_metrics,
+    costmap_array,
     calculate_control_metrics,
+    format_metric,
+    is_number,
+    record_outcome,
     generate_html_report,
     generate_pdf_report,
     generate_csv_report
@@ -139,11 +144,10 @@ class BenchmarkingNode(Node):
             self.odom_history = []
 
     def map_callback(self, msg):
-        self.costmap = msg
-        width = msg.info.width
-        height = msg.info.height
-        self.cost_arr = np.array(msg.data, dtype=np.int8).reshape((height, width))
-        self.get_logger().debug("Received Costmap updated.")
+        self.cost_arr = costmap_array(msg)
+        self.costmap = msg if self.cost_arr is not None else None
+        if self.costmap is None:
+            self.get_logger().warning('Costmap unavailable or unsupported; safety metrics are unavailable')
 
     def start_callback(self, msg):
         self.start_pose = msg
@@ -159,11 +163,17 @@ class BenchmarkingNode(Node):
 
     def odom_callback(self, msg: Odometry):
         t_sec = self.get_clock().now().nanoseconds * 1e-9
+        q = msg.pose.pose.orientation
+        norm = math.hypot(q.x, q.y, q.z, q.w)
+        yaw = float('nan')
+        if math.isfinite(norm) and norm > 0:
+            x, y, z, w = q.x / norm, q.y / norm, q.z / norm, q.w / norm
+            yaw = math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
         self.odom_history.append((
             t_sec,
             msg.pose.pose.position.x,
             msg.pose.pose.position.y,
-            0.0,
+            yaw,
             msg.twist.twist.linear.x,
             msg.twist.twist.angular.z
         ))
@@ -178,12 +188,15 @@ class BenchmarkingNode(Node):
         elif self.roundtrip_start_time is not None:
             comp_time = (self.get_clock().now() - self.roundtrip_start_time).nanoseconds / 1e9
         else:
-            comp_time = 0.0
+            comp_time = None
             
+        if not is_number(comp_time) or comp_time < 0:
+            comp_time = None
+
         # Reset internal planner timer for the next run
         self.planner_internal_time = 0.0
 
-        self.get_logger().info(f"Received Planned Path. Compilation/Planning Time: {comp_time:.4f}s")
+        self.get_logger().info(f"Received Planned Path. Compilation/Planning Time: {format_metric(comp_time, '.4f')}s")
         
         # Find if current test matches a defined scenario
         scenario = next((s for s in self.scenarios if s["id"] == self.test_name), None)
@@ -196,6 +209,7 @@ class BenchmarkingNode(Node):
             "timestamp": time.strftime('%Y-%m-%d %H:%M:%S'),
             "test_name": self.test_name,
             "success": eval_res["success"],
+            "outcome": 'FAIL' if eval_res['success'] is False else 'INCOMPLETE',
             "planning_time_s": comp_time,
             "path_length_m": eval_res["length"],
             "blocked_cells": eval_res["blocked_cells"],
@@ -241,25 +255,20 @@ class BenchmarkingNode(Node):
         self.process_scenario_results(scenario)
 
     def evaluate_path(self, path, scenario):
-        if not path or len(path.poses) == 0:
-            return {
-                "success": False,
-                "length": 0.0,
-                "blocked_cells": 100,
-                "avg_cost": 100.0,
-                "safety_margin": 0.0,
-                "min_angle": 0.0, "max_angle": 0.0, "avg_angle": 0.0,
-                "min_radius": 0.0, "max_radius": 0.0, "avg_radius": 0.0,
-                "total_cost": 0.0, "ratio": 1.0
-            }
-            
-        coords = []
-        for pose_stamped in path.poses:
-            coords.append((pose_stamped.pose.position.x, pose_stamped.pose.position.y))
-            
-        # Calculate base geometric metrics using report_generator
+        coords = [(p.pose.position.x, p.pose.position.y) for p in path.poses] if path else []
         res = calculate_path_metrics(coords, self.start_pose, self.goal_pose, self.costmap)
-        
+        res['blocked_cells'] = None
+        res['safety_margin'] = res['nearest_obstacle']
+        if not res['success']:
+            return res
+        if (self.costmap is None or self.cost_arr is None
+                or path.header.frame_id != self.costmap.header.frame_id
+                or any(pose is not None and pose.header.frame_id != path.header.frame_id
+                       for pose in (self.start_pose, self.goal_pose))):
+            res.update(success=None, nearest_obstacle=None, safety_margin=None,
+                       avg_cost=None, total_cost=None)
+            return res
+
         # Calculate blocked cells using scenario robot radius
         robot_radius = scenario.get("robot_radius", 0.3) if scenario else 0.3
         blocked_cells = 0
@@ -281,22 +290,22 @@ class BenchmarkingNode(Node):
                         
         res["blocked_cells"] = blocked_cells
         res["safety_margin"] = res["nearest_obstacle"]
-        res["success"] = True
+        res["success"] = res["success"] and blocked_cells == 0
         return res
 
     def print_general_metrics(self, metrics, compilation_time):
         print("\n================ MANUAL RUN PATH METRICS ================")
         print(f"Test Name:       {self.test_name}")
-        print(f"Status:          {'SUCCESS' if metrics['success'] else 'FAILED'}")
-        print(f"Planning Time:   {compilation_time:.4f} s")
-        print(f"Path Length:     {metrics['length']:.2f} m")
-        print(f"Euclidean Ratio: {metrics['ratio']:.3f}")
-        print(f"Turn Angles:     Min: {metrics['min_angle']:.1f}° | Max: {metrics['max_angle']:.1f}° | Avg: {metrics['avg_angle']:.1f}°")
-        print(f"Turn Radii:      Min: {metrics['min_radius']:.2f} m | Max: {metrics['max_radius']:.2f} m | Avg: {metrics['avg_radius']:.2f} m")
+        print(f"Status:          {record_outcome(metrics)}")
+        print(f"Planning Time:   {format_metric(compilation_time, '.4f')} s")
+        print(f"Path Length:     {format_metric(metrics['length'], '.2f')} m")
+        print(f"Euclidean Ratio: {format_metric(metrics['ratio'], '.3f')}")
+        print(f"Turn Angles:     Min: {format_metric(metrics['min_angle'], '.1f')}° | Max: {format_metric(metrics['max_angle'], '.1f')}° | Avg: {format_metric(metrics['avg_angle'], '.1f')}°")
+        print(f"Turn Radii:      Min: {format_metric(metrics['min_radius'], '.2f')} m | Max: {format_metric(metrics['max_radius'], '.2f')} m | Avg: {format_metric(metrics['avg_radius'], '.2f')} m")
         print(f"Blocked Cells:   {metrics['blocked_cells']}")
-        print(f"Average Cost:    {metrics['avg_cost']:.1f}")
-        print(f"Total Cost:      {metrics['total_cost']:.1f}")
-        print(f"Safety Margin:   {metrics['safety_margin']:.2f} m")
+        print(f"Average Cost:    {format_metric(metrics['avg_cost'], '.1f')}")
+        print(f"Total Cost:      {format_metric(metrics['total_cost'], '.1f')}")
+        print(f"Safety Margin:   {format_metric(metrics['safety_margin'], '.2f')} m")
         print("=========================================================\n")
 
     def process_scenario_results(self, scenario):
@@ -305,60 +314,64 @@ class BenchmarkingNode(Node):
         
         ratio = eval_res["ratio"]
         
-        # Replanning Success calculation
-        replan_success_val = 0.0
-        replan_path_coords = []
+        s_time = s_cost = s_length = s_obstacle = s_replan = planner_score = None
+        planner_evidence = (eval_res['success'] is True and is_number(plan_time)
+                            and plan_time >= 0 and is_number(ratio) and is_number(eval_res['avg_cost']))
+        if planner_evidence:
+            # Replanning Success calculation
+            replan_success_val = 0.0
+            replan_path_coords = []
         
-        dyn_obs = scenario.get("dynamic_obstacles", [])
-        if len(dyn_obs) > 0:
-            if self.replan_eval and self.replan_eval["success"] and self.replan_eval["blocked_cells"] == 0 and self.replan_time <= self.limits["timeout_planning_time"]:
-                replan_success_val = 100.0
-                replan_path_coords = [(p[0], p[1]) for p in self.replan_eval.get("coords", [])] if "coords" in self.replan_eval else []
+            dyn_obs = scenario.get("dynamic_obstacles", [])
+            if len(dyn_obs) > 0:
+                if self.replan_eval and self.replan_eval["success"] and self.replan_eval["blocked_cells"] == 0 and is_number(self.replan_time) and self.replan_time <= self.limits["timeout_planning_time"]:
+                    replan_success_val = 100.0
+                    replan_path_coords = [(p[0], p[1]) for p in self.replan_eval.get("coords", [])] if "coords" in self.replan_eval else []
+                else:
+                    replan_success_val = 0.0
             else:
-                replan_success_val = 0.0
-        else:
-            if eval_res["success"] and eval_res["blocked_cells"] == 0:
-                replan_success_val = 100.0
+                if eval_res["success"] and eval_res["blocked_cells"] == 0:
+                    replan_success_val = 100.0
                 
-        # Scores formulas based on config limits
-        s_success = 100.0 if eval_res["success"] else 0.0
+            # Scores formulas based on config limits
+            s_success = 100.0 if eval_res["success"] else 0.0
         
-        # S_time
-        t_target = self.limits["target_planning_time"]
-        t_timeout = self.limits["timeout_planning_time"]
-        if plan_time <= t_target:
-            s_time = 100.0
-        elif plan_time >= t_timeout:
-            s_time = 0.0
-        else:
-            s_time = 100.0 * (1.0 - (plan_time - t_target) / (t_timeout - t_target))
+            # S_time
+            t_target = self.limits["target_planning_time"]
+            t_timeout = self.limits["timeout_planning_time"]
+            if plan_time <= t_target:
+                s_time = 100.0
+            elif plan_time >= t_timeout:
+                s_time = 0.0
+            else:
+                s_time = 100.0 * (1.0 - (plan_time - t_target) / (t_timeout - t_target))
             
-        # S_obstacle
-        s_obstacle = 100.0 if (eval_res["blocked_cells"] == 0 and s_success == 100.0) else 0.0
+            # S_obstacle
+            s_obstacle = 100.0 if (eval_res["blocked_cells"] == 0 and s_success == 100.0) else 0.0
         
-        # S_cost
-        s_cost = max(0.0, 100.0 - eval_res["avg_cost"])
+            # S_cost
+            s_cost = max(0.0, 100.0 - eval_res["avg_cost"])
         
-        # S_length
-        len_limit = self.limits["target_length_ratio"]
-        if ratio <= 1.0:
-            s_length = 100.0
-        elif ratio >= len_limit:
-            s_length = 0.0
-        else:
-            s_length = 100.0 * (1.0 - (ratio - 1.0) / (len_limit - 1.0))
+            # S_length
+            len_limit = self.limits["target_length_ratio"]
+            if ratio <= 1.0:
+                s_length = 100.0
+            elif ratio >= len_limit:
+                s_length = 0.0
+            else:
+                s_length = 100.0 * (1.0 - (ratio - 1.0) / (len_limit - 1.0))
             
-        # S_replan
-        s_replan = replan_success_val
+            # S_replan
+            s_replan = replan_success_val
         
-        # Compute final weighted Path Planning Score
-        w = self.weights
-        planner_score = (w["success"] * s_success + 
-                         w["time"] * s_time + 
-                         w["obstacle"] * s_obstacle + 
-                         w["cost"] * s_cost + 
-                         w["length"] * s_length + 
-                         w["replan"] * s_replan)
+            # Compute final weighted Path Planning Score
+            w = self.weights
+            planner_score = (w["success"] * s_success +
+                             w["time"] * s_time +
+                             w["obstacle"] * s_obstacle +
+                             w["cost"] * s_cost +
+                             w["length"] * s_length +
+                             w["replan"] * s_replan)
 
         # Plan coordinates
         plan_coords = eval_res.get("coords", [])
@@ -369,8 +382,13 @@ class BenchmarkingNode(Node):
         controller_score = ctrl_res["controller_score"]
         
         # Combined Overall System Score (50% Planning + 50% Control)
-        overall_score = 0.50 * planner_score + 0.50 * controller_score
-        outcome = "PASS" if overall_score >= self.pass_threshold else "FAIL"
+        overall_score = None
+        if is_number(planner_score) and is_number(controller_score):
+            overall_score = 0.50 * planner_score + 0.50 * controller_score
+        invalid_path = (eval_res['success'] is False or
+                        (self.replan_eval is not None and self.replan_eval['success'] is False))
+        outcome = ('FAIL' if invalid_path else 'INCOMPLETE' if overall_score is None
+                   else 'PASS' if overall_score >= self.pass_threshold else 'FAIL')
         
         scenario_res = {
             "id": scenario["id"],
@@ -391,6 +409,7 @@ class BenchmarkingNode(Node):
             # Scores
             "planner_score": planner_score,
             "controller_score": controller_score,
+            "controller_execution_complete": False,
             "final_score": overall_score,
             "outcome": outcome,
             
@@ -415,9 +434,9 @@ class BenchmarkingNode(Node):
             "angular_jerk_std": ctrl_res["angular_jerk_std"],
             "cmd_freq_hz": ctrl_res["cmd_freq_hz"],
             "goal_accuracy_m": ctrl_res["goal_accuracy_m"],
-            "control_effort": ctrl_res.get("control_effort", 0.0),
-            "steering_reversals": ctrl_res.get("steering_reversals", 0),
-            "heading_rmse_deg": ctrl_res.get("heading_rmse_deg", 0.0)
+            "control_effort": ctrl_res.get("control_effort"),
+            "steering_reversals": ctrl_res.get("steering_reversals"),
+            "heading_rmse_deg": ctrl_res.get("heading_rmse_deg")
         }
         
         # Save temp JSON
@@ -425,37 +444,37 @@ class BenchmarkingNode(Node):
         temp_file = f"reports/temp_{scenario['id']}.json"
         try:
             with open(temp_file, "w") as f:
-                json.dump(scenario_res, f, indent=4)
+                json.dump(scenario_res, f, indent=4, allow_nan=False)
             self.get_logger().info(f"Saved temp scenario results to {temp_file}")
         except Exception as e:
             self.get_logger().error(f"Failed to save temp results: {e}")
             
         # Print Scenario Summary
         print(f"\n================ SCENARIO RESULTS: {scenario['id']} ================")
-        print(f"Status:             {'SUCCESS' if eval_res['success'] else 'FAILED'}")
+        print(f"Status:             {outcome}")
         print(f"\n--- 🗺️  GLOBAL PLANNER (Smac Hybrid A*) ---")
-        print(f"Planning Time:      {plan_time:.3f} s  (Score: {s_time:.1f}/100)")
-        print(f"Path Length:        {eval_res['length']:.2f} m  (Ratio: {ratio:.2f}, Score: {s_length:.1f}/100)")
-        print(f"Turn Angles:        Min: {eval_res['min_angle']:.1f}° | Max: {eval_res['max_angle']:.1f}° | Avg: {eval_res['avg_angle']:.1f}°")
-        print(f"Turn Radii:         Min: {eval_res['min_radius']:.2f} m | Max: {eval_res['max_radius']:.2f} m | Avg: {eval_res['avg_radius']:.2f} m")
-        print(f"Blocked Cells:      {eval_res['blocked_cells']}  (Score: {s_obstacle:.1f}/100)")
-        print(f"Average Path Cost:  {eval_res['avg_cost']:.1f}  (Score: {s_cost:.1f}/100)")
-        print(f"Total Path Cost:    {eval_res['total_cost']:.1f}")
-        print(f"Safety Margin:      {eval_res['safety_margin']:.2f} m")
-        print(f"Replanning:         Score: {s_replan:.1f}/100 (Time: {self.replan_time:.3f} s)")
-        print(f"PLANNER SCORE:      {planner_score:.2f} / 100")
+        print(f"Planning Time:      {format_metric(plan_time, '.3f')} s  (Score: {format_metric(s_time, '.1f')}/100)")
+        print(f"Path Length:        {format_metric(eval_res['length'], '.2f')} m  (Ratio: {format_metric(ratio, '.2f')}, Score: {format_metric(s_length, '.1f')}/100)")
+        print(f"Turn Angles:        Min: {format_metric(eval_res['min_angle'], '.1f')}° | Max: {format_metric(eval_res['max_angle'], '.1f')}° | Avg: {format_metric(eval_res['avg_angle'], '.1f')}°")
+        print(f"Turn Radii:         Min: {format_metric(eval_res['min_radius'], '.2f')} m | Max: {format_metric(eval_res['max_radius'], '.2f')} m | Avg: {format_metric(eval_res['avg_radius'], '.2f')} m")
+        print(f"Blocked Cells:      {eval_res['blocked_cells']}  (Score: {format_metric(s_obstacle, '.1f')}/100)")
+        print(f"Average Path Cost:  {format_metric(eval_res['avg_cost'], '.1f')}  (Score: {format_metric(s_cost, '.1f')}/100)")
+        print(f"Total Path Cost:    {format_metric(eval_res['total_cost'], '.1f')}")
+        print(f"Safety Margin:      {format_metric(eval_res['safety_margin'], '.2f')} m")
+        print(f"Replanning:         Score: {format_metric(s_replan, '.1f')}/100 (Time: {format_metric(self.replan_time, '.3f')} s)")
+        print(f"PLANNER SCORE:      {format_metric(planner_score, '.2f')} / 100")
         print(f"\n--- 🎮 LOCAL CONTROLLER (MPPI) ---")
-        print(f"Cross-Track Error:  Mean: {ctrl_res['mean_cte']:.3f} m | Max: {ctrl_res['max_cte']:.3f} m | RMS: {ctrl_res['rms_cte']:.3f} m")
-        print(f"Velocity Profile:   Linear: Mean {ctrl_res['mean_linear_vel']:.2f} m/s, Max {ctrl_res['max_linear_vel']:.2f} m/s | Angular: Mean {ctrl_res['mean_angular_vel']:.2f} rad/s, Max {ctrl_res['max_angular_vel']:.2f} rad/s")
-        print(f"Control Stability:  Lin Jerk: {ctrl_res['linear_jerk_std']:.2f} m/s² | Ang Jerk: {ctrl_res['angular_jerk_std']:.2f} rad/s²")
-        print(f"Command Rate:       {ctrl_res['cmd_freq_hz']:.1f} Hz")
-        print(f"Goal Accuracy:      {ctrl_res['goal_accuracy_m']:.3f} m error")
-        print(f"Control Effort:     {ctrl_res.get('control_effort', 0.0):.2f} (J_u integral)")
-        print(f"Steering Chatter:   {ctrl_res.get('steering_reversals', 0)} reversals")
-        print(f"Heading RMSE:       {ctrl_res.get('heading_rmse_deg', 0.0):.2f}°")
-        print(f"CONTROLLER SCORE:   {controller_score:.2f} / 100")
+        print(f"Cross-Track Error:  Mean: {format_metric(ctrl_res['mean_cte'], '.3f')} m | Max: {format_metric(ctrl_res['max_cte'], '.3f')} m | RMS: {format_metric(ctrl_res['rms_cte'], '.3f')} m")
+        print(f"Velocity Profile:   Linear: Mean {format_metric(ctrl_res['mean_linear_vel'], '.2f')} m/s, Max {format_metric(ctrl_res['max_linear_vel'], '.2f')} m/s | Angular: Mean {format_metric(ctrl_res['mean_angular_vel'], '.2f')} rad/s, Max {format_metric(ctrl_res['max_angular_vel'], '.2f')} rad/s")
+        print(f"Control Stability:  Lin Accel Std: {format_metric(ctrl_res['linear_jerk_std'], '.2f')} m/s² | Ang Accel Std: {format_metric(ctrl_res['angular_jerk_std'], '.2f')} rad/s²")
+        print(f"Command Rate:       {format_metric(ctrl_res['cmd_freq_hz'], '.1f')} Hz")
+        print(f"Last Goal Distance:      {format_metric(ctrl_res['goal_accuracy_m'], '.3f')} m error")
+        print(f"Control Effort:     {format_metric(ctrl_res.get('control_effort'), '.2f')} (J_u integral)")
+        print(f"Steering Chatter:   {ctrl_res.get('steering_reversals')} reversals")
+        print(f"Heading RMSE:       {format_metric(ctrl_res.get('heading_rmse_deg'), '.2f')}°")
+        print(f"CONTROLLER SCORE:   {format_metric(controller_score, '.2f')} / 100")
         print(f"-----------------------------------------------------")
-        print(f"COMBINED SYSTEM SCORE: {overall_score:.2f} / 100")
+        print(f"COMBINED SYSTEM SCORE: {format_metric(overall_score, '.2f')} / 100")
         print(f"FINAL OUTCOME:         {outcome} (Required: >= {self.pass_threshold}/100)")
         print(f"=====================================================\n")
         
@@ -463,7 +482,7 @@ class BenchmarkingNode(Node):
         plan_coords = []
         if "coords" in eval_res:
             plan_coords = eval_res["coords"]
-        self.generate_comparison_plot(scenario, plan_coords, replan_path_coords, final_score, scenario_res)
+        self.generate_comparison_plot(scenario, plan_coords, replan_path_coords, overall_score, scenario_res)
 
     def generate_comparison_plot(self, scenario, plan_coords, replan_coords, score, metrics):
         map_image = scenario["map_image"]
@@ -520,12 +539,12 @@ class BenchmarkingNode(Node):
             # Display scores box
             outcome = metrics.get("outcome", "FAIL")
             text_box = (
-                f"Score: {score:.1f} / 100\n"
+                f"Score: {format_metric(score, '.1f')} / 100\n"
                 f"Outcome: {outcome}\n"
-                f"Success: {'YES' if metrics['success'] else 'NO'}\n"
-                f"Time: {metrics['planning_time_s']:.3f} s\n"
-                f"Length Ratio: {metrics['length_ratio']:.2f}\n"
-                f"Safety Margin: {metrics['safety_margin_m']:.2f} m\n"
+                f"Success: {'YES' if metrics['success'] is True else 'NO' if metrics['success'] is False else 'N/A'}\n"
+                f"Time: {format_metric(metrics['planning_time_s'], '.3f')} s\n"
+                f"Length Ratio: {format_metric(metrics['length_ratio'], '.2f')}\n"
+                f"Safety Margin: {format_metric(metrics['safety_margin_m'], '.2f')} m\n"
                 f"Blocked Cells: {metrics['blocked_cells']}"
             )
             bg_color = '#d4edda' if outcome == 'PASS' else '#f8d7da'
@@ -572,22 +591,28 @@ class BenchmarkingNode(Node):
             
             # 1. Generate CSV
             try:
-                generate_csv_report(runs, csv_path)
-                print(f"[INFO] [benchmarking_node]: Successfully generated CSV report at: {csv_path}")
+                if generate_csv_report(runs, csv_path):
+                    print(f"[INFO] [benchmarking_node]: Successfully generated CSV report at: {csv_path}")
+                else:
+                    print("[WARN] [benchmarking_node]: CSV report unavailable or export failed")
             except Exception as e:
                 print(f"[ERROR] [benchmarking_node]: Failed to generate CSV report for {safe_name}: {e}")
                 
             # 2. Generate HTML
             try:
-                generate_html_report(runs, html_path)
-                print(f"[INFO] [benchmarking_node]: Successfully generated HTML report at: {html_path}")
+                if generate_html_report(runs, html_path):
+                    print(f"[INFO] [benchmarking_node]: Successfully generated HTML report at: {html_path}")
+                else:
+                    print("[WARN] [benchmarking_node]: HTML report unavailable or export failed")
             except Exception as e:
                 print(f"[ERROR] [benchmarking_node]: Failed to generate HTML report for {safe_name}: {e}")
 
             # 3. Generate PDF
             try:
-                generate_pdf_report(runs, pdf_path)
-                print(f"[INFO] [benchmarking_node]: Successfully generated PDF report at: {pdf_path}")
+                if generate_pdf_report(runs, pdf_path):
+                    print(f"[INFO] [benchmarking_node]: Successfully generated PDF report at: {pdf_path}")
+                else:
+                    print("[WARN] [benchmarking_node]: PDF report unavailable or export failed")
             except Exception as e:
                 print(f"[ERROR] [benchmarking_node]: Failed to generate PDF report for {safe_name}: {e}")
 
