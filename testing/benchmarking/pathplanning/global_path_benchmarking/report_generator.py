@@ -30,22 +30,32 @@ def calculate_path_metrics(coords, start_pose=None, goal_pose=None, costmap=None
     """
     default_metrics = {
         "success": False,
-        "length": 0.0,
-        "euclidean_dist": 0.0,
-        "ratio": 1.0,
-        "min_angle": 0.0,
-        "max_angle": 0.0,
-        "avg_angle": 0.0,
-        "min_radius": 0.0,
-        "max_radius": 0.0,
-        "avg_radius": 0.0,
-        "nearest_obstacle": 10.0,
-        "total_cost": 0.0,
-        "avg_cost": 0.0
+        "length": None,
+        "euclidean_dist": None,
+        "ratio": None,
+        "min_angle": None,
+        "max_angle": None,
+        "avg_angle": None,
+        "min_radius": None,
+        "max_radius": None,
+        "avg_radius": None,
+        "nearest_obstacle": None,
+        "total_cost": None,
+        "avg_cost": None
     }
 
     if not coords or len(coords) < 2:
         return default_metrics
+
+    # Validate finite coordinates
+    for p in coords:
+        if not (math.isfinite(p[0]) and math.isfinite(p[1])):
+            return default_metrics
+
+    for endpoint in (start_pose, goal_pose):
+        if endpoint is not None and not all(math.isfinite(value) for value in
+                (endpoint.pose.position.x, endpoint.pose.position.y)):
+            return default_metrics
 
     # 2. Distance covered (Path length)
     length = 0.0
@@ -123,16 +133,17 @@ def calculate_path_metrics(coords, start_pose=None, goal_pose=None, costmap=None
         min_radius, max_radius, avg_radius = 0.0, 0.0, 0.0
 
     # 5. Nearest distance to obstacle & Path cost
-    nearest_obstacle = 10.0  # Default safe clearance fallback
-    total_cost = 0.0
+    nearest_obstacle = None  # None if costmap is unavailable
+    total_cost = None
 
-    if costmap is not None:
+    cost_arr = costmap_array(costmap)
+    if cost_arr is not None:
+        total_cost = 0.0
         resolution = costmap.info.resolution
         origin_x = costmap.info.origin.position.x
         origin_y = costmap.info.origin.position.y
         width = costmap.info.width
         height = costmap.info.height
-        cost_arr = np.array(costmap.data, dtype=np.int8).reshape((height, width))
 
         # Find all obstacle coordinates (cost >= 100)
         obs_y_indices, obs_x_indices = np.where(cost_arr >= 100)
@@ -163,10 +174,11 @@ def calculate_path_metrics(coords, start_pose=None, goal_pose=None, costmap=None
         if min_obs_dist != float('inf'):
             nearest_obstacle = min_obs_dist
 
-    avg_cost = total_cost / len(coords) if len(coords) > 0 else 0.0
+    avg_cost = total_cost / len(coords) if total_cost is not None else None
 
     return {
         "success": True,
+        "coords": coords,
         "length": length,
         "euclidean_dist": euclidean_dist,
         "ratio": ratio,
@@ -181,7 +193,8 @@ def calculate_path_metrics(coords, start_pose=None, goal_pose=None, costmap=None
         "avg_cost": avg_cost
     }
 
-def calculate_control_metrics(cmd_history, odom_history, planned_coords, goal_pose=None):
+def calculate_control_metrics(cmd_history, odom_history, planned_coords, goal_pose=None,
+                              *, execution_complete=False):
     """
     Computes MPPI Controller tracking, stability, and kinematic control metrics:
     - Cross-Track Error (CTE): Mean, Max, RMS (distance to planned reference path)
@@ -191,26 +204,22 @@ def calculate_control_metrics(cmd_history, odom_history, planned_coords, goal_po
     - Goal Arrival Accuracy: Euclidean error to goal (meters)
     - Controller Score: Weighted score (0-100)
     """
-    default_ctrl = {
-        "mean_cte": 0.0,
-        "max_cte": 0.0,
-        "rms_cte": 0.0,
-        "mean_linear_vel": 0.0,
-        "max_linear_vel": 0.0,
-        "mean_angular_vel": 0.0,
-        "max_angular_vel": 0.0,
-        "linear_jerk_std": 0.0,
-        "angular_jerk_std": 0.0,
-        "cmd_freq_hz": 20.0,
-        "goal_accuracy_m": 0.05,
-        "control_effort": 0.0,
-        "steering_reversals": 0,
-        "heading_rmse_deg": 0.0,
-        "controller_score": 95.0
-    }
+    def valid_history(rows, width):
+        return (all(len(row) == width and all(math.isfinite(value) for value in row)
+                    for row in rows)
+                and all(b[0] > a[0] for a, b in zip(rows, rows[1:])))
 
-    if not cmd_history and not odom_history:
-        return default_ctrl
+    # Reject corrupted streams rather than mixing them into an apparently good score.
+    if not valid_history(cmd_history, 4):
+        cmd_history = []
+    if not valid_history(odom_history, 6):
+        odom_history = []
+    if (len(planned_coords) < 2 or
+            not all(all(math.isfinite(value) for value in point) for point in planned_coords)):
+        planned_coords = []
+    if goal_pose is not None and not all(math.isfinite(value) for value in
+            (goal_pose.pose.position.x, goal_pose.pose.position.y)):
+        goal_pose = None
 
     # 1. Velocity Profiles from cmd_history [(t, vx, vy, wz), ...]
     linear_vels = []
@@ -227,33 +236,33 @@ def calculate_control_metrics(cmd_history, odom_history, planned_coords, goal_po
         mean_vx = float(np.mean(linear_vels))
         max_vx = float(np.max(linear_vels))
     else:
-        mean_vx, max_vx = 0.45, 0.85
+        mean_vx, max_vx = None, None
 
     if angular_vels:
         mean_wz = float(np.mean(angular_vels))
         max_wz = float(np.max(angular_vels))
     else:
-        mean_wz, max_wz = 0.15, 0.65
+        mean_wz, max_wz = None, None
 
     # Command frequency
-    if len(cmd_times) >= 2 and (cmd_times[-1] - cmd_times[0]) > 0.1:
-        cmd_freq_hz = len(cmd_times) / (cmd_times[-1] - cmd_times[0])
+    if len(cmd_times) >= 2:
+        cmd_freq_hz = (len(cmd_times) - 1) / (cmd_times[-1] - cmd_times[0])
     else:
-        cmd_freq_hz = 20.0
+        cmd_freq_hz = None
 
     # Acceleration Jerk / Smoothness
     lin_accels = []
     ang_accels = []
     for i in range(len(cmd_history) - 1):
         dt = cmd_history[i+1][0] - cmd_history[i][0]
-        if dt > 1e-4:
+        if dt > 0:
             dv = (cmd_history[i+1][1] - cmd_history[i][1]) / dt
             dw = (cmd_history[i+1][3] - cmd_history[i][3]) / dt
             lin_accels.append(dv)
             ang_accels.append(dw)
 
-    lin_jerk_std = float(np.std(lin_accels)) if len(lin_accels) > 1 else 0.12
-    ang_jerk_std = float(np.std(ang_accels)) if len(ang_accels) > 1 else 0.25
+    lin_jerk_std = float(np.std(lin_accels)) if len(lin_accels) > 1 else None
+    ang_jerk_std = float(np.std(ang_accels)) if len(ang_accels) > 1 else None
 
     # 2. Cross-Track Error (CTE) from odom_history [(t, x, y, yaw, vx, wz), ...]
     cte_list = []
@@ -285,10 +294,10 @@ def calculate_control_metrics(cmd_history, odom_history, planned_coords, goal_po
         max_cte = float(np.max(cte_list))
         rms_cte = float(np.sqrt(np.mean(np.array(cte_list)**2)))
     else:
-        mean_cte, max_cte, rms_cte = 0.06, 0.14, 0.08
+        mean_cte, max_cte, rms_cte = None, None, None
 
     # 3. Goal Arrival Accuracy
-    goal_acc = 0.08
+    goal_acc = None
     if odom_history and goal_pose is not None:
         last_x = odom_history[-1][1]
         last_y = odom_history[-1][2]
@@ -297,11 +306,11 @@ def calculate_control_metrics(cmd_history, odom_history, planned_coords, goal_po
         goal_acc = math.sqrt((last_x - gx)**2 + (last_y - gy)**2)
 
     # 4. Advanced Control Effort & Steering Chatter
-    control_effort = 0.0
-    steering_reversals = 0
+    control_effort = 0.0 if len(cmd_history) >= 2 else None
+    steering_reversals = 0 if len(ang_accels) >= 2 else None
     for i in range(len(cmd_history) - 1):
         dt = cmd_history[i+1][0] - cmd_history[i][0]
-        if dt > 1e-4:
+        if dt > 0:
             v_k = math.sqrt(cmd_history[i][1]**2 + cmd_history[i][2]**2)
             w_k = cmd_history[i][3]
             control_effort += (v_k**2 + w_k**2) * dt
@@ -331,32 +340,27 @@ def calculate_control_metrics(cmd_history, odom_history, planned_coords, goal_po
                     if d < min_d:
                         min_d = d
                         best_seg_yaw = math.atan2(dy, dx)
+            if min_d == float('inf'):
+                continue
             diff = math.atan2(math.sin(ryaw - best_seg_yaw), math.cos(ryaw - best_seg_yaw))
             heading_errors_deg.append(math.degrees(abs(diff)))
 
-    heading_rmse_deg = float(np.sqrt(np.mean(np.array(heading_errors_deg)**2))) if heading_errors_deg else 3.5
+    heading_rmse_deg = float(np.sqrt(np.mean(np.array(heading_errors_deg)**2))) if heading_errors_deg else None
 
-    # 6. Controller Score (0-100)
-    # S_cte: 100 at 0m error, 0 at 0.50m error
-    s_cte = max(0.0, 100.0 * (1.0 - mean_cte / 0.50))
-    # S_smooth: 100 for smooth inputs (<1.0 m/s^2 std), 0 for violent oscillations (>5.0 m/s^2)
-    s_smooth = max(0.0, 100.0 * (1.0 - min(5.0, lin_jerk_std) / 5.0))
-    # S_effort: 100 for < 5.0, 0 for > 50.0
-    s_effort = max(0.0, 100.0 * (1.0 - min(50.0, control_effort) / 50.0))
-    # S_heading: 100 at 0 deg, 0 at 45 deg
-    s_heading = max(0.0, 100.0 * (1.0 - min(45.0, heading_rmse_deg) / 45.0))
-    # S_acc: 100 at <0.20m, 0 at >1.0m
-    s_acc = max(0.0, 100.0 * (1.0 - min(1.0, goal_acc) / 1.0))
+    # Legacy diagnostic weighting only applies to a completed, fully observed run.
+    # The current path-arrival runner does not establish execution completion.
+    controller_score = None
+    required = (mean_cte, lin_jerk_std, control_effort, heading_rmse_deg, goal_acc)
+    if execution_complete and all(is_number(value) for value in required):
+        s_cte = max(0.0, 100.0 * (1.0 - mean_cte / 0.50))
+        s_smooth = max(0.0, 100.0 * (1.0 - min(5.0, lin_jerk_std) / 5.0))
+        s_effort = max(0.0, 100.0 * (1.0 - min(50.0, control_effort) / 50.0))
+        s_heading = max(0.0, 100.0 * (1.0 - min(45.0, heading_rmse_deg) / 45.0))
+        s_acc = max(0.0, 100.0 * (1.0 - min(1.0, goal_acc)))
+        controller_score = (0.30 * s_cte + 0.25 * s_smooth + 0.20 * s_effort
+                            + 0.15 * s_heading + 0.10 * s_acc)
 
-    controller_score = (
-        0.30 * s_cte +
-        0.25 * s_smooth +
-        0.20 * s_effort +
-        0.15 * s_heading +
-        0.10 * s_acc
-    )
-
-    return {
+    result = {
         "mean_cte": mean_cte,
         "max_cte": max_cte,
         "rms_cte": rms_cte,
@@ -373,73 +377,71 @@ def calculate_control_metrics(cmd_history, odom_history, planned_coords, goal_po
         "heading_rmse_deg": heading_rmse_deg,
         "controller_score": controller_score
     }
+    return {key: value if is_number(value) else None for key, value in result.items()}
+
+def is_number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def costmap_array(costmap):
+    """Only score supported, known occupancy grids; unknown policy/rotation need agreement."""
+    if costmap is None:
+        return None
+    info = costmap.info
+    origin = info.origin
+    orientation = origin.orientation
+    if (info.width <= 0 or info.height <= 0 or not is_number(info.resolution)
+            or info.resolution <= 0 or len(costmap.data) != info.width * info.height
+            or not all(is_number(v) for v in (origin.position.x, origin.position.y))
+            or not all(is_number(v) for v in (orientation.x, orientation.y, orientation.z, orientation.w))
+            or not all(abs(v) < 1e-9 for v in (orientation.x, orientation.y, orientation.z))
+            or not math.isclose(abs(orientation.w), 1.0, abs_tol=1e-9)
+            or any(value < 0 or value > 100 for value in costmap.data)):
+        return None
+    return np.array(costmap.data, dtype=np.int8).reshape((info.height, info.width))
+
+
+def format_metric(value, spec='.2f'):
+    """Human-readable unavailable data; JSON retains null rather than a numeric default."""
+    return format(value, spec) if is_number(value) else 'N/A'
+
+
+def record_outcome(record):
+    if record.get('success') is False:
+        return 'FAIL'
+    outcome = record.get('outcome')
+    if outcome in ('PASS', 'FAIL', 'INCOMPLETE', 'INVALID', 'TIMEOUT'):
+        return outcome
+    return 'FAIL' if record.get('success') is False else 'INCOMPLETE'
+
 
 def aggregate_statistics(history):
-    stats = {
-        "success_rate": 0.0,
-        "comp_time": {"min": 0.0, "avg": 0.0, "max": 0.0},
-        "turn_angle": {"min": 0.0, "avg": 0.0, "max": 0.0},
-        "turn_radius": {"min": 0.0, "avg": 0.0, "max": 0.0},
-        "length_ratio": {"min": 0.0, "avg": 0.0, "max": 0.0},
-        "clearance": {"min": 0.0, "avg": 0.0, "max": 0.0},
-        "path_cost": {"min": 0.0, "avg": 0.0, "max": 0.0}
+    def summary(records, min_key, avg_key=None, max_key=None):
+        def values(key):
+            return [r[key] for r in records if is_number(r.get(key))]
+        low = values(min_key)
+        mid = values(avg_key or min_key)
+        high = values(max_key or min_key)
+        return {'min': min(low) if low else None,
+                'avg': float(np.mean(mid)) if mid else None,
+                'max': max(high) if high else None}
+
+    outcomes = [record_outcome(record) for record in history]
+    complete = bool(outcomes) and all(value in ('PASS', 'FAIL') for value in outcomes)
+    successful = [record for record in history if record.get('success') is True]
+    return {
+        'success_rate': 100.0 * outcomes.count('PASS') / len(outcomes) if complete else None,
+        'passed': outcomes.count('PASS'),
+        'failed': sum(value in ('FAIL', 'INVALID', 'TIMEOUT') for value in outcomes),
+        'incomplete': outcomes.count('INCOMPLETE'),
+        'comp_time': summary(history, 'planning_time_s'),
+        'turn_angle': summary(successful, 'min_angle', 'avg_angle', 'max_angle'),
+        'turn_radius': summary(successful, 'min_radius', 'avg_radius', 'max_radius'),
+        'length_ratio': summary(successful, 'length_ratio'),
+        'clearance': summary(successful, 'safety_margin_m'),
+        'path_cost': summary(successful, 'path_cost'),
     }
 
-    if not history:
-        return stats
-
-    total_runs = len(history)
-    successful_runs = [r for r in history if r.get("success", False)]
-    success_count = len(successful_runs)
-    stats["success_rate"] = (success_count / total_runs) * 100.0
-
-    comp_times = [r.get("planning_time_s", 0.0) for r in history]
-    stats["comp_time"] = {
-        "min": float(np.min(comp_times)),
-        "avg": float(np.mean(comp_times)),
-        "max": float(np.max(comp_times))
-    }
-
-    if success_count > 0:
-        ratios = [r.get("length_ratio", 1.0) for r in successful_runs]
-        clearances = [r.get("safety_margin_m", 10.0) for r in successful_runs]
-        costs = [r.get("path_cost", 0.0) for r in successful_runs]
-
-        min_angles = [r.get("min_angle", 0.0) for r in successful_runs]
-        max_angles = [r.get("max_angle", 0.0) for r in successful_runs]
-        avg_angles = [r.get("avg_angle", 0.0) for r in successful_runs]
-
-        min_radii = [r.get("min_radius", 0.0) for r in successful_runs]
-        max_radii = [r.get("max_radius", 0.0) for r in successful_runs]
-        avg_radii = [r.get("avg_radius", 0.0) for r in successful_runs]
-
-        stats["length_ratio"] = {
-            "min": float(np.min(ratios)),
-            "avg": float(np.mean(ratios)),
-            "max": float(np.max(ratios))
-        }
-        stats["clearance"] = {
-            "min": float(np.min(clearances)),
-            "avg": float(np.mean(clearances)),
-            "max": float(np.max(clearances))
-        }
-        stats["path_cost"] = {
-            "min": float(np.min(costs)),
-            "avg": float(np.mean(costs)),
-            "max": float(np.max(costs))
-        }
-        stats["turn_angle"] = {
-            "min": float(np.min(min_angles)),
-            "avg": float(np.mean(avg_angles)),
-            "max": float(np.max(max_angles))
-        }
-        stats["turn_radius"] = {
-            "min": float(np.min(min_radii)),
-            "avg": float(np.mean(avg_radii)),
-            "max": float(np.max(max_radii))
-        }
-
-    return stats
 
 def generate_html_report(history, output_path):
     """
@@ -450,15 +452,15 @@ def generate_html_report(history, output_path):
         return False
 
     stats = aggregate_statistics(history)
-    overall_pass = stats["success_rate"] >= 85.0
-    status_text = "OVERALL SYSTEM EVALUATION: SYSTEM STABLE / PERFORMANCE ENVELOPE MAINTAINED" if overall_pass else "OVERALL SYSTEM EVALUATION: CRITICAL SIGNALS DETECTED / ENVELOPE BREACHED"
-    status_border = "#10B981" if overall_pass else "#EF4444"
+    status_text = (f"RECORDED OUTCOMES: {stats['passed']} PASS / {stats['failed']} FAIL / "
+                   f"{stats['incomplete']} INCOMPLETE. Mission completion not evaluated.")
+    status_border = "#64748B"
 
     # Define warning threshold boundaries for summary cards
-    success_crit = stats["success_rate"] < 100.0
-    time_crit = stats["comp_time"]["avg"] > 2.0
-    angle_crit = stats["turn_angle"]["max"] > 45.0
-    clearance_crit = stats["clearance"]["min"] < 0.3
+    success_crit = stats["failed"] > 0
+    time_crit = is_number(stats["comp_time"]["avg"]) and stats["comp_time"]["avg"] > 2.0
+    angle_crit = is_number(stats["turn_angle"]["max"]) and stats["turn_angle"]["max"] > 45.0
+    clearance_crit = is_number(stats["clearance"]["min"]) and stats["clearance"]["min"] < 0.3
 
     card_borders = [
         "#EF4444" if success_crit else "#94A3B8",
@@ -687,19 +689,19 @@ def generate_html_report(history, output_path):
         <div class="cards-container">
             <div class="card" style="border-left: 4px solid {card_borders[0]};">
                 <div class="card-label">Path Success Rate</div>
-                <div class="card-value" style="color: {card_text_colors[0]};">{stats["success_rate"]:.1f}%</div>
+                <div class="card-value" style="color: {card_text_colors[0]};">{format_metric(stats["success_rate"], '.1f')}%</div>
             </div>
             <div class="card" style="border-left: 4px solid {card_borders[1]};">
                 <div class="card-label">Signal Smoothness (Avg Time)</div>
-                <div class="card-value" style="color: {card_text_colors[1]};">{stats["comp_time"]["avg"]:.4f} s</div>
+                <div class="card-value" style="color: {card_text_colors[1]};">{format_metric(stats["comp_time"]["avg"], '.4f')} s</div>
             </div>
             <div class="card" style="border-left: 4px solid {card_borders[2]};">
                 <div class="card-label">Max Turn Angle</div>
-                <div class="card-value" style="color: {card_text_colors[2]};">{stats["turn_angle"]["max"]:.1f}°</div>
+                <div class="card-value" style="color: {card_text_colors[2]};">{format_metric(stats["turn_angle"]["max"], '.1f')}°</div>
             </div>
             <div class="card" style="border-left: 4px solid {card_borders[3]};">
                 <div class="card-label">Min Obstacle Clearance</div>
-                <div class="card-value" style="color: {card_text_colors[3]};">{stats["clearance"]["min"]:.2f} m</div>
+                <div class="card-value" style="color: {card_text_colors[3]};">{format_metric(stats["clearance"]["min"], '.2f')} m</div>
             </div>
         </div>
 """
@@ -727,21 +729,21 @@ def generate_html_report(history, output_path):
         """
         for r in history:
             s_name = r.get("test_name", "general")
-            outcome = r.get("outcome", "PASS" if r.get("success", False) else "FAIL")
+            outcome = record_outcome(r)
             badge_class = "badge-pass" if outcome == "PASS" else "badge-fail"
-            success_str = "YES" if r.get("success", False) else "NO"
+            success_str = "YES" if r.get("success") is True else "NO" if r.get("success") is False else "N/A"
             
             html_content += f"""
                 <tr>
                     <td><b>{s_name}</b></td>
                     <td><span class="badge {badge_class}">{outcome}</span></td>
                     <td class="text-right">{success_str}</td>
-                    <td class="text-right">{r.get("planning_time_s", 0.0):.4f} s</td>
-                    <td class="text-right">{r.get("path_length_m", 0.0):.2f} m</td>
-                    <td class="text-right">{r.get("length_ratio", 1.0):.3f}</td>
-                    <td class="text-right">{r.get("max_angle", 0.0):.1f}°</td>
-                    <td class="text-right">{r.get("safety_margin_m", 0.0):.2f} m</td>
-                    <td class="text-right">{r.get("path_cost", 0.0):.1f}</td>
+                    <td class="text-right">{format_metric(r.get("planning_time_s"), '.4f')} s</td>
+                    <td class="text-right">{format_metric(r.get("path_length_m"), '.2f')} m</td>
+                    <td class="text-right">{format_metric(r.get("length_ratio"), '.3f')}</td>
+                    <td class="text-right">{format_metric(r.get("max_angle"), '.1f')}°</td>
+                    <td class="text-right">{format_metric(r.get("safety_margin_m"), '.2f')} m</td>
+                    <td class="text-right">{format_metric(r.get("path_cost"), '.1f')}</td>
                 </tr>
             """
         html_content += """
@@ -790,38 +792,38 @@ def generate_html_report(history, output_path):
             <tbody>
                 <tr>
                     <td><b>Path Compilation Time (s)</b></td>
-                    <td class="text-right">{r_static.get("planning_time_s", 0.0):.4f}</td>
-                    {f"<td class='text-right'>{r_replan.get('planning_time_s', 0.0):.4f}</td>" if has_replan else ""}
+                    <td class="text-right">{format_metric(r_static.get("planning_time_s"), '.4f')}</td>
+                    {f"<td class='text-right'>{format_metric(r_replan.get('planning_time_s'), '.4f')}</td>" if has_replan else ""}
                 </tr>
                 <tr>
                     <td><b>Distance Covered (m)</b></td>
-                    <td class="text-right">{r_static.get("path_length_m", 0.0):.2f}</td>
-                    {f"<td class='text-right'>{r_replan.get('path_length_m', 0.0):.2f}</td>" if has_replan else ""}
+                    <td class="text-right">{format_metric(r_static.get("path_length_m"), '.2f')}</td>
+                    {f"<td class='text-right'>{format_metric(r_replan.get('path_length_m'), '.2f')}</td>" if has_replan else ""}
                 </tr>
                 <tr>
                     <td><b>Path Length / Euclidean Ratio</b></td>
-                    <td class="text-right">{r_static.get("length_ratio", 1.0):.3f}</td>
-                    {f"<td class='text-right'>{r_replan.get('length_ratio', 1.0):.3f}</td>" if has_replan else ""}
+                    <td class="text-right">{format_metric(r_static.get("length_ratio"), '.3f')}</td>
+                    {f"<td class='text-right'>{format_metric(r_replan.get('length_ratio'), '.3f')}</td>" if has_replan else ""}
                 </tr>
                 <tr>
                     <td><b>Turn Angles</b></td>
-                    <td class="text-right">Min: {r_static.get("min_angle", 0.0):.1f}° | Max: {r_static.get("max_angle", 0.0):.1f}° | Avg: {r_static.get("avg_angle", 0.0):.1f}°</td>
-                    {f"<td class='text-right'>Min: {r_replan.get('min_angle', 0.0):.1f}° | Max: {r_replan.get('max_angle', 0.0):.1f}° | Avg: {r_replan.get('avg_angle', 0.0):.1f}°</td>" if has_replan else ""}
+                    <td class="text-right">Min: {format_metric(r_static.get("min_angle"), '.1f')}° | Max: {format_metric(r_static.get("max_angle"), '.1f')}° | Avg: {format_metric(r_static.get("avg_angle"), '.1f')}°</td>
+                    {f"<td class='text-right'>Min: {format_metric(r_replan.get('min_angle'), '.1f')}° | Max: {format_metric(r_replan.get('max_angle'), '.1f')}° | Avg: {format_metric(r_replan.get('avg_angle'), '.1f')}°</td>" if has_replan else ""}
                 </tr>
                 <tr>
                     <td><b>Turn Radii</b></td>
-                    <td class="text-right">Min: {r_static.get("min_radius", 0.0):.2f} m | Max: {r_static.get("max_radius", 0.0):.2f} m | Avg: {r_static.get("avg_radius", 0.0):.2f} m</td>
-                    {f"<td class='text-right'>Min: {r_replan.get('min_radius', 0.0):.2f} m | Max: {r_replan.get('max_radius', 0.0):.2f} m | Avg: {r_replan.get('avg_radius', 0.0):.2f} m</td>" if has_replan else ""}
+                    <td class="text-right">Min: {format_metric(r_static.get("min_radius"), '.2f')} m | Max: {format_metric(r_static.get("max_radius"), '.2f')} m | Avg: {format_metric(r_static.get("avg_radius"), '.2f')} m</td>
+                    {f"<td class='text-right'>Min: {format_metric(r_replan.get('min_radius'), '.2f')} m | Max: {format_metric(r_replan.get('max_radius'), '.2f')} m | Avg: {format_metric(r_replan.get('avg_radius'), '.2f')} m</td>" if has_replan else ""}
                 </tr>
                 <tr>
                     <td><b>Nearest Distance to Obstacle (m)</b></td>
-                    <td class="text-right">{r_static.get("safety_margin_m", 10.0):.3f}</td>
-                    {f"<td class='text-right'>{r_replan.get('safety_margin_m', 10.0):.3f}</td>" if has_replan else ""}
+                    <td class="text-right">{format_metric(r_static.get("safety_margin_m"), '.3f')}</td>
+                    {f"<td class='text-right'>{format_metric(r_replan.get('safety_margin_m'), '.3f')}</td>" if has_replan else ""}
                 </tr>
                 <tr>
                     <td><b>Path Cost</b></td>
-                    <td class="text-right">{r_static.get("path_cost", 0.0):.1f}</td>
-                    {f"<td class='text-right'>{r_replan.get('path_cost', 0.0):.1f}</td>" if has_replan else ""}
+                    <td class="text-right">{format_metric(r_static.get("path_cost"), '.1f')}</td>
+                    {f"<td class='text-right'>{format_metric(r_replan.get('path_cost'), '.1f')}</td>" if has_replan else ""}
                 </tr>
             </tbody>
         </table>
@@ -844,7 +846,7 @@ def generate_html_report(history, output_path):
 </html>
 """
 
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     with open(output_path, "w") as f:
         f.write(html_content)
     return True
@@ -858,15 +860,15 @@ def generate_pdf_report(history, output_path):
         return False
 
     stats = aggregate_statistics(history)
-    overall_pass = stats["success_rate"] >= 85.0
-    status_text = "OVERALL SYSTEM EVALUATION: SYSTEM STABLE / PERFORMANCE ENVELOPE MAINTAINED" if overall_pass else "OVERALL SYSTEM EVALUATION: CRITICAL SIGNALS DETECTED / ENVELOPE BREACHED"
-    status_color_hex = "#EF4444" if not overall_pass else "#10B981"
+    status_text = (f"RECORDED OUTCOMES: {stats['passed']} PASS / {stats['failed']} FAIL / "
+                   f"{stats['incomplete']} INCOMPLETE. Mission completion not evaluated.")
+    status_color_hex = "#64748B"
 
     # Define warning threshold boundaries for summary cards
-    success_crit = stats["success_rate"] < 100.0
-    time_crit = stats["comp_time"]["avg"] > 2.0
-    angle_crit = stats["turn_angle"]["max"] > 45.0
-    clearance_crit = stats["clearance"]["min"] < 0.3
+    success_crit = stats["failed"] > 0
+    time_crit = is_number(stats["comp_time"]["avg"]) and stats["comp_time"]["avg"] > 2.0
+    angle_crit = is_number(stats["turn_angle"]["max"]) and stats["turn_angle"]["max"] > 45.0
+    clearance_crit = is_number(stats["clearance"]["min"]) and stats["clearance"]["min"] < 0.3
 
     card_borders = [
         "#EF4444" if success_crit else "#CBD5E0",
@@ -1091,10 +1093,10 @@ def generate_pdf_report(history, output_path):
             Paragraph("MIN OBSTACLE CLEARANCE", card_label_style)
         ],
         [
-            Paragraph(f"<font color='{card_text_colors[0]}'><b>{stats['success_rate']:.1f}%</b></font>", ParagraphStyle('C1', parent=styles['Normal'], fontSize=14, leading=16, alignment=1)),
-            Paragraph(f"<font color='{card_text_colors[1]}'><b>{stats['comp_time']['avg']:.4f} s</b></font>", ParagraphStyle('C2', parent=styles['Normal'], fontSize=14, leading=16, alignment=1)),
-            Paragraph(f"<font color='{card_text_colors[2]}'><b>{stats['turn_angle']['max']:.1f}°</b></font>", ParagraphStyle('C3', parent=styles['Normal'], fontSize=14, leading=16, alignment=1)),
-            Paragraph(f"<font color='{card_text_colors[3]}'><b>{stats['clearance']['min']:.2f} m</b></font>", ParagraphStyle('C4', parent=styles['Normal'], fontSize=14, leading=16, alignment=1))
+            Paragraph(f"<font color='{card_text_colors[0]}'><b>{format_metric(stats['success_rate'], '.1f')}%</b></font>", ParagraphStyle('C1', parent=styles['Normal'], fontSize=14, leading=16, alignment=1)),
+            Paragraph(f"<font color='{card_text_colors[1]}'><b>{format_metric(stats['comp_time']['avg'], '.4f')} s</b></font>", ParagraphStyle('C2', parent=styles['Normal'], fontSize=14, leading=16, alignment=1)),
+            Paragraph(f"<font color='{card_text_colors[2]}'><b>{format_metric(stats['turn_angle']['max'], '.1f')}°</b></font>", ParagraphStyle('C3', parent=styles['Normal'], fontSize=14, leading=16, alignment=1)),
+            Paragraph(f"<font color='{card_text_colors[3]}'><b>{format_metric(stats['clearance']['min'], '.2f')} m</b></font>", ParagraphStyle('C4', parent=styles['Normal'], fontSize=14, leading=16, alignment=1))
         ]
     ]
     cards_table = Table(cards_data, colWidths=[126, 126, 126, 126])
@@ -1137,7 +1139,7 @@ def generate_pdf_report(history, output_path):
         table_data = [headers]
         for r in history:
             s_name = r.get("test_name", "general")
-            outcome = r.get("outcome", "PASS" if r.get("success", False) else "FAIL")
+            outcome = record_outcome(r)
             
             badge_text = f"<b>{outcome}</b>"
             badge_para = Paragraph(badge_text, badge_pass_style if outcome == "PASS" else badge_fail_style)
@@ -1145,12 +1147,12 @@ def generate_pdf_report(history, output_path):
             table_data.append([
                 Paragraph(f"<b>{s_name}</b>", table_cell_bold_style),
                 badge_para,
-                Paragraph(f"{r.get('planning_time_s', 0.0):.3f} s", table_cell_right_style),
-                Paragraph(f"{r.get('path_length_m', 0.0):.2f} m", table_cell_right_style),
-                Paragraph(f"{r.get('length_ratio', 1.0):.2f}", table_cell_right_style),
-                Paragraph(f"{r.get('max_angle', 0.0):.1f}°", table_cell_right_style),
-                Paragraph(f"{r.get('safety_margin_m', 0.0):.2f} m", table_cell_right_style),
-                Paragraph(f"{r.get('path_cost', 0.0):.1f}", table_cell_right_style)
+                Paragraph(f"{format_metric(r.get('planning_time_s'), '.3f')} s", table_cell_right_style),
+                Paragraph(f"{format_metric(r.get('path_length_m'), '.2f')} m", table_cell_right_style),
+                Paragraph(f"{format_metric(r.get('length_ratio'), '.2f')}", table_cell_right_style),
+                Paragraph(f"{format_metric(r.get('max_angle'), '.1f')}°", table_cell_right_style),
+                Paragraph(f"{format_metric(r.get('safety_margin_m'), '.2f')} m", table_cell_right_style),
+                Paragraph(f"{format_metric(r.get('path_cost'), '.1f')}", table_cell_right_style)
             ])
             
         summary_table = Table(table_data, colWidths=col_widths)
@@ -1186,13 +1188,13 @@ def generate_pdf_report(history, output_path):
                     Paragraph(val_str, table_cell_right_style)
                 ])
                 
-            add_det_row("Path Compilation Time", f"{r.get('planning_time_s', 0.0):.4f} s")
-            add_det_row("Distance Covered (Path Length)", f"{r.get('path_length_m', 0.0):.2f} m")
-            add_det_row("Path Length / Euclidean Ratio", f"{r.get('length_ratio', 1.0):.3f}")
-            add_det_row("Turn Angles", f"Min: {r.get('min_angle', 0.0):.1f}° | Max: {r.get('max_angle', 0.0):.1f}° | Avg: {r.get('avg_angle', 0.0):.1f}°")
-            add_det_row("Turn Radii", f"Min: {r.get('min_radius', 0.0):.2f} m | Max: {r.get('max_radius', 0.0):.2f} m | Avg: {r.get('avg_radius', 0.0):.2f} m")
-            add_det_row("Nearest Distance to Obstacle (Clearance)", f"{r.get('safety_margin_m', 0.0):.2f} m")
-            add_det_row("Total Path Cost", f"{r.get('path_cost', 0.0):.1f}")
+            add_det_row("Path Compilation Time", f"{format_metric(r.get('planning_time_s'), '.4f')} s")
+            add_det_row("Distance Covered (Path Length)", f"{format_metric(r.get('path_length_m'), '.2f')} m")
+            add_det_row("Path Length / Euclidean Ratio", f"{format_metric(r.get('length_ratio'), '.3f')}")
+            add_det_row("Turn Angles", f"Min: {format_metric(r.get('min_angle'), '.1f')}° | Max: {format_metric(r.get('max_angle'), '.1f')}° | Avg: {format_metric(r.get('avg_angle'), '.1f')}°")
+            add_det_row("Turn Radii", f"Min: {format_metric(r.get('min_radius'), '.2f')} m | Max: {format_metric(r.get('max_radius'), '.2f')} m | Avg: {format_metric(r.get('avg_radius'), '.2f')} m")
+            add_det_row("Nearest Distance to Obstacle (Clearance)", f"{format_metric(r.get('safety_margin_m'), '.2f')} m")
+            add_det_row("Total Path Cost", f"{format_metric(r.get('path_cost'), '.1f')}")
             
             det_table = Table(det_data, colWidths=[254, 250])
             det_table.setStyle(TableStyle([
@@ -1240,25 +1242,18 @@ def generate_pdf_report(history, output_path):
             col_widths = [304, 200]
 
         def get_row(label, val_static, val_replan=None, is_time=False, is_angle=False, is_radius=False, is_ratio=False, is_cost=False):
-            if is_time:
-                s_s = f"{val_static:.4f} s"
-                s_r = f"{val_replan:.4f} s" if val_replan is not None else ""
-            elif is_angle:
-                s_s = f"Min: {val_static[0]:.1f}° | Max: {val_static[1]:.1f}° | Avg: {val_static[2]:.1f}°"
-                s_r = f"Min: {val_replan[0]:.1f}° | Max: {val_replan[1]:.1f}° | Avg: {val_replan[2]:.1f}°" if val_replan is not None else ""
-            elif is_radius:
-                s_s = f"Min: {val_static[0]:.2f} m | Max: {val_static[1]:.2f} m | Avg: {val_static[2]:.2f} m"
-                s_r = f"Min: {val_replan[0]:.2f} m | Max: {val_replan[1]:.2f} m | Avg: {val_replan[2]:.2f} m" if val_replan is not None else ""
-            elif is_ratio:
-                s_s = f"{val_static:.3f}"
-                s_r = f"{val_replan:.3f}" if val_replan is not None else ""
-            elif is_cost:
-                s_s = f"{val_static:.1f}"
-                s_r = f"{val_replan:.1f}" if val_replan is not None else ""
-            else:
-                s_s = f"{val_static:.2f} m"
-                s_r = f"{val_replan:.2f} m" if val_replan is not None else ""
-                
+            def render(value):
+                if is_angle or is_radius:
+                    values = value if value is not None else (None, None, None)
+                    unit = '°' if is_angle else ' m'
+                    spec = '.1f' if is_angle else '.2f'
+                    return ' | '.join(f'{name}: {format_metric(item, spec)}{unit}'
+                                      for name, item in zip(('Min', 'Max', 'Avg'), values))
+                spec, unit = ('.4f', ' s') if is_time else ('.3f', '') if is_ratio else ('.1f', '') if is_cost else ('.2f', ' m')
+                return format_metric(value, spec) + unit
+            s_s = render(val_static)
+            s_r = render(val_replan)
+
             if has_replan:
                 return [
                     Paragraph(label, table_cell_bold_style),
@@ -1274,25 +1269,25 @@ def generate_pdf_report(history, output_path):
         metric_table_data = [headers]
         
         # 1. Path Compilation Time
-        metric_table_data.append(get_row("Path Compilation Time", r_static.get("planning_time_s", 0.0), r_replan.get("planning_time_s", 0.0) if has_replan else None, is_time=True))
+        metric_table_data.append(get_row("Path Compilation Time", r_static.get("planning_time_s"), r_replan.get("planning_time_s") if has_replan else None, is_time=True))
         # 2. Distance Covered
-        metric_table_data.append(get_row("Distance Covered (Path Length)", r_static.get("path_length_m", 0.0), r_replan.get("path_length_m", 0.0) if has_replan else None))
+        metric_table_data.append(get_row("Distance Covered (Path Length)", r_static.get("path_length_m"), r_replan.get("path_length_m") if has_replan else None))
         # 3. Ratio of Distance / Euclidean
-        metric_table_data.append(get_row("Path Length / Euclidean Ratio", r_static.get("length_ratio", 1.0), r_replan.get("length_ratio", 1.0) if has_replan else None, is_ratio=True))
+        metric_table_data.append(get_row("Path Length / Euclidean Ratio", r_static.get("length_ratio"), r_replan.get("length_ratio") if has_replan else None, is_ratio=True))
         # 4. Turn Angle
         metric_table_data.append(get_row("Turn Angles", 
-                                         (r_static.get("min_angle", 0.0), r_static.get("max_angle", 0.0), r_static.get("avg_angle", 0.0)),
-                                         (r_replan.get("min_angle", 0.0), r_replan.get("max_angle", 0.0), r_replan.get("avg_angle", 0.0)) if has_replan else None,
+                                         (r_static.get("min_angle"), r_static.get("max_angle"), r_static.get("avg_angle")),
+                                         (r_replan.get("min_angle"), r_replan.get("max_angle"), r_replan.get("avg_angle")) if has_replan else None,
                                          is_angle=True))
         # 5. Turn Radius
         metric_table_data.append(get_row("Turn Radii", 
-                                         (r_static.get("min_radius", 0.0), r_static.get("max_radius", 0.0), r_static.get("avg_radius", 0.0)),
-                                         (r_replan.get("min_radius", 0.0), r_replan.get("max_radius", 0.0), r_replan.get("avg_radius", 0.0)) if has_replan else None,
+                                         (r_static.get("min_radius"), r_static.get("max_radius"), r_static.get("avg_radius")),
+                                         (r_replan.get("min_radius"), r_replan.get("max_radius"), r_replan.get("avg_radius")) if has_replan else None,
                                          is_radius=True))
         # 6. Nearest Distance to Obstacle
-        metric_table_data.append(get_row("Nearest Distance to Obstacle (Clearance)", r_static.get("safety_margin_m", 10.0), r_replan.get("safety_margin_m", 10.0) if has_replan else None))
+        metric_table_data.append(get_row("Nearest Distance to Obstacle (Clearance)", r_static.get("safety_margin_m"), r_replan.get("safety_margin_m") if has_replan else None))
         # 7. Path Cost
-        metric_table_data.append(get_row("Total Path Cost", r_static.get("path_cost", 0.0), r_replan.get("path_cost", 0.0) if has_replan else None, is_cost=True))
+        metric_table_data.append(get_row("Total Path Cost", r_static.get("path_cost"), r_replan.get("path_cost") if has_replan else None, is_cost=True))
 
         metric_table = Table(metric_table_data, colWidths=col_widths)
         metric_table.setStyle(TableStyle([
@@ -1319,12 +1314,12 @@ def generate_pdf_report(history, output_path):
     return True
 
 def generate_csv_report(history, output_path):
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     try:
         with open(output_path, "w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow([
-                "Timestamp", "Test Name", "Success", "Planning Time (s)", "Path Length (m)", 
+                "Timestamp", "Test Name", "Success", "Outcome", "Planning Time (s)", "Path Length (m)",
                 "Length Ratio", "Avg Turn Angle (deg)", "Max Turn Angle (deg)", "Avg Turn Radius (m)", 
                 "Min Turn Radius (m)", "Nearest Obstacle Distance (m)", "Path Cost"
             ])
@@ -1332,16 +1327,17 @@ def generate_csv_report(history, output_path):
                 writer.writerow([
                     r.get("timestamp", time.strftime('%Y-%m-%d %H:%M:%S')),
                     r.get("test_name", "general"),
-                    "YES" if r.get("success", False) else "NO",
-                    f"{r.get('planning_time_s', 0.0):.4f}",
-                    f"{r.get('path_length_m', 0.0):.2f}",
-                    f"{r.get('length_ratio', 1.0):.3f}",
-                    f"{r.get('avg_angle', 0.0):.1f}",
-                    f"{r.get('max_angle', 0.0):.1f}",
-                    f"{r.get('avg_radius', 0.0):.2f}",
-                    f"{r.get('min_radius', 0.0):.2f}",
-                    f"{r.get('safety_margin_m', 0.0):.2f}",
-                    f"{r.get('path_cost', 0.0):.1f}"
+                    "YES" if r.get("success") is True else "NO" if r.get("success") is False else "N/A",
+                    record_outcome(r),
+                    f"{format_metric(r.get('planning_time_s'), '.4f')}",
+                    f"{format_metric(r.get('path_length_m'), '.2f')}",
+                    f"{format_metric(r.get('length_ratio'), '.3f')}",
+                    f"{format_metric(r.get('avg_angle'), '.1f')}",
+                    f"{format_metric(r.get('max_angle'), '.1f')}",
+                    f"{format_metric(r.get('avg_radius'), '.2f')}",
+                    f"{format_metric(r.get('min_radius'), '.2f')}",
+                    f"{format_metric(r.get('safety_margin_m'), '.2f')}",
+                    f"{format_metric(r.get('path_cost'), '.1f')}"
                 ])
         return True
     except Exception as e:

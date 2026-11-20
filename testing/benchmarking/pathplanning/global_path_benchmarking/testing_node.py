@@ -27,6 +27,9 @@ except ImportError:
 
 # Import custom report generator functions
 from global_path_benchmarking.report_generator import (
+    format_metric,
+    is_number,
+    record_outcome,
     generate_html_report,
     generate_pdf_report
 )
@@ -221,7 +224,7 @@ class TestingNode(Node):
             goal_pose.pose.position.z = 0.0
             goal_pose.pose.orientation.w = 1.0
             self.goal_pub.publish(goal_pose)
-            self.get_logger().info(f"Dispatched goal ({goal[0]:.2f}, {goal[1]:.2f}) via /goal_pose Topic.")
+            self.get_logger().info(f"Dispatched goal ({format_metric(goal[0], '.2f')}, {format_metric(goal[1], '.2f')}) via /goal_pose Topic.")
 
     def verify_scenarios(self):
         print("\n================ VERIFYING SCENARIOS ================")
@@ -393,7 +396,7 @@ class TestingNode(Node):
         # Write JSON output
         out_json = "reports/results.json"
         with open(out_json, "w") as f:
-            json.dump(results, f, indent=4)
+            json.dump(results, f, indent=4, allow_nan=False)
         print(f"[INFO] Numerical results saved to: {out_json}")
         
         # Generate Markdown Report
@@ -404,19 +407,19 @@ class TestingNode(Node):
         md_content.append("This report summarizes the performance evaluation of the **Smac Hybrid A* Global Planner** and **MPPI Local Controller** (`erc_path_planner`).\n\n")
         
         md_content.append("## 📊 Performance Summary Table\n")
-        md_content.append("| Scenario ID | Outcome | Overall Score | Planner Score | MPPI Score | Mean CTE | Goal Acc | Plan Time |\n")
+        md_content.append("| Scenario ID | Outcome | Overall Score | Planner Score | MPPI Score | Mean CTE | Last Goal Distance | Plan Time |\n")
         md_content.append("| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n")
         
         for sid, res in results.items():
-            outcome_emoji = "✅ PASS" if res["outcome"] == "PASS" else "❌ FAIL"
-            p_score = res.get("planner_score", res.get("final_score", 0.0))
-            c_score = res.get("controller_score", 95.0)
-            cte = res.get("mean_cte", 0.05)
-            g_acc = res.get("goal_accuracy_m", 0.06)
+            outcome_emoji = record_outcome(res)
+            p_score = res.get("planner_score")
+            c_score = res.get("controller_score")
+            cte = res.get("mean_cte")
+            g_acc = res.get("goal_accuracy_m")
             md_content.append(
-                f"| `{sid}` | **{outcome_emoji}** | `{res['final_score']:.1f}/100` | "
-                f"`{p_score:.1f}` | `{c_score:.1f}` | "
-                f"`{cte:.3f} m` | `{g_acc:.3f} m` | `{res['planning_time_s']:.3f} s` |\n"
+                f"| `{sid}` | **{outcome_emoji}** | `{format_metric(res['final_score'], '.1f')}/100` | "
+                f"`{format_metric(p_score, '.1f')}` | `{format_metric(c_score, '.1f')}` | "
+                f"`{format_metric(cte, '.3f')} m` | `{format_metric(g_acc, '.3f')} m` | `{format_metric(res['planning_time_s'], '.3f')} s` |\n"
             )
         md_content.append("\n---\n\n## 🔍 Detailed Scenario Analyses & Plots\n\n")
         
@@ -425,32 +428,32 @@ class TestingNode(Node):
             if sid not in results:
                 continue
             res = results[sid]
-            outcome_emoji = "✅ PASS" if res.get("outcome") == "PASS" else "❌ FAIL"
+            outcome_emoji = record_outcome(res)
             plot_path = f"file://{os.path.join(cwd, 'reports', f'result_scenario_{sid}.png')}"
             
             md_content.append(f"### 📍 Scenario: `{sid}` ({outcome_emoji})\n")
-            md_content.append(f"- **Overall Combined Score**: `{res.get('final_score', 0.0):.2f} / 100`\n")
-            md_content.append(f"- **Global Planner Score**: `{res.get('planner_score', res.get('final_score', 0.0)):.2f} / 100`\n")
-            md_content.append(f"- **MPPI Controller Score**: `{res.get('controller_score', 95.0):.2f} / 100`\n")
-            md_content.append(f"- **Cross-Track Error (CTE)**: Mean `{res.get('mean_cte', 0.05):.3f} m` | Max `{res.get('max_cte', 0.12):.3f} m` | RMS `{res.get('rms_cte', 0.07):.3f} m`\n")
-            md_content.append(f"- **Velocity Tracking**: Mean Lin `{res.get('mean_linear_vel', 0.45):.2f} m/s` | Mean Ang `{res.get('mean_angular_vel', 0.15):.2f} rad/s`\n")
-            md_content.append(f"- **Control Smoothness & Stability**: Lin Jerk `{res.get('linear_jerk_std', 0.12):.2f} m/s²` | Ang Jerk `{res.get('angular_jerk_std', 0.25):.2f} rad/s²`\n")
-            md_content.append(f"- **Command Frequency**: `{res.get('cmd_freq_hz', 20.0):.1f} Hz` | **Goal Error**: `{res.get('goal_accuracy_m', 0.05):.3f} m`\n")
-            md_content.append(f"- **Planning Time**: `{res.get('planning_time_s', 0.0):.3f} s`\n")
-            md_content.append(f"- **Path Length / Ratio**: `{res.get('path_length_m', 0.0):.2f} m` (Ratio: `{res.get('length_ratio', 0.0):.2f}`)\n")
-            md_content.append(f"- **Obstacle Clearance**: `{res.get('safety_margin_m', 0.0):.2f} m` (Collisions: `{res.get('blocked_cells', 0)}`)\n")
-            md_content.append(f"- **Replanning Status**: Score `{res.get('replanning_score', 0.0):.1f}/100` in `{res.get('replanning_time_s', 0.0):.3f} s`\n\n")
+            md_content.append(f"- **Overall Combined Score**: `{format_metric(res.get('final_score'), '.2f')} / 100`\n")
+            md_content.append(f"- **Global Planner Score**: `{format_metric(res.get('planner_score'), '.2f')} / 100`\n")
+            md_content.append(f"- **MPPI Controller Score**: `{format_metric(res.get('controller_score'), '.2f')} / 100`\n")
+            md_content.append(f"- **Cross-Track Error (CTE)**: Mean `{format_metric(res.get('mean_cte'), '.3f')} m` | Max `{format_metric(res.get('max_cte'), '.3f')} m` | RMS `{format_metric(res.get('rms_cte'), '.3f')} m`\n")
+            md_content.append(f"- **Commanded Velocity**: Mean Lin `{format_metric(res.get('mean_linear_vel'), '.2f')} m/s` | Mean Ang `{format_metric(res.get('mean_angular_vel'), '.2f')} rad/s`\n")
+            md_content.append(f"- **Control Smoothness & Stability**: Lin Accel Std `{format_metric(res.get('linear_jerk_std'), '.2f')} m/s²` | Ang Accel Std `{format_metric(res.get('angular_jerk_std'), '.2f')} rad/s²`\n")
+            md_content.append(f"- **Command Frequency**: `{format_metric(res.get('cmd_freq_hz'), '.1f')} Hz` | **Last Goal Distance**: `{format_metric(res.get('goal_accuracy_m'), '.3f')} m`\n")
+            md_content.append(f"- **Planning Time**: `{format_metric(res.get('planning_time_s'), '.3f')} s`\n")
+            md_content.append(f"- **Path Length / Ratio**: `{format_metric(res.get('path_length_m'), '.2f')} m` (Ratio: `{format_metric(res.get('length_ratio'), '.2f')}`)\n")
+            md_content.append(f"- **Obstacle Clearance**: `{format_metric(res.get('safety_margin_m'), '.2f')} m` (Colliding samples: `{res.get('blocked_cells')}`)\n")
+            md_content.append(f"- **Replanning Status**: Score `{format_metric(res.get('replanning_score'), '.1f')}/100` in `{format_metric(res.get('replanning_time_s'), '.3f')} s`\n\n")
             
             md_content.append(f"#### Path Visualizer:\n")
             md_content.append(f"![{sid} Plot]({plot_path})\n\n")
             
             if res.get("outcome") == "FAIL":
                 md_content.append("> [!WARNING]\n")
-                if res.get("blocked_cells", 0) > 0:
+                if is_number(res.get("blocked_cells")) and res.get("blocked_cells") > 0:
                     md_content.append(f"> **Collision Warning**: The path center line or its robot footprint ({s.get('robot_radius')}m) intersected wall obstacles. Implement obstacle inflation to fix this.\n")
-                elif res.get("avg_cost", 0) > 20:
+                elif is_number(res.get("avg_cost")) and res.get("avg_cost") > 20:
                     md_content.append("> **High Cost Warning**: The path went directly through high-slope or rough terrain. Tune the planner weight to prioritize safer detours.\n")
-                elif res.get("planning_time_s", 0) > 2.0:
+                elif is_number(res.get("planning_time_s")) and res.get("planning_time_s") > 2.0:
                     md_content.append("> **Latency Warning**: Planning exceeded the preferred 2.0s boundary. Optimize search iterations.\n")
             md_content.append("\n---\n\n")
             
@@ -464,42 +467,51 @@ class TestingNode(Node):
             history.append({
                 "timestamp": time.strftime('%Y-%m-%d %H:%M:%S'),
                 "test_name": sid,
-                "success": res.get("success", False),
-                "outcome": res.get("outcome", "FAIL"),
-                "planning_time_s": res.get("planning_time_s", 0.0),
-                "path_length_m": res.get("path_length_m", 0.0),
-                "blocked_cells": res.get("blocked_cells", 0),
-                "avg_cost": res.get("avg_cost", 0.0),
-                "safety_margin_m": res.get("safety_margin_m", 0.0),
-                "length_ratio": res.get("length_ratio", 1.0),
+                "success": res.get("success"),
+                "outcome": record_outcome(res),
+                "planning_time_s": res.get("planning_time_s"),
+                "path_length_m": res.get("path_length_m"),
+                "blocked_cells": res.get("blocked_cells"),
+                "avg_cost": res.get("avg_cost"),
+                "safety_margin_m": res.get("safety_margin_m"),
+                "length_ratio": res.get("length_ratio"),
                 
                 # New metrics
-                "min_angle": res.get("min_angle", 0.0),
-                "max_angle": res.get("max_angle", 0.0),
-                "avg_angle": res.get("avg_angle", 0.0),
-                "min_radius": res.get("min_radius", 0.0),
-                "max_radius": res.get("max_radius", 0.0),
-                "avg_radius": res.get("avg_radius", 0.0),
-                "path_cost": res.get("path_cost", 0.0)
+                "min_angle": res.get("min_angle"),
+                "max_angle": res.get("max_angle"),
+                "avg_angle": res.get("avg_angle"),
+                "min_radius": res.get("min_radius"),
+                "max_radius": res.get("max_radius"),
+                "avg_radius": res.get("avg_radius"),
+                "path_cost": res.get("path_cost")
             })
             
         # Compile HTML and PDF
+        reports_ok = True
         out_html = "reports/numerical_report.html"
         out_pdf = "reports/numerical_report.pdf"
         
         try:
-            generate_html_report(history, out_html)
-            self.get_logger().info(f"Numerical HTML report compiled at: {out_html}")
+            if generate_html_report(history, out_html):
+                self.get_logger().info(f"Numerical HTML report compiled at: {out_html}")
+            else:
+                reports_ok = False
+                self.get_logger().warning("HTML report unavailable or export failed")
         except Exception as e:
+            reports_ok = False
             self.get_logger().error(f"Failed to generate HTML report: {e}")
             
         try:
-            generate_pdf_report(history, out_pdf)
-            self.get_logger().info(f"Numerical PDF report compiled at: {out_pdf}")
+            if generate_pdf_report(history, out_pdf):
+                self.get_logger().info(f"Numerical PDF report compiled at: {out_pdf}")
+            else:
+                reports_ok = False
+                self.get_logger().warning("PDF report unavailable or export failed")
         except Exception as e:
+            reports_ok = False
             self.get_logger().error(f"Failed to generate PDF report: {e}")
             
-        return True
+        return reports_ok
 
 
 def main(args=None):

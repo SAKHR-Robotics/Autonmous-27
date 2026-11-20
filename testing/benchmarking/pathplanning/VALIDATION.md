@@ -104,3 +104,47 @@ Next correction: replace invented measurements with explicit unavailability,
 reject invalid geometry, and propagate those states through observer scoring and
 all report formats. Do not repair only the calculator while leaving reports or
 combined scores dependent on numeric defaults.
+
+
+## Evaluator and report corrections — 2026-11-20
+
+Preserved and extended the partial uncommitted `report_generator.py` edits found
+at the start of this step. Their owner was unknown; Saif did not know, and the
+SLAM agent confirmed no active overlap. The pre-edit file was retained at
+`/tmp/codex-pathplanner-validation.JqAhLh/report_generator.before.py`.
+
+P01 is corrected for unavailable inputs and exports. P03 now rejects empty,
+one-pose and nonfinite geometry in both calculator and observer and prevents a
+known sampled collision from counting as success. Endpoint and swept-footprint
+checks remain open. P02 is contained by requiring explicit execution completion
+before controller scoring; the runner still does not wait for mission completion.
+P04 now leaves unsupported maps/frames incomplete; full collision geometry and
+unknown-space policy still require implementation/agreement. P05–P08 remain open.
+
+The original eight calculator checks pass, but were insufficient on their own:
+partial-stream measurements, report exporters and observer propagation needed
+additional regressions. Controller inputs are checked for finite values and
+strictly increasing sample times. Missing fields stay null in JSON and N/A in
+human-readable exports. Reports no longer derive an overall-system stability
+claim from path-record success frequency. A failed/missing exporter is not logged
+as a successful export. Legacy diagnostic score thresholds are unchanged and
+remain provisional, not mission requirements.
+
+| Executed check | Result |
+| --- | --- |
+| Isolated `autonomous27:jazzy` container, sourced Jazzy, all package tests | **35 passed, 2 skipped**, no warnings; skips are positive PDF tests because ReportLab is absent |
+| Host calculator and report tests, with ReportLab | **25 passed**, no skips; one ReportLab/import deprecation warning |
+| PDF text extraction on both host-generated reports | `N/A` and `INCOMPLETE` present; no `SYSTEM STABLE` claim |
+| Scoped diff whitespace check | Passed |
+
+Container: `codex-pathplanner-validation-20261120`, isolated network, source mounted
+read-only, removed after each run. No ROS nodes, hardware, Gazebo or Nav2 started.
+Image ID: `sha256:d952a9381d1f0b15c8212df0a78e023f3058235c659c44267bb782500df235ad`.
+Artifacts: `/tmp/codex-pathplanner-validation.JqAhLh/`, including `evaluator.xml`
+and `host-report-tests.xml`. No generated reports were added to source packages.
+The SLAM agent's container/domain/build outputs were left alone.
+
+Current reproducible commands are in [README.md](README.md#reproduce-the-checked-stage).
+The older commands/results above remain historical evidence. No full package
+build, real planner run, mission completion, RViz rendering or PDF visual-layout
+verification was performed in this step.
