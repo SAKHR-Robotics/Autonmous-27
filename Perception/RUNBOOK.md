@@ -136,7 +136,8 @@ ros2 topic echo /terrain/diagnostics --once
 ros2 topic echo /marker_detection/diagnostics --once
 ros2 topic echo /perception/local_bboxes --once
 ros2 topic echo /marker_detection/targets --once
-ros2 run tf2_ros tf2_echo base_link <actual_camera_header_frame>
+# Gazebo sensor frame; replace it if the active camera header uses another name.
+ros2 run tf2_ros tf2_echo base_link my_robot/camera_link/camera
 ```
 
 A valid obstacle frame should have finite geometry and the configured target
@@ -362,7 +363,7 @@ In D, record a failing view for later replay in a dedicated output directory:
 
 ```bash
 mkdir -p /tmp/perception-live/results
-ros2 bag record -o "/tmp/perception-live/results/perception_$(date +%Y%m%d_%H%M%S)" \
+ros2 bag record --use-sim-time -o "/tmp/perception-live/results/perception_$(date +%Y%m%d_%H%M%S)" \
   /clock /tf /tf_static /camera/image_raw /camera/depth/image_raw \
   /camera/camera_info /camera/depth/color/points /imu/data /odom \
   /terrain/diagnostics /perception/local_bboxes /terrain/debug/ground_cloud \
@@ -370,7 +371,10 @@ ros2 bag record -o "/tmp/perception-live/results/perception_$(date +%Y%m%d_%H%M%
   /marker_detection/targets /marker_detection/diagnostics
 ```
 
-Ctrl+C stops the recorder. Inspect `ros2 bag info BAG_DIRECTORY` before using a
+`--use-sim-time` makes recorded storage timestamps follow the Gazebo clock;
+without it, generated playback time can disagree with sensor headers and fail
+freshness checks. Wait for `/clock` before recording. Ctrl+C stops the recorder.
+Inspect `ros2 bag info BAG_DIRECTORY` before using a
 recording, particularly static TF. Bag playback belongs in a separate run with
 the original simulator/input publishers stopped; replay the input topics only,
 so recorded Perception outputs do not duplicate newly computed outputs. Images
